@@ -1832,7 +1832,9 @@ def detect_zhuangtai_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             direction = "正面"
         else:
             direction = "负面"
-        signals.append(EventSignal(
+        # v0.10.1: 仅≥★3输出——★2模式(食神透干/十二长生/伏吟)太常见，稀释信号价值
+        if strength >= 3:
+            signals.append(EventSignal(
             category="状态",
             direction=direction,
             strength=min(strength, 3),
