@@ -110,6 +110,7 @@ class BaziChart:
     dayun_modulations: list[dict] | None = None                  # 大运调制结果 (v0.8.0)
     tansheng_wangke: list[dict] | None = None                    # 贪生忘克结果 (v0.8.0)
     body_use_result: dict | None = None                          # 宾主体用 + 墓库应期
+    health_profile: dict | None = None                           # 健康体质画像 (v0.10.0: 调候+五行脏腑)
 
     # 用神推荐（内部缓存，由 build_chart() 填充）
     _yongshen_result: dict | None = field(default=None, repr=False)
@@ -177,6 +178,7 @@ class BaziChart:
             "changsheng": [cs.to_dict() for cs in self.changsheng_states],
             "palace_star": self.palace_star_result,
             "tiaohou": self.tiaohou_result,
+            "health_profile": self.health_profile,
             "body_use": self.body_use_result,
         }
 
@@ -417,6 +419,22 @@ def build_chart(
     except Exception as e:
         chart.warnings.append(f"调候分析失败: {e}")
 
+    # ── 5e. 健康体质画像（v0.10.0: 调候×五行脏腑交叉筛查）──
+    chart.health_profile = None
+    try:
+        from .tiaohou import get_tiaohou_health_profile, get_wuxing_balance_health
+        tiaohou_health = get_tiaohou_health_profile(chart.tiaohou_result)
+        all_branches_list = list(all_branches) if not isinstance(all_branches, list) else all_branches
+        wuxing_risks = get_wuxing_balance_health(all_branches_list, chart.day_master)
+        chart.health_profile = {
+            "tiaohou_label": tiaohou_health["label"],
+            "tiaohou_risks": tiaohou_health["risks"],
+            "tiaohou_advice": tiaohou_health["advice"],
+            "wuxing_risks": wuxing_risks,
+        }
+    except Exception as e:
+        chart.warnings.append(f"健康画像生成失败: {e}")
+
     # ── 6. 十神 ──
     for pillar in [chart.year, chart.month, chart.day, chart.hour]:
         if pillar.pillar_type == "日柱":
@@ -555,6 +573,7 @@ def build_chart(
             tiaohou_climate=chart.tiaohou_result.get("climate", "中和") if chart.tiaohou_result else "中和",
             dayun_modulations=chart.dayun_modulations,
             tansheng_wangke=chart.tansheng_wangke,
+            health_profile=chart.health_profile,
             chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
         )
 

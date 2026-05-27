@@ -1357,8 +1357,10 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                             dayun_branch: Dizhi | None = None,
                             favorable: set[str] | None = None,
                             all_branches: tuple[Dizhi, ...] = (),
+                            health_profile: dict | None = None,
+                            first_year: bool = False,
                             ) -> list[EventSignal]:
-    """检测健康信号 — v0.4.0: 多柱联动"""
+    """检测健康信号 — v0.10.0: +调候体质筛查 + 五行脏腑预警"""
     signals: list[EventSignal] = []
     ln_shishen = get_ten_god(day_master, ln_stem)
 
@@ -1586,6 +1588,27 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             notes.append("七杀为喜→压力可控")
         elif fav is False:
             notes.append("七杀为忌→注意压力")
+
+    # ── v0.10.0: 五行脏腑交叉引用 ──
+    # 已有健康触发时，附加对应脏腑风险提示
+    if triggers and health_profile:
+        wx_risks = health_profile.get("wuxing_risks", [])
+        if wx_risks:
+            high_risks = [r for r in wx_risks if r["severity"] == "高"]
+            if high_risks:
+                organ_labels = "、".join(r["organ"] for r in high_risks[:3])
+                notes.append(f"体质弱点（{organ_labels}）：{'; '.join(r['note'] for r in high_risks[:2])}")
+
+    # ── v0.10.0: 调候体质基线筛查（首年输出体质画像）──
+    if first_year and health_profile:
+        tiaohou_label = health_profile.get("tiaohou_label", "")
+        if "高风险" in tiaohou_label:
+            strength = max(strength, 1)
+            triggers.append(f"体质基线：{tiaohou_label}")
+            for risk in health_profile.get("tiaohou_risks", [])[:2]:
+                notes.append(risk)
+            if health_profile.get("tiaohou_advice"):
+                notes.append(health_profile["tiaohou_advice"])
 
     if triggers:
         signals.append(EventSignal(
@@ -2587,6 +2610,7 @@ def scan_years(
     tiaohou_climate: str = "中和",
     dayun_modulations: list[dict] | None = None,
     tansheng_wangke: list[dict] | None = None,
+    health_profile: dict | None = None,
     chart_data: dict | None = None,
 ) -> list[AnnualScan]:
     """逐年扫描，返回每年所有事件信号
@@ -2664,6 +2688,8 @@ def scan_years(
         events.extend(detect_jiankang_signals(
             ln_tg, ln_dz, day_branch, day_master, year_branch, dn_tg, dn_dz, favorable,
             (year_branch, month_branch, day_branch, hour_branch),
+            health_profile=health_profile,
+            first_year=(year == start_year),
         ))
         events.extend(detect_banqian_signals(
             ln_dz, year_branch, day_branch, month_branch, hour_branch, dn_dz,

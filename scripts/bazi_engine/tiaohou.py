@@ -243,3 +243,133 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
             ))
 
     return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# 调候→健康映射（v0.10.0: 引擎一——气候→慢性病体质筛查）
+# ═══════════════════════════════════════════════════════════════
+
+# 古籍依据：《黄帝内经》五行脏腑对应 + 气候偏枯致病机理
+WUXING_ORGAN_MAP = {
+    "木": {"脏": "肝", "腑": "胆", "体": "筋", "窍": "目",
+           "excess": "肝气郁结/易怒/偏头痛/乳腺/胁痛",
+           "deficit": "肝血不足/视力减退/筋骨酸软/易抽筋"},
+    "火": {"脏": "心", "腑": "小肠", "体": "脉", "窍": "舌",
+           "excess": "心火上炎/失眠心悸/口腔溃疡/高血压/躁狂",
+           "deficit": "心气不足/畏寒肢冷/语声低微/心律不齐"},
+    "土": {"脏": "脾", "腑": "胃", "体": "肌肉", "窍": "口",
+           "excess": "脾胃湿热/消化不良/结石/肥胖/代谢综合征",
+           "deficit": "脾胃虚弱/食欲不振/消瘦/气血不足/胃下垂"},
+    "金": {"脏": "肺", "腑": "大肠", "体": "皮毛", "窍": "鼻",
+           "excess": "肺燥咳嗽/便秘/皮肤过敏/哮喘/鼻炎",
+           "deficit": "肺气不足/易感冒/自汗/皮肤干燥/嗅觉减退"},
+    "水": {"脏": "肾", "腑": "膀胱", "体": "骨", "窍": "耳",
+           "excess": "肾水泛滥/水肿/尿频/骨刺/耳鸣眩晕",
+           "deficit": "肾精不足/腰膝酸软/脱发/记忆力减退/听力下降"},
+}
+
+CLIMATE_HEALTH_RISK = {
+    "大寒": {
+        "label": "寒湿体质（高风险）",
+        "risks": [
+            "寒湿困脾→消化吸收功能差，易腹胀腹泻",
+            "寒凝血脉→末梢循环不良，手脚冰凉，冬季加重",
+            "肾阳虚寒→腰膝酸冷，生殖功能偏弱",
+            "寒湿下注→关节疼痛，风湿类疾病风险偏高",
+        ],
+        "advice": "宜温补：艾灸关元/足三里，冬季多食姜枣羊肉，避免生冷寒凉食物，注意腰腹保暖",
+    },
+    "偏寒": {
+        "label": "偏寒体质（亚健康倾向）",
+        "risks": [
+            "阳气偏弱→精力恢复较慢，易疲劳",
+            "寒性体质→对寒冷敏感，冬季注意保暖",
+        ],
+        "advice": "适度运动升阳，少食冰饮，入秋后提前温补",
+    },
+    "大燥": {
+        "label": "燥热体质（高风险）",
+        "risks": [
+            "肺燥津伤→呼吸道脆弱，易干咳/咽炎/鼻炎",
+            "心火上炎→易烦躁失眠，口腔溃疡反复发作",
+            "肝火偏旺→情绪波动大，易怒，血压偏高倾向",
+            "燥火伤阴→皮肤干燥/便秘/痔疮，炎症反应偏强",
+        ],
+        "advice": "宜清润：多食梨藕百合银耳，避免辛辣油炸烧烤，保持充足饮水，适当有氧运动清热",
+    },
+    "偏燥": {
+        "label": "偏燥体质（亚健康倾向）",
+        "risks": [
+            "津液偏亏→皮肤偏干，易口渴，大便偏干",
+            "炎症反应偏强→注意口腔/咽喉/皮肤炎症",
+        ],
+        "advice": "多喝水，多食滋阴润燥食物（梨、蜂蜜、银耳），减少辛辣",
+    },
+    "中和": {
+        "label": "寒暖适中（基础体质良好）",
+        "risks": [],
+        "advice": "无特殊偏颇，保持均衡饮食和适度运动即可",
+    },
+}
+
+
+def get_tiaohou_health_profile(tiaohou_result: dict | None) -> dict:
+    """从调候分析结果生成健康体质画像（v0.10.0）"""
+    if not tiaohou_result:
+        return {"label": "未知", "risks": [], "advice": ""}
+
+    climate = tiaohou_result.get("climate", "中和")
+    is_fei_ju = tiaohou_result.get("is_fei_ju", False)
+    return CLIMATE_HEALTH_RISK.get(climate, CLIMATE_HEALTH_RISK["中和"])
+
+
+def get_wuxing_balance_health(all_branches: list, day_master,
+                               all_stems: list = None) -> list[dict]:
+    """五行偏枯→脏腑预警（v0.10.0: 引擎二）
+
+    检测规则：
+    1. 某五行在地支中占比≥3（过剩）→ 对应脏腑 excess 风险
+    2. 某五行完全缺失（偏枯）→ 对应脏腑 deficit 风险
+    3. 过剩+无泄（无生克出口）→ 肿瘤/结石风险升级
+    """
+    from collections import Counter
+    wx_list = [b.wuxing.value for b in all_branches]
+    wx_count = Counter(wx_list)
+    risk_items = []
+
+    for wx in ["木", "火", "土", "金", "水"]:
+        cnt = wx_count.get(wx, 0)
+        organ = WUXING_ORGAN_MAP[wx]
+
+        if cnt >= 3:
+            # 检查是否有宣泄口（其所生五行）
+            sheng_map = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
+            outlet = sheng_map[wx]
+            has_outlet = wx_count.get(outlet, 0) >= 1
+
+            severity = "中" if has_outlet else "高"
+            risk_items.append({
+                "wuxing": wx,
+                "organ": f"{organ['脏']}/{organ['腑']}",
+                "type": "excess",
+                "severity": severity,
+                "count": cnt,
+                "has_outlet": has_outlet,
+                "risk": organ["excess"],
+                "label": f"{organ['脏']}系负担{'偏重' if has_outlet else '过重（无泄）'}",
+                "note": f"{wx}气郁积（{cnt}重），{'有宣泄口尚可控' if has_outlet else '无宣泄→防实质性病变（息肉/结石/肿瘤倾向）'}",
+            })
+        elif cnt == 0:
+            risk_items.append({
+                "wuxing": wx,
+                "organ": f"{organ['脏']}/{organ['腑']}",
+                "type": "deficit",
+                "severity": "中",
+                "count": 0,
+                "has_outlet": False,
+                "risk": organ["deficit"],
+                "label": f"{organ['脏']}系先天偏弱",
+                "note": f"{wx}气完全缺失→{organ['脏']}功能先天不足，宜后天调养",
+            })
+
+    return risk_items
