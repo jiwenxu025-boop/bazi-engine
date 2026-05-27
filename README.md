@@ -1,7 +1,3 @@
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Python](https://img.shields.io/badge/Python-3.11+-blue)
-![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-blueviolet)
-
 # 八字排盘引擎 (Bazi Engine)
 
 独立开发的八字命理分析引擎。规则引擎负责精确计算与信号检测，LLM 推理层负责边界年份的多弱信号综合判断。
