@@ -240,8 +240,8 @@ function render(d){
 
   // 格局/喜忌指示条
   if (d.pattern && d.yongshen){
-    var fav = d.yongshen.favorable_shishen || [];
-    var harm = d.yongshen.harmful_shishen || [];
+    var fav = d.yongshen.favorable || [];
+    var harm = d.yongshen.harmful || [];
     h += '<div class=info-panel style="margin-bottom:12px;padding:10px 16px">';
     h += '<span style="font-size:12px;color:var(--text-tertiary)">格局:</span> ';
     h += '<span style="font-size:14px;font-weight:600;color:var(--text)">' + esc(d.pattern) + '</span>';

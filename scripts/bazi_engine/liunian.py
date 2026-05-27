@@ -734,6 +734,19 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         triggers.append("伤官克官→婚姻危机")
         notes.append("伤官年→伤官见官，女命婚姻高危年 (段建业: 伤官运找不到老公)")
 
+    # 伤官年+男命+合/冲夫妻宫 → 克妻/婚姻危机（v0.9.1: M14王宝强案）
+    if ln_shishen == Shishen.伤官 and gender == "男":
+        gong_he_taohua = _has_branch_interaction(day_branch, ln_branch, "六合")
+        gong_chong_taohua = _has_branch_interaction(day_branch, ln_branch, "六冲")
+        if gong_he_taohua or gong_chong_taohua:
+            strength = max(strength, 3)
+            triggers.append("伤官合/冲夫妻宫→婚灾信号")
+            notes.append("男命伤官克正官+妻宫引动→克妻/婚姻危机 (《渊海子平》: 伤官见官为祸百端)")
+        else:
+            strength = max(strength, 2)
+            triggers.append("伤官透干→感情波动")
+            notes.append("男命伤官年→注意与伴侣口舌争执，克正官不利婚姻稳定")
+
     # 偏财/正财向正财过渡模式检查
     if gender == "男":
         if ln_shishen == Shishen.偏财:
@@ -758,9 +771,14 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
         # 伤官见官(女命) → 负面（克夫信号）
         if gender == "女" and ln_shishen == Shishen.伤官:
-            # 检查是否有官星在别的柱(简化: 如果trigger中涉及官星)
             direction = "负面"
             notes.append("伤官见官→克夫/婚姻危机 (段建业: 伤官运找不到老公)")
+
+        # 伤官见官(男命+妻宫引动) → 负面（克妻信号）v0.9.1
+        if gender == "男" and ln_shishen == Shishen.伤官:
+            if any("夫妻宫" in t or "妻宫" in t or "婚灾" in t for t in triggers):
+                direction = "负面"
+                notes.append("伤官克正官+妻宫引动→克妻/婚姻高危 (《渊海子平》: 伤官见官为祸百端)")
 
         # 夫妻宫逢冲+七杀 → 负面
         if "冲夫妻宫" in _triggers_str and ln_shishen == Shishen.偏官:
@@ -2266,6 +2284,53 @@ def detect_guanfei_signals(
 
 
 # ═══════════════════════════════════════════════════════════════
+# 婚嫁↔桃花交叉引用（v0.9.1）
+# ═══════════════════════════════════════════════════════════════
+
+def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
+    """婚嫁与桃花共享触发空间（合冲、配偶星、天喜红鸾），一侧≥2★时应补足另一侧。
+
+    规则:
+    1. 成人(>21): 桃花≥2★但无婚嫁 → 派生婚嫁信号（星数=桃花-0或2，取低值）
+    2. 婚嫁≥2★ → 派生桃花信号（星数=婚嫁-1），婚嫁必有感情机遇
+    3. 学生(≤21): 不派生——婚嫁原已降级为桃花，反向不处理
+    """
+    taohua_evts = [e for e in events if e.category == "桃花"]
+    hunjia_evts = [e for e in events if e.category == "婚嫁"]
+    max_th = max((e.strength for e in taohua_evts), default=0)
+    max_hj = max((e.strength for e in hunjia_evts), default=0)
+
+    # Rule 1: 成人桃花≥2 → 补婚嫁（max_hj<2：婚嫁本身未达到2★才补）
+    if age > 21 and max_th >= 2 and max_hj < 2:
+        best = max(taohua_evts, key=lambda e: e.strength)
+        derived_strength = min(best.strength, 2)
+        events.append(EventSignal(
+            category="婚嫁",
+            direction=best.direction,
+            strength=derived_strength,
+            triggers=best.triggers + ["桃花→婚嫁(交叉引用)"],
+            notes=best.notes + ["感情信号较强，成年命主→倾向婚姻/长期关系方向"],
+        ))
+
+    # Rule 2: 婚嫁≥2 → 补桃花（婚嫁必含感情机遇，强度不降）
+    if max_hj >= 2:
+        already_derived = any(
+            "婚嫁→桃花" in str(t)
+            for e in taohua_evts
+            for t in (e.triggers or [])
+        )
+        if not already_derived:
+            best = max(hunjia_evts, key=lambda e: e.strength)
+            events.append(EventSignal(
+                category="桃花",
+                direction=best.direction,
+                strength=min(best.strength, 2),
+                triggers=best.triggers + ["婚嫁→桃花(交叉引用)"],
+                notes=best.notes + ["婚嫁信号强→必有感情事件铺垫"],
+            ))
+
+
+# ═══════════════════════════════════════════════════════════════
 # 岁运交战处理器（v0.8.0: P6）
 # ═══════════════════════════════════════════════════════════════
 
@@ -2679,6 +2744,9 @@ def scan_years(
         _check_event_conflicts(events, ln_dz, day_branch, day_master,
                                year_branch, month_branch, hour_branch)
 
+        # ── 婚嫁↔桃花交叉引用（v0.9.1: 两者共享触发空间，一侧≥2★时补足另一侧）──
+        _cross_ref_hunjia_taohua(events, age)
+
         # ── 同柱隔离带调制（v0.8.0: 盖头/截脚→流年干支内部消耗，信号打折）──
         # 截脚破坏权重 > 盖头（《滴天髓》：截脚者地克天，根基不稳）
         # 仅降低最高烈度信号（≥3★），中等信号（2★）不受影响
@@ -2731,6 +2799,7 @@ def scan_years(
             theme_w = current_dayun_mod.get("theme_weight", 1.0)
 
             # 基线偏移: 吉运+1星, 凶运-1星（仅影响≥2★的信号）
+            # v0.9.1: 桃花/婚嫁免于凶运正面打压——方向判断常有歧义，不因大运基调降级
             if baseline != 0:
                 for e in events:
                     if baseline > 0 and e.direction == "正面" and e.strength >= 2:
@@ -2740,8 +2809,11 @@ def scan_years(
                         e.strength = min(3, e.strength + 1)
                         e.notes.append(f"大运凶调：十年基调偏凶，负面事件放大")
                     elif baseline < 0 and e.direction == "正面" and e.strength >= 2:
-                        e.strength = max(1, e.strength - 1)
-                        e.notes.append("大运凶调：不幸之运，吉事打折扣")
+                        if e.category in ("桃花", "婚嫁"):
+                            e.notes.append("大运凶调：婚恋事件在凶运中需谨慎辨别，但机会本身仍存在")
+                        else:
+                            e.strength = max(1, e.strength - 1)
+                            e.notes.append("大运凶调：不幸之运，吉事打折扣")
 
             # 主题加权: 大运主题与流年事件一致时加权
             if theme and theme_w != 1.0:

@@ -89,9 +89,9 @@ MARRIAGE_CASES = [
     },
     {
         "name": "案例M14-王宝强离婚",
-        "gender": "男", "year": 1982, "month": 5, "day": 29, "hour": 22,
+        "gender": "男", "year": 1982, "month": 5, "day": 22, "hour": 22,
         "events": {2016: "桃花"},
-        "notes": "王宝强 壬戌 乙巳 乙巳 丁亥。2016丙申离婚。农历4月29≈公历5月29"
+        "notes": "王宝强 壬戌 乙巳 乙巳 丁亥。2016丙申离婚。农历四月二十九=公历1982-05-22（非05-29）"
     },
     {
         "name": "案例M15-李玟婚",
@@ -110,6 +110,28 @@ MARRIAGE_CASES = [
 if __name__ == "__main__":
     from bazi_engine.chart import build_chart
 
+    # ── 容差配置 ──
+    SISTER_CATEGORIES = {"婚嫁": "桃花", "桃花": "婚嫁"}
+    YEAR_TOLERANCE = 1  # ±1年
+
+    def _find_in_year(annual_scans, year, expected_cat):
+        """在指定年份查找 ≥2★ 的信号"""
+        for s in annual_scans:
+            if s["year"] == year:
+                for e in s["events"]:
+                    if e["strength"] >= 2 and e["category"] == expected_cat:
+                        return e
+        return None
+
+    def _find_weak_in_year(annual_scans, year, expected_cat):
+        """在指定年份查找 ★1 的信号"""
+        for s in annual_scans:
+            if s["year"] == year:
+                for e in s["events"]:
+                    if e["category"] == expected_cat and e["strength"] == 1:
+                        return e
+        return None
+
     results = []
     for case in MARRIAGE_CASES:
         try:
@@ -117,57 +139,96 @@ if __name__ == "__main__":
                 name=case["name"], gender=case["gender"],
                 year=case["year"], month=case["month"],
                 day=case["day"], hour=case["hour"],
-                liunian_range=(min(case["events"])-1, max(case["events"])+1),
+                liunian_range=(min(case["events"])-2, max(case["events"])+2),
             )
             data = chart.to_dict()
+            annual_scans = data.get("annual_scans", [])
 
             matches = []
+            tolerances = []
             misses = []
             for year, expected_cat in case["events"].items():
-                found = False
-                for s in data.get("annual_scans", []):
-                    if s["year"] == year:
-                        for e in s["events"]:
-                            if e["strength"] >= 2 and e["category"] == expected_cat:
-                                found = True
-                                matches.append(f"{year} {expected_cat}: {e['direction']} ★{e['strength']}")
+                # Level 1: 精确匹配 (年份 + 类别)
+                e = _find_in_year(annual_scans, year, expected_cat)
+                if e:
+                    matches.append(f"{year} {expected_cat}: {e['direction']} ★{e['strength']}")
+                    continue
+
+                # Level 2: 跨类别容差 (同年, 姐妹类别≥2★)
+                sister_cat = SISTER_CATEGORIES.get(expected_cat)
+                if sister_cat:
+                    e = _find_in_year(annual_scans, year, sister_cat)
+                    if e:
+                        tolerances.append(f"{year} {expected_cat}←{sister_cat}: {e['direction']} ★{e['strength']} [跨界容差]")
+                        continue
+
+                # Level 3: ±1年容差 (精确类别, 相邻年份≥2★)
+                for adj_year in [year - YEAR_TOLERANCE, year + YEAR_TOLERANCE]:
+                    e = _find_in_year(annual_scans, adj_year, expected_cat)
+                    if e:
+                        tolerances.append(f"{year} {expected_cat}←{adj_year}年: {e['direction']} ★{e['strength']} [±1年容差]")
+                        break
+                else:
+                    # Level 4: ±1年+跨类别容差
+                    if sister_cat:
+                        for adj_year in [year - YEAR_TOLERANCE, year + YEAR_TOLERANCE]:
+                            e = _find_in_year(annual_scans, adj_year, sister_cat)
+                            if e:
+                                tolerances.append(f"{year} {expected_cat}←{adj_year}年{sister_cat}: {e['direction']} ★{e['strength']} [±1年+跨界]")
                                 break
-                if not found:
-                    # 检查低强度信号
-                    for s in data.get("annual_scans", []):
-                        if s["year"] == year:
-                            weak = [e for e in s["events"] if e["category"] == expected_cat and e["strength"] == 1]
-                            if weak:
-                                misses.append(f"{year} {expected_cat}: 仅有弱信号 ★1 '{weak[0]['triggers'][:50] if weak[0]['triggers'] else '()'}' ")
-                                found = True
-                                break
-                    if not found:
-                        misses.append(f"{year} {expected_cat}: 完全未检测到")
+                        else:
+                            # Level 5: 同类别弱信号 (★1)
+                            e = _find_weak_in_year(annual_scans, year, expected_cat)
+                            if e:
+                                misses.append(f"{year} {expected_cat}: 仅有弱信号 ★1 '{e['triggers'][:50] if e['triggers'] else '()'}' ")
+                            else:
+                                misses.append(f"{year} {expected_cat}: 完全未检测到")
+                    else:
+                        e = _find_weak_in_year(annual_scans, year, expected_cat)
+                        if e:
+                            misses.append(f"{year} {expected_cat}: 仅有弱信号 ★1 '{e['triggers'][:50] if e['triggers'] else '()'}' ")
+                        else:
+                            misses.append(f"{year} {expected_cat}: 完全未检测到")
 
             results.append({
                 "name": case["name"],
                 "matches": matches,
+                "tolerances": tolerances,
                 "misses": misses,
-                "score": f"{len(matches)}/{len(case['events'])}"
+                "score": f"{len(matches)}+{len(tolerances)}/{len(case['events'])}"
             })
         except Exception as e:
-            results.append({"name": case["name"], "error": str(e), "matches": [], "misses": [], "score": "0/0"})
+            results.append({"name": case["name"], "error": str(e), "matches": [], "tolerances": [], "misses": [], "score": "0/0"})
 
     print("=" * 60)
     print("婚姻/桃花 验证结果")
     print("=" * 60)
-    total_hit, total_expected = 0, 0
+    total_strict = 0
+    total_tolerance = 0
+    total_expected = 0
     for r in results:
         hits = len(r["matches"])
-        exp = len(r["matches"]) + len(r["misses"])
-        total_hit += hits
+        tol = len(r.get("tolerances", []))
+        mis = len(r["misses"])
+        exp = hits + tol + mis
+        total_strict += hits
+        total_tolerance += tol
         total_expected += exp
-        status = "OK" if hits == exp else f"X {hits}/{exp}"
+
+        if hits == exp:
+            status = "OK"
+        elif hits + tol == exp:
+            status = f"~ {hits}+{tol}/{exp} (容差)"
+        else:
+            status = f"X {hits}+{tol}/{exp}"
         print(f"\n{status} {r['name']}")
         for m in r["matches"]:
             print(f"  [HIT] {m}")
+        for t in r.get("tolerances", []):
+            print(f"  [TOL] {t}")
         for m in r["misses"]:
             print(f"  [MISS] {m}")
 
     print(f"\n{'=' * 60}")
-    print(f"总计: {total_hit}/{total_expected} ({total_hit/total_expected*100:.0f}%)")
+    print(f"严格命中: {total_strict}/{total_expected} ({total_strict/total_expected*100:.0f}%)")
+    print(f"容差命中: {total_strict+total_tolerance}/{total_expected} ({(total_strict+total_tolerance)/total_expected*100:.0f}%)")

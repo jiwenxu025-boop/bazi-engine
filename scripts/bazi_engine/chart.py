@@ -417,26 +417,6 @@ def build_chart(
     except Exception as e:
         chart.warnings.append(f"调候分析失败: {e}")
 
-    # ── 5f. 大运调制（v0.8.0: 方向二核心）──
-    chart.dayun_modulations = None
-    try:
-        from .dayun import DayunModulator
-        yongshen_data = chart._yongshen_result or {}
-        modulator = DayunModulator(
-            day_master=chart.day_master,
-            natal_stems=[chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem],
-            natal_branches=[chart.year.branch, chart.month.branch, chart.day.branch, chart.hour.branch],
-            luck_pillars=chart.luck_pillars,
-            start_age=start_age,
-            favorable_wuxing=set(yongshen_data.get("favorable_wuxing", [])),
-            harmful_wuxing=set(yongshen_data.get("harmful_wuxing", [])),
-            favorable_shishen=set(yongshen_data.get("favorable", [])),
-            harmful_shishen=set(yongshen_data.get("harmful", [])),
-        )
-        chart.dayun_modulations = [m.to_dict() for m in modulator.modulate()]
-    except Exception as e:
-        chart.warnings.append(f"大运调制失败: {e}")
-
     # ── 6. 十神 ──
     for pillar in [chart.year, chart.month, chart.day, chart.hour]:
         if pillar.pillar_type == "日柱":
@@ -485,6 +465,26 @@ def build_chart(
     chart.warnings.extend(age_w)
     chart.start_age = start_age
     chart.luck_periods = format_luck_periods(start_age, chart.luck_pillars)
+
+    # ── 8b. 大运调制（v0.8.0: 方向二核心，放在luck_pillars赋值之后）──
+    chart.dayun_modulations = None
+    try:
+        from .dayun import DayunModulator
+        yongshen_data = chart._yongshen_result or {}
+        modulator = DayunModulator(
+            day_master=chart.day_master,
+            natal_stems=[chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem],
+            natal_branches=[chart.year.branch, chart.month.branch, chart.day.branch, chart.hour.branch],
+            luck_pillars=chart.luck_pillars,
+            start_age=start_age,
+            favorable_wuxing=set(yongshen_data.get("favorable_wuxing", [])),
+            harmful_wuxing=set(yongshen_data.get("harmful_wuxing", [])),
+            favorable_shishen=set(yongshen_data.get("favorable", [])),
+            harmful_shishen=set(yongshen_data.get("harmful", [])),
+        )
+        chart.dayun_modulations = [m.to_dict() for m in modulator.modulate()]
+    except Exception as e:
+        chart.warnings.append(f"大运调制失败: {e}")
 
     # ── 9. 干支关系 ──
     stem_labels = [
