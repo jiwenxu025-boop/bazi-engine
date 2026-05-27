@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>八字排盘</title>
+<script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
+<style>
+/* ==========================================
+   CSS Custom Properties (Light default)
+   ========================================== */
+:root {
+  --bg: #f5f5f4;
+  --surface: #ffffff;
+  --surface-hover: #fafaf9;
+  --border: #e7e5e4;
+  --border-hover: #d6d3d1;
+  --text: #1c1917;
+  --text-secondary: #78716c;
+  --text-tertiary: #a8a29e;
+  --accent: #1c1917;
+  --accent-hover: #292524;
+  --accent-text: #ffffff;
+  --input-bg: #fafaf9;
+  --good: #15803d;
+  --bad: #b91c1c;
+  --gold: #b45309;
+  --error-bg: #fef2f2;
+  --error-border: #fecaca;
+  --tag-bg: #f5f5f4;
+  --tooltip-bg: #1c1917;
+  --tooltip-text: #ffffff;
+  --modal-overlay: rgba(28,25,23,.5);
+  --shadow-card: 0 1px 3px rgba(0,0,0,.04);
+  --shadow-modal: 0 8px 32px rgba(0,0,0,.16);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+}
+
+html.dark {
+  --bg: #14141c;
+  --surface: #1c1c2a;
+  --surface-hover: #222236;
+  --border: #2a2a40;
+  --border-hover: #3a3a54;
+  --text: #e8e4df;
+  --text-secondary: #a09888;
+  --text-tertiary: #6a6460;
+  --accent: #c4956a;
+  --accent-hover: #d4a878;
+  --accent-text: #14141c;
+  --input-bg: #1a1a28;
+  --good: #5cb85c;
+  --bad: #e05555;
+  --gold: #d4943a;
+  --error-bg: #2a1a14;
+  --error-border: #5a2a1a;
+  --tag-bg: #222236;
+  --tooltip-bg: #e8e4df;
+  --tooltip-text: #14141c;
+  --modal-overlay: rgba(0,0,0,.55);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.25);
+  --shadow-modal: 0 8px 32px rgba(0,0,0,.45);
+}
+
+/* ==========================================
+   Reset & Base
+   ========================================== */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans SC",sans-serif;
+  background:var(--bg);color:var(--text);
+  line-height:1.6;min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+
+.container{max-width:620px;margin:0 auto;padding:var(--space-xl) var(--space-md) 96px}
+
+.header{
+  text-align:center;padding:var(--space-2xl) 0 var(--space-lg);
+  border-bottom:1px solid var(--border);margin-bottom:var(--space-lg);
+  position:relative;
+}
+.header h1{font-size:24px;font-weight:700;letter-spacing:1px;color:var(--text)}
+.header .disclaimer{font-size:12px;color:var(--text-tertiary);margin-top:var(--space-sm)}
+.header .api-row{display:none}
+
+.theme-toggle{
+  position:absolute;right:0;top:var(--space-2xl);
+  width:36px;height:36px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border);
+  cursor:pointer;font-size:16px;line-height:34px;text-align:center;
+  transition:border-color .15s,transform .15s;user-select:none;
+}
+.theme-toggle:hover{border-color:var(--border-hover);transform:scale(1.08)}
+
+.form-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:var(--space-lg);
+  margin-bottom:var(--space-lg);box-shadow:var(--shadow-card);
+}
+.form-row{display:flex;gap:var(--space-sm);margin-bottom:var(--space-md)}
+.form-row label{flex:1;display:flex;flex-direction:column;gap:var(--space-xs)}
+.form-row label span{
+  font-size:12px;font-weight:500;color:var(--text-secondary);
+}
+input,select{
+  width:100%;padding:10px 12px;font-size:15px;font-family:inherit;
+  background:var(--input-bg);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);
+  transition:border-color .15s,box-shadow .15s;
+  -webkit-appearance:none;appearance:none;
+}
+select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6258' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:32px;
+}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent)}
+input::placeholder{color:var(--text-tertiary)}
+input[type="checkbox"]{width:auto;padding:0;-webkit-appearance:checkbox;appearance:auto;accent-color:var(--accent);cursor:pointer}
+
+.btn{
+  width:100%;padding:13px;font-size:15px;font-weight:600;font-family:inherit;
+  background:var(--accent);color:var(--accent-text);border:none;
+  border-radius:8px;cursor:pointer;
+  transition:background .15s,transform .1s,opacity .15s;
+}
+.btn:hover{background:var(--accent-hover)}
+.btn:active{transform:scale(.99)}
+.btn:disabled{background:var(--tag-bg);color:var(--text-tertiary);cursor:not-allowed;transform:none}
+
+.btn-sm{
+  font-size:13px;padding:8px 16px;border-radius:6px;
+  background:var(--surface);color:var(--text-secondary);
+  border:1px solid var(--border);cursor:pointer;
+  transition:border-color .15s,color .15s;
+}
+.btn-sm:hover{border-color:var(--border-hover);color:var(--text)}
+
+.copy-btn{display:none;margin-bottom:var(--space-md)}
+
+.result{display:none}
+.result.visible{display:block;animation:fadeIn .3s ease}
+
+.section-title{
+  font-size:11px;font-weight:600;color:var(--text-tertiary);
+  margin-bottom:var(--space-sm);padding-left:2px;
+}
+
+/* ==========================================
+   Four Pillars
+   ========================================== */
+.pillars{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:8px;margin-bottom:28px;
+}
+.pillar{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:16px 10px 14px;
+  text-align:center;cursor:default;
+  transition:border-color var(--transition);
+  animation:fadeUp .4s ease both;
+}
+.pillar:nth-child(1){animation-delay:.05s}
+.pillar:nth-child(2){animation-delay:.12s}
+.pillar:nth-child(3){animation-delay:.19s}
+.pillar:nth-child(4){animation-delay:.26s}
+.pillar:hover{border-color:var(--border-hover)}
+.pillar.day-pillar{
+  border-color:var(--border-hover);
+  box-shadow:0 1px 6px color-mix(in srgb,var(--accent) 15%,transparent);
+  cursor:pointer;
+  position:relative;
+}
+.pillar.day-pillar::after{
+  content:'点击详情';
+  position:absolute;bottom:4px;right:8px;
+  font-size:9px;color:var(--text-tertiary);
+  opacity:0;transition:opacity var(--transition);
+}
+.pillar.day-pillar:hover::after{opacity:1}
+
+.pillar .pillar-label{
+  font-size:10px;font-weight:500;color:var(--text-tertiary);
+  text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;
+}
+.pillar .stem-branch{
+  font-size:28px;font-weight:700;color:var(--text);
+  letter-spacing:2px;line-height:1.2;
+}
+.pillar .nayin-text{
+  font-size:11px;color:var(--text-tertiary);margin-top:4px;
+  cursor:help;
+}
+.pillar .hidden-stems{
+  font-size:12px;color:var(--text-secondary);margin-top:3px;
+  cursor:help;
+}
+.pillar .ten-god{
+  font-size:11px;font-weight:500;color:var(--accent);margin-top:3px;
+  cursor:help;
+}
+
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* ==========================================
+   Tooltip (CSS-only)
+   ========================================== */
+[data-tip]{
+  position:relative;
+  border-bottom:1px dotted var(--text-tertiary);
+}
+[data-tip]:hover::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 6px);left:50%;
+  transform:translateX(-50%);
+  background:var(--tooltip-bg);color:var(--tooltip-text);
+  font-size:11px;font-weight:400;padding:5px 10px;border-radius:4px;
+  white-space:nowrap;z-index:100;
+  pointer-events:none;animation:tooltipIn .15s ease;
+}
+[data-tip]:hover::before{
+  content:'';
+  position:absolute;bottom:calc(100% + 2px);left:50%;
+  transform:translateX(-50%);
+  border:4px solid transparent;border-top-color:var(--tooltip-bg);
+  z-index:100;pointer-events:none;
+}
+@keyframes tooltipIn{from{opacity:0;transform:translateX(-50%) translateY(3px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* ==========================================
+   Info Panel
+   ========================================== */
+.info-panel{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px 24px;
+  margin-bottom:28px;box-shadow:var(--shadow-card);
+}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 32px}
+.info-item{display:flex;flex-direction:column;gap:2px}
+.info-item .info-label{
+  font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.5px;
+  align-self:flex-start;
+}
+.info-item .info-value{font-size:14px;color:var(--text);font-weight:500}
+.info-item .info-sub{font-size:12px;color:var(--text-secondary);margin-top:2px;line-height:1.5}
+.info-item.full{grid-column:1/-1}
+.dayun-scroll{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.dayun-tag{
+  font-size:12px;color:var(--text-secondary);
+  background:var(--input-bg);border:1px solid var(--border);
+  border-radius:4px;padding:3px 8px;white-space:nowrap;
+}
+
+/* ==========================================
+   Category Filter
+   ========================================== */
+.filter-bar{
+  display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;
+}
+.filter-pill{
+  font-size:11px;font-weight:500;padding:4px 12px;
+  border-radius:20px;cursor:pointer;user-select:none;
+  background:var(--surface);color:var(--text-secondary);
+  border:1px solid var(--border);
+  transition:all var(--transition);
+}
+.filter-pill:hover{border-color:var(--border-hover)}
+.filter-pill.active{
+  background:var(--accent);color:var(--accent-text);
+  border-color:var(--accent);
+}
+
+/* ==========================================
+   Event Cards (collapsible)
+   ========================================== */
+.events-section{margin-bottom:28px}
+.event-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);margin-bottom:8px;
+  box-shadow:var(--shadow-card);
+  transition:border-color var(--transition);
+}
+.event-card:hover{border-color:var(--border-hover)}
+.event-card .event-header{
+  display:flex;align-items:center;gap:8px;
+  padding:16px 18px;cursor:pointer;user-select:none;
+  transition:background var(--transition);
+}
+.event-card .event-header:hover{background:var(--surface-hover)}
+.event-card .event-year{
+  font-size:17px;font-weight:700;color:var(--text);
+}
+.event-card .event-ganzhi{
+  font-size:14px;color:var(--text-secondary);font-weight:500;
+}
+.event-card .event-age{
+  font-size:12px;color:var(--text-tertiary);margin-left:auto;
+}
+.event-card .chevron{
+  font-size:10px;color:var(--text-tertiary);
+  transition:transform .2s ease;
+}
+.event-card.open .chevron{transform:rotate(90deg)}
+/* header category badges */
+.event-tags{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;margin-right:6px}
+.header-tag{
+  font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;
+  background:var(--tag-bg);color:var(--text-secondary);
+}
+/* pattern bar */
+.pattern-fav{font-size:13px;color:var(--good);font-weight:500}
+.pattern-harm{font-size:13px;color:var(--bad);font-weight:500}
+/* 喜忌标签 */
+.tag-ji{display:inline-block;font-size:10px;padding:0 4px;border-radius:3px;background:#fee2e2;color:#b91c1c;font-weight:600;margin:0 2px}
+.tag-xi{display:inline-block;font-size:10px;padding:0 4px;border-radius:3px;background:#dcfce7;color:#15803d;font-weight:600;margin:0 2px}
+html.dark .tag-ji{background:#3b1a1a;color:#f87171}
+html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
+.tag-ji-full{display:inline-block;font-size:10px;padding:0 4px;border-radius:3px;background:#fee2e2;color:#b91c1c;font-weight:600;margin:0 2px}
+.event-card .event-body{
+  display:none;border-top:1px solid var(--border);
+  padding:4px 0;
+}
+.event-card.open .event-body{display:block}
+.event-item{padding:12px 18px;border-bottom:1px solid var(--border)}
+.event-item:last-child{border-bottom:none}
+/* 主行: 星级+类别+方向+预测 */
+.event-main{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.event-main .stars{color:var(--gold);white-space:nowrap;font-size:12px}
+.event-main .tag{font-size:10px;font-weight:600;background:var(--tag-bg);color:var(--text-secondary);border-radius:3px;padding:1px 6px}
+.event-main .direction-bad{font-size:12px;font-weight:600;color:var(--bad)}
+.event-main .direction-good{font-size:12px;font-weight:600;color:var(--good)}
+.event-main .prediction-text{font-size:13px;color:var(--text);font-weight:500}
+/* 触发词 */
+.event-trigger{font-size:12px;color:var(--text-secondary);padding:2px 0 4px 0;line-height:1.7}
+/* 小提示: 归类到各自事件下方，灰色圆角卡片 */
+.event-hints{margin-top:6px;padding:8px 12px;background:var(--tag-bg);border-radius:6px}
+.event-hint{font-size:11px;color:var(--text-secondary);line-height:1.7;padding:2px 0}
+.event-hint .hint-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle;opacity:.6}
+
+/* ==========================================
+   Modal
+   ========================================== */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:var(--modal-overlay);z-index:200;
+  justify-content:center;align-items:center;
+  animation:fadeIn .15s ease;
+}
+.modal-overlay.open{display:flex;opacity:1;visibility:visible}
+.modal{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:28px 28px 24px;
+  max-width:380px;width:90%;box-shadow:var(--shadow-modal);
+  animation:slideUp .2s ease;
+}
+.modal h3{
+  font-size:18px;color:var(--text);margin-bottom:16px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.modal-close{
+  width:28px;height:28px;border-radius:50%;border:1px solid var(--border);
+  background:var(--surface);cursor:pointer;font-size:14px;color:var(--text-secondary);
+  display:flex;align-items:center;justify-content:center;
+  transition:all var(--transition);
+}
+.modal-close:hover{border-color:var(--border-hover);color:var(--text)}
+.modal .modal-row{
+  display:flex;justify-content:space-between;padding:8px 0;
+  border-bottom:1px solid var(--border);font-size:14px;
+}
+.modal .modal-row:last-child{border-bottom:none}
+.modal .modal-label{color:var(--text-tertiary)}
+.modal .modal-value{color:var(--text);font-weight:500}
+.modal .modal-good{color:var(--good)}
+.modal .modal-bad{color:var(--bad)}
+
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* ==========================================
+   Back to Top
+   ========================================== */
+.back-top{
+  position:fixed;bottom:28px;right:28px;
+  width:40px;height:40px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text-secondary);font-size:18px;
+  cursor:pointer;z-index:50;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;visibility:hidden;
+  transform:translateY(8px);
+  transition:all .25s ease;
+  box-shadow:var(--shadow-card);
+}
+.back-top.visible{opacity:1;visibility:visible;transform:translateY(0)}
+.back-top:hover{border-color:var(--border-hover);color:var(--text)}
+
+/* ==========================================
+   Life Stage Bar
+   ========================================== */
+.life-stage-bar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;
+  font-size:13px;color:var(--text-secondary);
+}
+.life-stage-label{font-weight:500;color:var(--text-tertiary)}
+.life-stage-badge{
+  padding:4px 14px;border-radius:20px;font-weight:600;font-size:13px;
+  background:var(--accent);color:var(--accent-text);
+}
+.life-stage-badge.student{
+  background:color-mix(in srgb,var(--good) 20%,var(--surface));
+  color:var(--good);border:1px solid color-mix(in srgb,var(--good) 30%,transparent);
+}
+.life-stage-desc{flex:1;min-width:200px;font-size:12px;color:var(--text-tertiary)}
+.stage-toggle-btn{
+  padding:5px 14px;border-radius:6px;font-size:12px;cursor:pointer;
+  background:var(--surface);color:var(--accent);
+  border:1px solid var(--accent);
+  transition:all var(--transition);
+  white-space:nowrap;
+}
+.stage-toggle-btn:hover{background:var(--accent);color:var(--accent-text)}
+
+/* ==========================================
+   Personality & Family
+   ========================================== */
+.personality-text{
+  font-size:14px;color:var(--text);line-height:1.8;
+}
+.family-level{text-align:center;margin-bottom:12px}
+.family-badge{
+  display:inline-block;padding:6px 20px;border-radius:20px;
+  font-size:14px;font-weight:600;
+  background:var(--accent);color:var(--accent-text);
+}
+.family-text{
+  font-size:13px;color:var(--text-secondary);line-height:1.8;
+}
+
+/* ==========================================
+   States
+   ========================================== */
+.no-signal-msg{
+  text-align:center;color:var(--text-tertiary);font-size:12px;
+  padding:10px 18px 14px;
+}
+.loading-state{text-align:center;padding:48px 20px;color:var(--text-tertiary)}
+.spinner{
+  display:inline-block;width:24px;height:24px;
+  border:2px solid var(--border);border-top-color:var(--text-tertiary);
+  border-radius:50%;animation:spin .6s linear infinite;margin-bottom:12px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-state{
+  background:var(--error-bg);border:1px solid var(--error-border);
+  color:var(--bad);padding:14px 18px;border-radius:8px;font-size:13px;margin-bottom:16px;
+}
+.empty-state{text-align:center;color:var(--text-tertiary);font-size:13px;padding:32px 20px}
+
+/* ==========================================
+   Responsive
+   ========================================== */
+@media(max-width:480px){
+  .container{padding:16px 12px 80px}
+  .header{padding:28px 0 24px}
+  .header h1{font-size:22px}
+  .theme-toggle{top:24px;right:-4px}
+  .pillars{grid-template-columns:repeat(2,1fr);gap:6px}
+  .pillar{padding:14px 8px 12px}
+  .pillar .stem-branch{font-size:24px}
+  .form-card{padding:18px 16px 14px}
+  .form-row{flex-wrap:wrap;gap:8px}
+  .info-grid{grid-template-columns:1fr;gap:8px}
+  .event-card .event-header{padding:14px 14px}
+  .event-card .event-summary{padding:0 14px 12px}
+  .event-item{padding:6px 14px}
+  .back-top{bottom:16px;right:16px;width:36px;height:36px}
+}
+</style>
+<link rel=stylesheet href=chat.css>
+</head>
+<body>
+
+<div class="container">
+
+<!-- Header -->
+<header class="header">
+  <button class="theme-toggle" id="themeToggle" title="切换深浅色" aria-label="切换深浅色">☀</button>
+  <h1>八字排盘</h1>
+  <p class="disclaimer">仅供娱乐参考，不构成任何决策依据 · <a href=/privacy target=_blank>隐私政策</a> · <a href=/terms target=_blank>服务协议</a></p>
+  <div class="api-row">
+    <label>API</label>
+    <input id="apiUrl" type=hidden>
+  </div>
+</header>
+
+<!-- Form -->
+<div class="form-card" id="formCard">
+  <div class="form-row">
+    <label><span>姓名</span><input id="name" placeholder="可选"></label>
+    <label><span>性别</span><select id="gender"><option>男</option><option>女</option></select></label>
+  </div>
+  <div class="form-row">
+    <label><span>年 (公历/阳历)</span><input id="year" type="number" placeholder="2000" min="1900" max="2100" required></label>
+    <label><span>月 (公历/阳历)</span><input id="month" type="number" placeholder="1" min="1" max="12" required></label>
+    <label><span>日 (公历/阳历)</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
+    <label><span>时 (24h制)</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
+  </div>
+  <div class="form-row">
+    <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2023" min="1900" max="2100"></label>
+    <label><span>至</span><input id="lnTo" type="number" placeholder="2030" min="1900" max="2100"></label>
+  </div>
+  <div class="form-row" style="margin-bottom:6px">
+    <label style="flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+      <input type="checkbox" id="hourConfirmed" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+      <span>我知道准确出生时辰</span>
+      <span id="hourHint" style="font-size:11px;color:var(--gold);margin-left:2px">⚠ 未确认，格局、起运、时柱神煞仅供参考</span>
+    </label>
+  </div>
+  <details style="margin-bottom:var(--space-md);font-size:13px;color:var(--text-secondary)">
+    <summary style="cursor:pointer;user-select:none">📋 填写已知家境（可选，用于校准）</summary>
+    <div class="form-row" style="margin-top:10px">
+      <label><span>经济水平</span><select id="familyLevel"><option value="">不填</option><option>宽裕</option><option>普通</option><option>紧张</option></select></label>
+      <label><span>父亲职业</span><input id="fatherJob" placeholder="可选"></label>
+      <label><span>母亲职业</span><input id="motherJob" placeholder="可选"></label>
+    </div>
+  </details>
+  <button class="btn" id="submitBtn">排盘</button>
+</div>
+
+<!-- Copy button -->
+<button class="btn-sm copy-btn" id="copyBtn">&#x2398; 复制命盘</button>
+
+<!-- Results -->
+<div id="result" class="result"></div>
+
+</div><!-- /container -->
+
+<!-- Day Pillar Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3>日主详情 <button class="modal-close" id="modalClose">&times;</button></h3>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<!-- Back to Top -->
+<button class="back-top" id="backTop" title="回到顶部">&#8593;</button>
+
+<script src="app.js"></script>
+
+<!-- ═══ Chat Toggle ═══ -->
+<button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问">💬<span class=badge id=chatBadge></span></button>
+
+<!-- ═══ Chat Overlay ═══ -->
+<div class=chat-overlay id=chatOverlay onclick=closeChat()></div>
+
+<!-- ═══ Chat Panel ═══ -->
+<div class=chat-panel id=chatPanel>
+  <div class=chat-panel-header>
+    <h3>AI 命理解读 <span class=quota-badge id=quotaBadge></span> <span class=ask-ai-btn onclick=openPayModal() style="font-size:11px;margin-left:4px">解锁</span></h3>
+    <button class=chat-panel-close onclick=closeChat()>✕</button>
+  </div>
+  <div class=chat-messages id=chatMessages>
+    <div class=chat-empty>
+      <div>AI 基于古典命理文献为你解读<br>纯文化娱乐参考</div>
+      <div style="margin-top:10px;padding:10px 14px;background:var(--tag-bg);border-radius:8px;font-size:11px;line-height:1.7;text-align:left">
+        💬 <b>收费标准</b><br>
+        · 每日免费 3 次<br>
+        · ⚡体验版 ¥6.9 / 20次<br>
+        · ⭐推荐版 ¥12.9 / 60次<br>
+        · 👑尊享版 ¥19.9 / 永久<br>
+        · 点击 <b>🔓 解锁</b> 获取激活码
+      </div>
+    </div>
+  </div>
+  <div class=chat-input-suggestions>
+    <span onclick="useSuggestion('这个八字整体格局怎么样')">格局层次</span>
+    <span onclick="useSuggestion('我最近几年感情运如何')">感情运势</span>
+    <span onclick="useSuggestion('适合做什么行业')">事业方向</span>
+    <span onclick="useSuggestion('性格上有哪些优势和短板')">性格解读</span>
+  </div>
+  <div class=chat-input-area>
+    <input id=chatInput placeholder=追问八字… onkeydown="if(event.key==='Enter')sendChat()">
+    <button id=chatSendBtn onclick=sendChat()>➤</button>
+  </div>
+  <div class=chat-footer>
+    <div class=chat-footer-row>
+      <span class=chat-footer-item>
+        <svg width=13 height=13 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        报错超时不扣次
+      </span>
+      <span class=chat-footer-divider></span>
+      <span class=chat-footer-item>
+        <svg width=13 height=13 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx=12 cy=7 r=4/></svg>
+        微信 o0707111
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 付费弹窗 ═══ -->
+<div class=modal-overlay id=payModal onclick=closePayModal()>
+  <div class=modal-card onclick="event.stopPropagation()">
+    <h3>🔑 解锁 AI 追问</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0">
+      <div style="background:var(--tag-bg);border-radius:10px;padding:10px 6px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text-tertiary)">⚡ 体验版</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent)">¥6.9</div>
+        <div style="font-size:10px;color:var(--text-tertiary)">20次</div>
+      </div>
+      <div style="background:var(--accent);border-radius:10px;padding:10px 6px;text-align:center">
+        <div style="font-size:10px;color:rgba(255,255,255,.7)">⭐ 推荐</div>
+        <div style="font-size:18px;font-weight:700;color:#fff">¥12.9</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.7)">60次</div>
+      </div>
+      <div style="background:var(--tag-bg);border-radius:10px;padding:10px 6px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text-tertiary)">👑 尊享版</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent)">¥19.9</div>
+        <div style="font-size:10px;color:var(--text-tertiary)">永久</div>
+      </div>
+    </div>
+    <div class=qr-section>
+      <img class=qr-img src=qr-pay.jpg alt="微信收款码" style="width:180px;height:180px;margin:12px auto;display:block;border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--text-tertiary);text-align:center;line-height:1.8">
+        扫码付对应金额 → 备注套餐名<br>联系客服获取激活码<br><br>📱 微信:<strong style=color:var(--accent)>o0707111</strong>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--text-tertiary);text-align:center">已有激活码？直接输入下方</p>
+    <input id=actCodeInput placeholder="输入激活码" autocomplete=off>
+    <div class=status-msg id=actCodeStatus></div>
+    <p style="font-size:10px;color:var(--text-tertiary);text-align:center;margin:10px 0 0">🛡 退款保障：AI报错/超时不扣次 · 未激活可退款</p>
+    <div class=btn-row>
+      <button class=btn-secondary onclick=closePayModal()>取消</button>
+      <button class=btn-primary onclick=submitActivationCode()>激活</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 免责弹窗 ═══ -->
+<div class=modal-overlay id=disclaimerModal onclick=closeDisclaimer()>
+  <div class=modal-card onclick="event.stopPropagation()">
+    <h3>免责声明</h3>
+    <p style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+      本 AI 追问功能仅供<strong>文化娱乐参考</strong>，不替代专业医疗、法律、心理咨询。AI 生成内容基于传统命理文献，不具备科学依据。人生重大决策请咨询相关专业人士。
+    </p>
+    <label class=disclaimer-check>
+      <input type=checkbox id=disclaimerCheck>
+      <span>我已阅读并同意 <a href=/terms target=_blank>服务协议</a> 和 <a href=/privacy target=_blank>隐私政策</a></span>
+    </label>
+    <div class=btn-row>
+      <button class=btn-primary id=disclaimerBtn disabled onclick=acceptDisclaimer()>确认并继续</button>
+    </div>
+    <script>
+    document.getElementById('disclaimerCheck').onchange = function(){
+      document.getElementById('disclaimerBtn').disabled = !this.checked;
+    };
+    </script>
+  </div>
+</div>
+
+</body>
+</html>

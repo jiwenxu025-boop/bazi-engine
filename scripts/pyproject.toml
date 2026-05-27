@@ -1,0 +1,9 @@
+[project]
+name = "bazi-engine"
+version = "0.1.0"
+description = "八字排盘计算引擎"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

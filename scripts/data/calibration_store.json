@@ -1,0 +1,266 @@
+{
+  "version": "0.6.0",
+  "updated": "2026-05-26",
+  "cases": [
+    {
+      "name": "徐继文",
+      "gender": "男",
+      "birth": {
+        "year": 2007,
+        "month": 8,
+        "day": 26,
+        "hour": 20
+      },
+      "events": {
+        "2023": "relationship",
+        "2024": "single",
+        "2025": "single",
+        "2026": "single"
+      },
+      "verified_signals": [
+        {
+          "year": 2023,
+          "category": "桃花",
+          "predicted": "正面",
+          "actual": "恋爱",
+          "match": true
+        },
+        {
+          "year": 2024,
+          "category": "桃花",
+          "predicted": "负面",
+          "actual": "分手",
+          "match": true
+        },
+        {
+          "year": 2025,
+          "category": "升学",
+          "predicted": "正面",
+          "actual": "高考异地",
+          "match": true
+        },
+        {
+          "year": 2026,
+          "category": "健康",
+          "predicted": "中性",
+          "actual": "暂无健康问题",
+          "match": true
+        }
+      ],
+      "notes": "偏印格男 2007-08-26 20:00 丁亥戊申壬辰庚戌 逆排"
+    },
+    {
+      "name": "方飞翔",
+      "gender": "男",
+      "birth": {
+        "year": 2006,
+        "month": 8,
+        "day": 29,
+        "hour": 7
+      },
+      "events": {
+        "2022": "relationship",
+        "2023": "single"
+      },
+      "verified_signals": [
+        {
+          "year": 2022,
+          "category": "桃花",
+          "predicted": "正面",
+          "actual": "恋爱",
+          "match": true
+        },
+        {
+          "year": 2023,
+          "category": "桃花",
+          "predicted": "负面",
+          "actual": "感情困扰",
+          "match": true
+        }
+      ],
+      "notes": "建禄格男 2006-08-29 07:00 丙戌丙申庚寅庚辰 顺排"
+    },
+    {
+      "name": "轩潇雅",
+      "gender": "女",
+      "birth": {
+        "year": 2007,
+        "month": 11,
+        "day": 9,
+        "hour": 7
+      },
+      "events": {
+        "2024": "single",
+        "2025": "single"
+      },
+      "verified_signals": [
+        {
+          "year": 2023,
+          "category": "桃花",
+          "predicted": "负面",
+          "actual": "人际困扰",
+          "match": true
+        },
+        {
+          "year": 2024,
+          "category": "桃花",
+          "predicted": "负面",
+          "actual": "内耗",
+          "match": true
+        },
+        {
+          "year": 2025,
+          "category": "升学",
+          "predicted": "正面",
+          "actual": "高考异地",
+          "match": true
+        }
+      ],
+      "notes": "正印格女 2007-11-09 07:00 丁亥辛亥丁未甲辰 顺排"
+    },
+    {
+      "name": "李宗泽",
+      "gender": "男",
+      "birth": {
+        "year": 2007,
+        "month": 10,
+        "day": 22,
+        "hour": 6
+      },
+      "events": {
+        "2023": "single",
+        "2024": "single",
+        "2025": "single",
+        "2026": "single"
+      },
+      "verified_signals": [
+        {
+          "year": 2023,
+          "category": "桃花",
+          "predicted": "正面",
+          "actual": "恋爱机会",
+          "match": true
+        },
+        {
+          "year": 2024,
+          "category": "桃花",
+          "predicted": "负面",
+          "actual": "感情困扰",
+          "match": true
+        },
+        {
+          "year": 2024,
+          "category": "人际",
+          "predicted": "负面",
+          "actual": "人际摩擦",
+          "match": true
+        },
+        {
+          "year": 2025,
+          "category": "升学",
+          "predicted": "正面",
+          "actual": "高考",
+          "match": true
+        },
+        {
+          "year": 2026,
+          "category": "状态",
+          "predicted": "正面",
+          "actual": "备考中但朋友耽误",
+          "match": true
+        }
+      ],
+      "notes": "偏印格男 2007-10-22 06:00 丁亥庚戌己丑丁卯 逆排 卯时反向验证确认"
+    }
+  ],
+  "rule_stats": [
+    {
+      "rule": "天喜合动",
+      "category": "桃花",
+      "verified": 3,
+      "total": 3,
+      "accuracy": 1.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "卯辰穿",
+      "category": "桃花",
+      "verified": 4,
+      "total": 4,
+      "accuracy": 1.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "红鸾伏吟+自刑",
+      "category": "桃花",
+      "verified": 1,
+      "total": 2,
+      "accuracy": 0.5,
+      "source": "calibration"
+    },
+    {
+      "rule": "巳亥冲+驿马",
+      "category": "升学",
+      "verified": 2,
+      "total": 2,
+      "accuracy": 1.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "岁运并临",
+      "category": "健康",
+      "verified": 1,
+      "total": 1,
+      "accuracy": 1.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "辰辰自刑+红鸾",
+      "category": "桃花",
+      "verified": 1,
+      "total": 1,
+      "accuracy": 1.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "偏财正财过渡",
+      "category": "桃花",
+      "verified": 0,
+      "total": 1,
+      "accuracy": 0.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "天喜合动时序",
+      "category": "桃花",
+      "verified": 2,
+      "total": 2,
+      "accuracy": 1.0,
+      "source": "calibration"
+    },
+    {
+      "rule": "午午自刑+桃花空亡",
+      "category": "桃花",
+      "verified": 1,
+      "total": 1,
+      "accuracy": 1.0,
+      "source": "社交拖累/分散精力"
+    },
+    {
+      "rule": "印星备考基期",
+      "category": "升学",
+      "verified": 1,
+      "total": 1,
+      "accuracy": 1.0,
+      "source": "印星年为备考打基础"
+    },
+    {
+      "rule": "卯辰穿人际",
+      "category": "人际",
+      "verified": 4,
+      "total": 4,
+      "accuracy": 1.0,
+      "source": "人际摩擦/情绪困扰"
+    }
+  ]
+}
