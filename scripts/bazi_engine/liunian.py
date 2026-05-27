@@ -1415,7 +1415,8 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             notes.append("多柱羊刃汇聚→防意外血光/心脑血管 (textbook: 五羊刃聚会中风案)")
 
     # ── 多柱联动: 墓库相冲核爆（v0.8.0）──
-    # 流年+原局/大运中同时出现辰戌或丑未 → 土气激增+杂气损毁
+    # 流年引动原局/大运中辰戌或丑未冲 → 土气激增+杂气损毁
+    # v0.10.1: 仅流年参与的墓库冲才触发年度健康信号（原局墓库冲是体质，非年度事件）
     from .interactions import analyze_muku_chong
     muku_branches = list(all_branches)
     if dayun_branch:
@@ -1423,14 +1424,13 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     muku_branches.append(ln_branch)
     muku_results = analyze_muku_chong(muku_branches, day_master)
     for mr in muku_results:
-        # 墓库相冲 → 健康影响
+        if ln_branch not in mr.pair:
+            continue  # 流年未参与→原局体质特征，非年度健康事件
         if mr.zaqi_damaged:
             strength = max(strength, 2)
-            triggers.append(f"墓库相冲({mr.name})→杂气损毁")
+            triggers.append(f"流年引动墓库相冲({mr.name})→杂气损毁")
             notes.append(mr.health_note)
-            # 土气暴增→脾胃负担
             notes.append(f"土气×{mr.tu_boost}倍暴增→脾胃消化系统负担加重")
-        # 如果墓库冲涉及日柱或大运地支，升级为3★
         if day_branch in mr.pair or (dayun_branch and dayun_branch in mr.pair):
             strength = max(strength, 3)
             triggers.append("墓库冲涉日柱/大运→重灾级")
@@ -1944,14 +1944,16 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if triggers:
         is_negative = any(kw in str(triggers) for kw in ["刑", "穿", "劫财", "伤官"])
         direction = "负面" if is_negative else "正面"
-        signals.append(EventSignal(
-            category="人际",
-            direction=direction,
-            strength=min(strength, 3),
-            prediction=_make_prediction("人际", direction, min(strength, 3), triggers, notes),
-            triggers=triggers,
-            notes=notes,
-        ))
+        # v0.10.1: 仅≥★2输出——★1弱信号不独立发信号
+        if strength >= 2:
+            signals.append(EventSignal(
+                category="人际",
+                direction=direction,
+                strength=min(strength, 3),
+                prediction=_make_prediction("人际", direction, min(strength, 3), triggers, notes),
+                triggers=triggers,
+                notes=notes,
+            ))
     return signals
 
 
