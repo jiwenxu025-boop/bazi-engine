@@ -2870,10 +2870,21 @@ def scan_years(
                                                      day_master, current_dayun_mod)
             if sui_yun_signals:
                 events.extend(sui_yun_signals)
-                # 岁运交战产生系统级噪声：所有信号可信度降低
+                # 判断交战等级
+                is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
+                is_tianzhan = any("天战" in str(s.triggers) for s in sui_yun_signals)
+                is_ke_xishen = any("喜神" in str(s.triggers) for s in sui_yun_signals)
+                clash_level = "地战" if is_dizhan else ("天战" if is_tianzhan else "刑害")
+
+                # v0.10.1: 岁运交战系统级警告——加标志性note，不降星（降星需精细校准）
+                is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
                 for e in events:
-                    if e.category not in ("健康",):  # 健康信号不受噪声压制
-                        e.notes.append("⚠ 岁运交战→全局噪声，信号可信度下降")
+                    if e.category == "健康":
+                        continue
+                    if is_dizhan:
+                        e.notes.append("⚠ 岁运地战→根基动摇，本年度宜守不宜攻，重大决策暂缓")
+                    else:
+                        e.notes.append("⚠ 岁运交战→全局噪声，信号可信度下降，谨慎解读")
 
         # ── LLM 推理层（v0.9.1: hybrid模式—提供流年近失特征）──
         if chart_data:
