@@ -799,15 +799,17 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             direction = "中性"
         elif "困扰" in _notes_str or "不稳" in _notes_str:
             direction = "中性"
-        signals.append(EventSignal(
-            category="桃花",
-            direction=direction,
-            strength=min(strength, 3),
-            prediction=_make_prediction("桃花", direction, min(strength,3), triggers, notes),
-            triggers=triggers,
-            notes=notes,
-            calibration_refs=[t for t in triggers if "校准" in t or "calibration" in str(t)],
-        ))
+        # v0.10.1: 仅≥★2桃花输出——★1弱信号(红鸾/桃花/配偶星透干/流年合夫妻宫)不独立发信号
+        if strength >= 2:
+            signals.append(EventSignal(
+                category="桃花",
+                direction=direction,
+                strength=min(strength, 3),
+                prediction=_make_prediction("桃花", direction, min(strength,3), triggers, notes),
+                triggers=triggers,
+                notes=notes,
+                calibration_refs=[t for t in triggers if "校准" in t or "calibration" in str(t)],
+            ))
 
     return signals
 
@@ -1084,14 +1086,16 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         if age and age <= 21:
             cat = "桃花"
             pred_cat = "桃花"
-        signals.append(EventSignal(
-            category=cat,
-            direction=s.direction,
-            strength=s.strength,
-            prediction=_make_prediction(pred_cat, s.direction, s.strength, s.triggers(), s.notes()),
-            triggers=s.triggers(),
-            notes=s.notes(),
-        ))
+        # v0.10.1: 仅≥★2输出——★1弱信号不独立发信号
+        if s.strength >= 2:
+            signals.append(EventSignal(
+                category=cat,
+                direction=s.direction,
+                strength=s.strength,
+                prediction=_make_prediction(pred_cat, s.direction, s.strength, s.triggers(), s.notes()),
+                triggers=s.triggers(),
+                notes=s.notes(),
+            ))
     return signals
 
 
@@ -2335,8 +2339,8 @@ def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
             notes=best.notes + ["感情信号较强，成年命主→倾向婚姻/长期关系方向"],
         ))
 
-    # Rule 2: 婚嫁≥2 → 补桃花（婚嫁必含感情机遇，强度不降）
-    if max_hj >= 2:
+    # Rule 2: 婚嫁≥2 → 补桃花（仅当无原生桃花≥2★时才补，避免重复）
+    if max_hj >= 2 and max_th < 2:
         already_derived = any(
             "婚嫁→桃花" in str(t)
             for e in taohua_evts
