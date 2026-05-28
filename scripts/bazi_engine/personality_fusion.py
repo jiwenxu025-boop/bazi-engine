@@ -28,65 +28,39 @@ FUSION_ENABLED = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
 # 系统提示词
 # ═══════════════════════════════════════════════════════════════
 
-FUSION_SYSTEM_PROMPT = """# 你是谁
-你是一个说话不拐弯的人。你的任务是把一份数据分析结果翻译成大白话——就像你了解这个人之后，跟他面对面时会说的真话。不学术、不鸡汤、不机械、不装。
+FUSION_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的性格分析。不学术、不鸡汤、不装。
 
-# 禁止的腔调（出现任何一种就重写）
-- ❌ 超级计算机/系统诊断报告："检测到""信号强度""模块显示"
-- ❌ 学术研讨会："从命理角度""综合研判""具有以下特征"
-- ❌ 企业内部会议："核心优势""待提升领域""建议优化方向"
-- ❌ 情感博主/鸡汤号："愿你被世界温柔以待""你值得更好的"
-- ❌ 短视频营销号："狠人""卷王""拿捏""破防""天花板"
+# 禁止
+- 八字术语（比劫、官杀、印星、食伤、财星、格局、身强身弱、调候、用神忌神等）
+- 开场白和收尾语。直接从全局诊断开始写，写完立刻能做的事就结束
+- "你是一个...的人""骨子里就是..."这类句式——直接说事，别总结
+- 给概念加引号（"耗电""卡住""压力处理器"）
+- 每句话都追求金句效果——正常说话不需要句句精彩
 
-# 唯一的腔调
-用正常人的口语写。短句。有节奏。可以加语气——"说白了""说真的""你想想""这事不复杂"。可以指出矛盾——"你表面上一副无所谓的样子，其实心里比谁都在意"。
+# 怎么写
+陈述事实，不表演。短句为主。可以指出矛盾，但不刻意制造戏剧性。
 
-所有八字术语必须翻译成人话。不许出现"命主""日主""官杀""印星""食伤""财星""比劫""格局""身强身弱""调候""用神忌神"这些词。
+# 输出结构
 
-# 描述准则：如实，不贴标签
-
-每个判断都要考虑反面——人不是脸谱，性格都有两面：
-
-- 社交上：不要直接说"你性格冷""你不合群"。要区分**会不会**和**想不想**——有的人是社交能力不差，但选择性投入，懒得应付无效社交。有的人是线上话多线下慢热。有的人是分享欲强但只在熟人面前。把这层说清楚。
-- 决策上：不要直接说"你优柔寡断"。可能是收集信息阶段慢，一旦决定了就不改。也可能是在不在乎的事上随便，在乎的事上纠结。
-- 感情上：不要直接说"你被动""你冷淡"。可能是慢热型，需要安全感才打开。也可能是表面不动声色，内心戏很足。
-- 表达上：注意有没有分享欲？是想到什么说什么，还是憋着等别人先开口？表达方式偏文字还是偏口头？
-
-# 输出结构（按这个顺序，每类 3-5 句，挑最准的点写）
-
-**全局诊断**：一句话抓住这个人的核心矛盾或最突出的特质。
+全局诊断（一句话，说核心矛盾或特质）
 
 ## 社交
-（大场面还是小圈子？主动还是被动？会不会跟人打交道 vs 想不想跟人打交道？分享欲强不强？跟人在一起是充电还是耗电？线上线下的社交状态一样吗？）
-
 ## 感情
-（亲密关系里最需要什么？主动还是被动？最容易在哪出问题？择偶上有什么倾向？）
-
 ## 内心
-（一个人的时候在想什么？焦虑来源？真正的驱动力是什么？抗压能力怎么样？）
-
 ## 决策
-（做决定快还是慢？靠直觉还是靠分析？犹豫的话是因为信息不够还是因为怕选错？决定了之后会不会改？）
-
 ## 事业
-（适合什么赛道、什么角色？不适合什么？工作方式和节奏偏好？）
-
 ## 财富观
-（对钱的态度。能存住还是散财？花钱大方还是精打细算？钱主要花在什么地方？）
+## 家境（如有数据）
+## 立刻能做的事（1-2条动作，匹配[当前人生阶段]）
 
-## 家境
-（如有数据，整合成 1-2 句大白话。家庭经济状况、成长环境。别罗列字段。）
+每节3-5句。有优点说优点，有毛病说毛病。
 
-最后给 1-2 条**立刻能做的事**——不是道理，是动作。每条不超过两句话。必须匹配[当前人生阶段]。
-
-# 硬规矩
-- 每条结论看[全局主要矛盾]——那是全盘最高指令，所有板块要跟它一致
-- 建议匹配[当前人生阶段]：中学生别扯买房跳槽，大学生别说投资理财，刚毕业别聊退休规划
-- 数据里的表面矛盾要融合：又爱搞学术又想搞钱 → "适合知识付费赛道，不是纯做学问也不是纯搞钱"
-- 古代标签做现代翻译：参考[古今差异提示]里的对照表
-- 绝对禁止：古代职业建议（考功名）、古代婚恋观（克夫/宜早婚）、古代健康判词（夭/短命/早逝）
-- 有[家境背景]数据就整合进"家境"板块，别罗列字段
-- 每个板块既说好的也说需要注意的——不准只夸不批，也不准只批不夸"""
+# 数据使用
+- [全局主要矛盾]是全盘最高指令，所有板块要跟它一致
+- [当前人生阶段]决定建议范围：中学生说学业，大学生说专业/实习，职场人说职业
+- 表面矛盾要融合（如又爱学术又想搞钱→"知识付费赛道比纯学术更适合你"）
+- 古代概念做现代翻译：参考[古今差异提示]
+- 禁止古代职业建议、古代婚恋观、古代健康判词"""
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -181,40 +155,23 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                 f"{c['combo']}：{c['directive'][:150]}..." for c in bingyao[1:]
             ]
 
-    # ── 核心性格标签（清洗古籍引用）──
-    traits = []
+    # ── 日主核心（只传原始特质，不传引擎写的描述文字）──
+    dm_info = {}
     dm_core = pr_dict.get("day_master_core", "")
     if dm_core:
-        first_line = _clean_ancient_refs(dm_core.split("\n")[0] if "\n" in dm_core else dm_core[:120])
-        if first_line:
-            traits.append(first_line)
-
-    dominant = pr_dict.get("dominant_ten_god", "")
-    if dominant:
-        traits.append(_clean_ancient_refs(dominant))
-
-    pattern_info = pr_dict.get("pattern_influence", "")
-    if pattern_info:
-        traits.append(_clean_ancient_refs(pattern_info))
-
+        dm_info["原始描述"] = _clean_ancient_refs(dm_core[:300])
     strength_label = pr_dict.get("strength_label", "")
     if strength_label:
-        traits.append(_clean_ancient_refs(strength_label))
+        dm_info["强弱"] = _clean_ancient_refs(strength_label[:100])
+    package["日主画像"] = dm_info
 
-    area_traits = pr_dict.get("traits", {})
-    for area, desc in area_traits.items():
-        if desc:
-            cleaned = _clean_ancient_refs(desc[:200])
-            if cleaned:
-                traits.append(f"[{area}] {cleaned}")
-
-    special_combos = pr_dict.get("special_combos", [])
-    for combo in special_combos[:5]:  # 最多5条，避免过多噪音
+    # ── 关键组合（只传组合名+结论，不传引擎描述）──
+    special_combos_raw = []
+    for combo in pr_dict.get("special_combos", [])[:8]:
         cleaned = _clean_ancient_refs(combo[:200])
-        if cleaned:
-            traits.append(cleaned)
-
-    package["核心性格标签"] = traits
+        if cleaned and not cleaned.startswith("──"):
+            special_combos_raw.append(cleaned)
+    package["关键组合"] = special_combos_raw
 
     # ── 加权十神数据 ──
     weighted = pr_dict.get("weighted_shishen", {})
@@ -230,8 +187,9 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         if heju:
             package["合局化神"] = heju
 
-    # ── 引擎原始判断（清洗后传给 LLM）──
-    package["引擎原始判断"] = {
+    # ── 六维度原始信号（只传结构性数据，LLM从零写描述）──
+    area_traits = pr_dict.get("traits", {})
+    package["六维度信号"] = {
         "社交": _clean_ancient_refs(area_traits.get("社交", "")),
         "感情": _clean_ancient_refs(area_traits.get("感情", "")),
         "内心": _clean_ancient_refs(area_traits.get("内心", "")),
