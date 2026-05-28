@@ -96,18 +96,72 @@ async function go(){
   if (lsOverride) params.set('life_stage', lsOverride);
 
   try {
-    var res = await fetch(api + '/api/chart?' + params);
-    if (!res.ok) throw new Error('API ' + res.status);
-    var d = await res.json();
-    render(d);
-    // LLM 融合引擎流式加载
-    if (d.personality && d.personality._fusion_ready){
-      streamFusionReport(d.personality, d.family, d.life_stage, d.day_master);
+    // v0.11.2: 流式排盘——规则引擎立即渲染，LLM结果流式追加
+    var streamUrl = api + '/api/chart/stream?' + params;
+    var resp = await fetch(streamUrl);
+    if (!resp.ok) throw new Error('API ' + resp.status);
+
+    var streamReader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+    var d = null;           // 完整命盘数据
+    var personalityEl = null;
+    var personalityText = '';
+
+    while(true){
+      var chunk = await streamReader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, {stream:true});
+      var lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (var i = 0; i < lines.length; i++){
+        var line = lines[i].trim();
+        if (!line.startsWith('data: ')) continue;
+        var payload = line.slice(6);
+        if (payload === '[DONE]'){ buf = ''; break; }
+        try {
+          var msg = JSON.parse(payload);
+          if (msg.phase === 'rules_done'){
+            // 1. 规则引擎完成，立即渲染
+            d = msg.chart;
+            render(d);
+            setTimeout(function(){
+              r.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }, 80);
+          } else if (msg.phase === 'llm_result'){
+            // 2. LLM审查某年完成，合并信号到对应年份
+            if (d && d.annual_scans){
+              for (var si = 0; si < d.annual_scans.length; si++){
+                if (d.annual_scans[si].year === msg.year){
+                  for (var sj = 0; sj < msg.signals.length; sj++){
+                    d.annual_scans[si].events.push(msg.signals[sj]);
+                  }
+                  break;
+                }
+              }
+              // 局部刷新流年区域
+              refreshFlowSection(d);
+            }
+          } else if (msg.phase === 'personality_token'){
+            // 3. 性格报告逐token
+            if (!personalityEl){
+              personalityEl = document.querySelector('.personality-text');
+              if (personalityEl) personalityEl.innerHTML = '';
+            }
+            if (personalityEl){
+              personalityText += msg.token;
+              personalityEl.innerHTML = md2html(personalityText) + '<span class=fusion-cursor>|</span>';
+            }
+          } else if (msg.phase === 'personality_done'){
+            // 4. 性格报告完成
+            if (personalityEl && msg.full){
+              personalityEl.innerHTML = md2html(msg.full);
+            }
+          }
+          // phase===done → 流结束，循环自然退出
+        } catch(e){}
+      }
     }
-    // Scroll to results
-    setTimeout(function(){
-      r.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }, 80);
   } catch(e) {
     r.innerHTML = '<div class=error-state>请求失败: ' + e.message + '<br><small style="color:' + (document.documentElement.classList.contains('dark') ? '#a0a0b0' : '#78716c') + '">请确认 API 地址可访问</small></div>';
   }
@@ -462,31 +516,7 @@ document.addEventListener('click', function(e){
     // Clear old placeholders
     var oldMsgs = document.querySelectorAll('.no-signal-msg');
     for (var m = 0; m < oldMsgs.length; m++) oldMsgs[m].remove();
-    // Filter items
-    var items = document.querySelectorAll('.event-item');
-    for (var j = 0; j < items.length; j++){
-      items[j].style.display = (filter === 'all' || items[j].dataset.category === filter) ? '' : 'none';
-    }
-    // Auto-open/close cards based on filter
-    var cards = document.querySelectorAll('.event-card');
-    for (var c = 0; c < cards.length; c++){
-      var bodyItems = cards[c].querySelectorAll('.event-item');
-      var anyVisible = false;
-      for (var k = 0; k < bodyItems.length; k++){
-        if (bodyItems[k].style.display !== 'none'){ anyVisible = true; break; }
-      }
-      if (filter === 'all'){
-        cards[c].classList.remove('open');
-      } else if (anyVisible){
-        cards[c].classList.add('open');
-      } else {
-        cards[c].classList.add('open');
-        var msg = document.createElement('div');
-        msg.className = 'no-signal-msg';
-        msg.textContent = '该年无此类信号';
-        cards[c].querySelector('.event-body').appendChild(msg);
-      }
-    }
+    applyEventFilter(filter);
     return;
   }
 
@@ -522,6 +552,116 @@ document.addEventListener('click', function(e){
     return;
   }
 });
+
+/* ── 流式排盘: 局部刷新流年区域（LLM结果到达时）── */
+function refreshFlowSection(d){
+  if (!d || !d.annual_scans) return;
+  var el = document.querySelector('.events-section');
+  if (!el) return;
+  var h = '';
+  var hasAny = false;
+  for (var s = 0; s < d.annual_scans.length; s++){
+    var scan = d.annual_scans[s];
+    var significant = scan.events.filter(function(e){return e.strength >= 2});
+    if (!significant.length) continue;
+    hasAny = true;
+    var cats2 = significant.map(function(e){return e.category});
+    var dirs2 = significant.map(function(e){return e.direction});
+    var curStage = sessionStorage.getItem('bazi-life-stage') || d.life_stage || '职场';
+    var isStudent = curStage === '中学' || curStage === '大学' || curStage === '深造';
+    var summary = [];
+    if (cats2.indexOf('桃花') !== -1) summary.push(dirs2[cats2.indexOf('桃花')] === '负面' ? '感情波动' : '感情运升');
+    if (cats2.indexOf('事业') !== -1) summary.push(dirs2[cats2.indexOf('事业')] === '负面' ? (isStudent ? '学业压力' : '事业有压') : (isStudent ? '校园活跃' : '事业有进'));
+    if (cats2.indexOf('学业') !== -1) summary.push(dirs2[cats2.indexOf('学业')] === '负面' ? '学业压力' : '校园活跃');
+    if (cats2.indexOf('财运') !== -1) summary.push(dirs2[cats2.indexOf('财运')] === '负面' ? (isStudent ? '手头偏紧' : '注意财务') : (isStudent ? '经济宽松' : '财运关注'));
+    if (cats2.indexOf('健康') !== -1) summary.push('留意健康');
+    if (cats2.indexOf('升学') !== -1) summary.push(isStudent ? '学业运佳' : '进修运佳');
+    if (cats2.indexOf('搬迁') !== -1) summary.push('可能搬迁');
+    if (cats2.indexOf('状态') !== -1) summary.push(dirs2[cats2.indexOf('状态')] === '负面' ? '状态低迷' : '状态良好');
+    if (cats2.indexOf('人际') !== -1) summary.push(dirs2[cats2.indexOf('人际')] === '负面' ? '人际有摩擦' : '人际和谐');
+    if (!summary.length) summary.push('运势平稳');
+    var tagBadges = [];
+    for (var e = 0; e < significant.length; e++){
+      var ev = significant[e];
+      var dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
+      tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
+    }
+    h += '<div class=event-card>';
+    h += '<div class=event-header>';
+    h += '<span class=event-year>' + scan.year + '</span>';
+    h += '<span class=event-ganzhi>' + scan.liunian + '</span>';
+    h += '<span class=event-age>' + scan.age + '岁</span>';
+    h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
+    h += '<span class=chevron>▶</span>';
+    h += '</div>';
+    h += '<div class=event-body>';
+    for (var e = 0; e < significant.length; e++){
+      var ev2 = significant[e];
+      var cls2 = ev2.direction === '负面' ? 'direction-bad' : ev2.direction === '正面' ? 'direction-good' : '';
+      h += '<div class=event-item data-category="' + ev2.category + '">';
+      h += '<div class=event-main>';
+      h += '<span class=stars>' + '★'.repeat(ev2.strength) + '</span>';
+      h += '<span class=tag>' + ev2.category + '</span>';
+      h += '<span class="' + cls2 + '">' + ev2.direction + '</span>';
+      if (ev2.prediction) h += '<span class=prediction-text>' + ev2.prediction + '</span>';
+      h += '</div>';
+      if (ev2.triggers[0]){
+        var trigFull = ev2.triggers[0];
+        trigFull = trigFull.replace(/\[忌\]/g, '<span class=tag-ji>忌</span>');
+        trigFull = trigFull.replace(/\[喜\]/g, '<span class=tag-xi>喜</span>');
+        h += '<div class=event-trigger>' + trigFull + '</div>';
+      }
+      var hints = [];
+      if (ev2.personality_note) hints.push(ev2.personality_note);
+      if (ev2.notes) hints = hints.concat(ev2.notes);
+      if (hints.length){
+        h += '<div class=event-hints>';
+        for (var hi = 0; hi < hints.length; hi++){
+          h += '<div class=event-hint><span class=hint-dot></span>' + hints[hi] + '</div>';
+        }
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+    h += '</div></div>';
+  }
+  if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
+  // 保留筛选栏，只替换事件列表
+  var filterBar = el.querySelector('.filter-bar');
+  el.innerHTML = (filterBar ? filterBar.outerHTML : '') + h;
+  // 恢复筛选状态
+  var activeFilter = document.querySelector('.filter-pill.active');
+  if (activeFilter){
+    var cat = activeFilter.dataset.filter;
+    if (cat && cat !== 'all') applyEventFilter(cat);
+  }
+}
+
+function applyEventFilter(cat){
+  var items = document.querySelectorAll('.event-item');
+  for (var j = 0; j < items.length; j++){
+    items[j].style.display = (cat === 'all' || items[j].dataset.category === cat) ? '' : 'none';
+  }
+  var cards = document.querySelectorAll('.event-card');
+  for (var c = 0; c < cards.length; c++){
+    var bodyItems = cards[c].querySelectorAll('.event-item');
+    var anyVisible = false;
+    for (var k = 0; k < bodyItems.length; k++){
+      if (bodyItems[k].style.display !== 'none'){ anyVisible = true; break; }
+    }
+    if (cat === 'all'){
+      cards[c].classList.remove('open');
+    } else if (anyVisible){
+      cards[c].classList.add('open');
+    } else {
+      cards[c].classList.add('open');
+      var msg = document.createElement('div');
+      msg.className = 'no-signal-msg';
+      msg.textContent = '该年无此类信号';
+      cards[c].querySelector('.event-body').appendChild(msg);
+    }
+  }
+}
 
 /* ==========================================
    Copy result
