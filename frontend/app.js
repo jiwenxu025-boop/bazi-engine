@@ -100,6 +100,10 @@ async function go(){
     if (!res.ok) throw new Error('API ' + res.status);
     var d = await res.json();
     render(d);
+    // LLM 融合引擎流式加载
+    if (d.personality && d.personality._fusion_ready){
+      streamFusionReport(d.personality, d.family);
+    }
     // Scroll to results
     setTimeout(function(){
       r.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -636,6 +640,58 @@ function copyBubble(btn){
     btn.textContent = '已复制';
     setTimeout(function(){ btn.textContent = '复制'; }, 1500);
   }).catch(function(){});
+}
+
+/* ── LLM 融合引擎流式加载 ── */
+async function streamFusionReport(personality, family){
+  var el = document.querySelector('.personality-text');
+  if (!el) return;
+  var initialText = el.textContent;
+  el.innerHTML = '<span style="color:var(--text-tertiary)">正在生成融合报告</span><span class=fusion-cursor>|</span>';
+  var text = '';
+
+  try{
+    var resp = await fetch('/api/personality/fusion/stream', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({personality: personality, family: family || null})
+    });
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+
+    while(true){
+      var r = await reader.read();
+      if (r.done) break;
+      buf += decoder.decode(r.value, {stream:true});
+      var lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (var i = 0; i < lines.length; i++){
+        var line = lines[i].trim();
+        if (!line.startsWith('data: ')) continue;
+        var data = line.slice(6);
+        if (data === '[DONE]'){
+          el.innerHTML = text || initialText;
+          return;
+        }
+        try{
+          var chunk = JSON.parse(data);
+          if (chunk.token){
+            text += chunk.token;
+            el.innerHTML = md2html(text) + '<span class=fusion-cursor>|</span>';
+          } else if (chunk.done){
+            el.innerHTML = text || initialText;
+            return;
+          } else if (chunk.error){
+            el.textContent = initialText;
+            return;
+          }
+        }catch(e){}
+      }
+    }
+    el.innerHTML = text || initialText;
+  }catch(e){
+    el.textContent = initialText;
+  }
 }
 
 /* ── Chat 面板控制 ── */

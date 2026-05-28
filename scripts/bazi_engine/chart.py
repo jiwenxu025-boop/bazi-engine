@@ -681,22 +681,11 @@ def build_chart(
 
         # ── LLM 融合引擎 (v0.11.0) ──
         try:
-            from .personality_fusion import (
-                FUSION_ENABLED, build_fusion_data_package,
-                generate_fusion_report_sync, generate_fusion_report,
-            )
+            from .personality_fusion import FUSION_ENABLED
             if FUSION_ENABLED:
-                fusion_pkg = build_fusion_data_package(
-                    chart.personality_result, chart.family_result
-                )
-                # 流式输出需要 callback 机制，这里先用同步版
-                # API 端点可替换为 generate_fusion_report() + SSE
-                fusion_text = generate_fusion_report_sync(fusion_pkg)
-                if fusion_text:
-                    chart.personality_result["_fusion_report"] = fusion_text
-                    chart.personality_result["profile"] = fusion_text
-        except Exception as e:
-            chart.warnings.append(f"LLM融合引擎失败(已回退规则引擎): {e}")
+                chart.personality_result["_fusion_ready"] = True
+        except Exception:
+            pass
 
     except Exception as e:
         chart.warnings.append(f"性格家境分析失败: {e}")

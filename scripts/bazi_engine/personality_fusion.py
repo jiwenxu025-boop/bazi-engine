@@ -121,6 +121,7 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None) ->
 
     # ── 加权十神数据 ──
     weighted = pr_dict.get("weighted_shishen", {})
+    sorted_scores: list[tuple[str, float]] = []
     if weighted:
         scores = weighted.get("scores", {})
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
