@@ -627,6 +627,23 @@ def detect_bingyao_combos(
             "evidence": {"偏印": pian_yin, "食神": shi_shen},
         })
 
+    # ── 7. 印重身滞 ──
+    # 印星过旺（≥8.0）→ 想太多做太少，依赖理论框架，行动力严重不足
+    if yin_total >= 8.0 and yin_total >= max(scores.values(), default=0):
+        combos.append({
+            "combo": "印重身滞",
+            "priority": 1,
+            "directive": (
+                "【强制约束】：典型'印重身滞'。命主思虑极重，信息吸收和分析能力强，但严重缺乏行动力——"
+                "想明白了一切，就是迈不出第一步。不要建议其'多读书'——缺的不是输入，是输出。"
+                "请将解析重点放在："
+                "1. 把'想'变成'做'是唯一破局点——每天做一件小事，比想通一百件事有用；"
+                "2. 适合'理论+实操'结合的职业路径（如技术咨询、产品策划、教育设计），不是纯学术也不是纯执行；"
+                "3. 借助外力倒逼行动——deadline、搭档监督、付费打卡——靠自己意志力靠不住。"
+            ),
+            "evidence": {"印星": yin_total, "食伤": shishang_total},
+        })
+
     # ── 排序：priority 升序（1最先），同 priority 按影响分数降序 ──
     def _sort_key(c):
         score_sum = sum(c.get("evidence", {}).values())
