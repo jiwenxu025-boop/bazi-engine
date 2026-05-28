@@ -153,12 +153,37 @@ def validate_pattern(pattern: str, day_master,
     elif pk in ("正印", "偏印"):
         if cai_tg and not guan_tg and not sha_tg:
             issues.append("财破印无救——独印被财坏,无官杀通关(《子平真诠》:印轻逢财)")
+
+        # 印夺食：印星透干五行克食神透干五行 → 印自己堵了泄秀通道
+        yin_duo_shi = False
+        STEM_WX = {"甲": "木", "乙": "木", "丙": "火", "丁": "火",
+                   "戊": "土", "己": "土", "庚": "金", "辛": "金",
+                   "壬": "水", "癸": "水"}
+        WX_KE = {"水": "火", "火": "金", "金": "木", "木": "土", "土": "水"}
+        for p in pillars_data:
+            tg = p.get("ten_god") or ""
+            stem = p.get("stem") or ""
+            if tg and "印" in tg and p.get("source") == "stem":
+                yin_wx = STEM_WX.get(stem, "")
+                # 检查是否有食神透干且被印五行克
+                for p2 in pillars_data:
+                    if (p2.get("ten_god") or "") == "食神" and p2.get("source") == "stem":
+                        shi_wx = STEM_WX.get(p2.get("stem", ""), "")
+                        if WX_KE.get(yin_wx, "") == shi_wx:
+                            yin_duo_shi = True
+                            break
+
         if sha_tg:
             supports.append("杀印相生——压力喂养安全系统")
         elif guan_tg:
             supports.append("官印双全——贵气流通")
+
         if (shi_tg or shang_tg) and yin_w >= 6:
-            supports.append("印旺食泄——印格有输出通道(陆致极:印重需食伤泄秀)")
+            if yin_duo_shi:
+                issues.append("印夺食——印星五行压制食神,泄秀通道被堵(《子平真诠》:印绶夺食,秀气不出)")
+                supports.append("印旺有食但被夺——泄秀半堵,需大运财星破印救食")
+            else:
+                supports.append("印旺食泄——印格有输出通道(陆致极:印重需食伤泄秀)")
 
     # ═══ 食神格(善神,顺用:喜生财/制杀) ═══
     elif pk == "食神":
