@@ -104,6 +104,7 @@ def build_review_context(
     dayun_mod: dict | None = None,
     tansheng_wangke: list[dict] | None = None,
     year_features: dict | None = None,
+    personality_text: str = "",
 ) -> dict:
     """从一个特定年份提取结构化 LLM 审查上下文。
 
@@ -185,12 +186,16 @@ def build_review_context(
     if year_features:
         ctx["year_features"] = year_features
 
-    # ── 5. 已知事件 ──
+    # ── 5. 性格画像（v0.11.1: LLM需要知道命主是什么样的人）──
+    if personality_text:
+        ctx["personality"] = personality_text
+
+    # ── 6. 已知事件 ──
     known = chart_data.get("known_events", {})
     if known:
         ctx["known_events"] = known
 
-    # ── 6. 规则引擎信号（包括弱信号）──
+    # ── 7. 规则引擎信号（包括弱信号）──
     ctx["rule_signals"] = [
         {
             "category": e.category,
@@ -279,6 +284,11 @@ def build_review_prompt(ctx: dict) -> str:
         for ts in natal["tansheng_wangke"]:
             prompt_parts.append(f"[贪生忘克] {'→'.join(ts['path'])} → {ts.get('note','')[:120]}")
 
+    # 性格画像（v0.11.1: 命主是什么样的人——影响所有事件的解读）
+    personality_text = ctx.get("personality", "")
+    if personality_text:
+        prompt_parts.append(f"命主性格: {personality_text}")
+
     # 大运
     dy_theme = dayun.get("theme", "")
     dy_offset = dayun.get("baseline_offset", 0)
@@ -313,6 +323,21 @@ def build_review_prompt(ctx: dict) -> str:
 
 {context_text}
 
+## 岁运交战知识（关键参考）
+
+岁运交战=大运与流年天克地冲(天干相克+地支相冲同时出现)，是流年层面最剧烈的冲突形态。
+
+- 岁=流年(太岁为君)，运=大运(为臣)。臣冲克君→主动荡是非破财变动
+- 运伐岁(大运天干克流年天干)：下犯上，凶性重
+- 岁伐运(流年天干克大运天干)：上制下，凶性稍减
+- 天战(天干冲)：表层影响，事业/人际/口舌
+- 地战(地支冲)：底层动摇，环境/健康/家庭，比天战严重1.5-2倍
+- 冲克喜用神→破财伤病官非分手离职
+- 冲克忌神→转机换运去旧迎新
+- 原局有合/生/制→减凶；无救→波动加剧
+- 古诀：反吟伏吟泪淋淋，不伤自己损他人
+- 现实中：稳守、少投资、不冒险、低调行事
+
 ## 任务
 
 规则引擎已经跑过但可能遗漏"多弱信号叠加"型的事件。根据流年特征做综合推理：
@@ -323,6 +348,7 @@ def build_review_prompt(ctx: dict) -> str:
 4. 财运检测: 财星 + 食伤生财 + 驿马+财
 5. 吉处藏凶: 用神流年被合/冲/空 → 好事打折
 6. 凶中有救: 忌神流年被制/化 → 坏事有转机
+7. 岁运交战: 若有岁运天克地冲→所有信号需结合喜忌重判，正负面可能反转
 
 ## 输出JSON
 
@@ -476,6 +502,7 @@ def review_year_if_needed(
     dayun_mod: dict | None = None,
     tansheng_wangke: list[dict] | None = None,
     year_features: dict | None = None,
+    personality_text: str = "",
 ) -> list[LLMReviewResult]:
     """便捷入口：判断是否需要 LLM，需要则调用来审查。
 
@@ -495,5 +522,6 @@ def review_year_if_needed(
         dayun_stem, dayun_branch,
         rule_events, dayun_mod, tansheng_wangke,
         year_features=year_features,
+        personality_text=personality_text,
     )
     return call_llm_review(ctx)

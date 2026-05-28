@@ -564,6 +564,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           day_master: Tiangan, gender: str,
                           dayun_stem: Tiangan | None, dayun_branch: Dizhi | None,
                           prev_year_has_relationship: bool = False,
+                          relationship_state: str = "single",
                           favorable: set[str] | None = None,
                           all_branches: tuple[Dizhi, ...] = ()) -> list[EventSignal]:
     """检测桃花/感情信号
@@ -572,6 +573,8 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     - 天喜合动 = 感情机遇打开 (2/2 verified)
     - 红鸾+伏吟 = 方向取决于有无自刑和前一年感情状态
     - 卯辰穿 = 负面人际/情绪困扰 (3/3)
+    - v0.11.1: relationship_state 跨年状态机——single/dating/married
+      已有感情时桃花信号语境化为"关系深化/危机"而非"脱单"
     """
     signals: list[EventSignal] = []
 
@@ -799,6 +802,21 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             direction = "中性"
         elif "困扰" in _notes_str or "不稳" in _notes_str:
             direction = "中性"
+
+        # ── v0.11.1: 跨年关系状态语境化 ──
+        # 已有感情时，桃花信号≠脱单，而是关系内部事件
+        if relationship_state == "dating" and direction == "正面":
+            # 正面桃花在恋爱中→关系升温/深化/里程碑，不是新恋情
+            notes.insert(0, "已有感情→此年桃花为关系内升温/深化，非新恋情")
+            # 降半级强度（不是新开始的冲击力）
+            strength = max(1, strength - 1)
+        elif relationship_state == "dating" and direction == "负面":
+            # 负面桃花在恋爱中→感情危机，比单身时更严重
+            notes.insert(0, "已有感情→此年桃花负面信号实为感情危机/分手风险")
+            strength = min(3, strength + 1)  # 危机信号加码
+        elif relationship_state == "married":
+            notes.insert(0, "已婚状态→桃花信号解读为婚姻内事件（升温/危机/外部诱惑），非婚变")
+
         # v0.10.1: 仅≥★2桃花输出——★1弱信号(红鸾/桃花/配偶星透干/流年合夫妻宫)不独立发信号
         if strength >= 2:
             signals.append(EventSignal(
@@ -2586,14 +2604,97 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
         if dn_rizhi_rels:
             features["大运夫妻宫"] = ", ".join(dn_rizhi_rels)
 
-    # 9. 流年与大运关系
+    # 9. 岁运交战检测（天战+地战，v0.11.1: 补全知识）
     if dn_branch:
+        suiyun_parts: list[str] = []
+        # 天干相克（天战）
+        _ke_pairs = {
+            ("甲", "戊"), ("甲", "己"), ("乙", "戊"), ("乙", "己"),
+            ("丙", "庚"), ("丙", "辛"), ("丁", "庚"), ("丁", "辛"),
+            ("戊", "壬"), ("戊", "癸"), ("己", "壬"), ("己", "癸"),
+            ("庚", "甲"), ("庚", "乙"), ("辛", "甲"), ("辛", "乙"),
+            ("壬", "丙"), ("壬", "丁"), ("癸", "丙"), ("癸", "丁"),
+        }
+        ln_v = ln_stem.value if ln_stem else ""
+        dn_v = dn_stem.value if dn_stem else ""
+        if (ln_v, dn_v) in _ke_pairs:
+            suiyun_parts.append(f"流年{ln_v}克大运{dn_v}(天战)")
+        elif (dn_v, ln_v) in _ke_pairs:
+            suiyun_parts.append(f"大运{dn_v}克流年{ln_v}(天战-运伐岁)")
+
+        # 地支冲（地战）
         if _has_branch_interaction(ln_branch, dn_branch, "六冲"):
-            features["岁运关系"] = "岁运相冲(地战)"
+            suiyun_parts.append(f"岁运相冲(地战)")
         elif _has_branch_interaction(ln_branch, dn_branch, "六合"):
-            features["岁运关系"] = "岁运相合"
+            suiyun_parts.append("岁运相合")
+
+        if suiyun_parts:
+            features["岁运关系"] = " + ".join(suiyun_parts)
+            if "天战" in features["岁运关系"] and "地战" in features["岁运关系"]:
+                features["岁运交战"] = (
+                    "天克地冲(岁运反吟)——大运与流年天干相克、地支相冲，"
+                    "是流年层面最剧烈的冲突形态。古诀'反吟伏吟泪淋淋'。"
+                    "天战影响事业人际(表层)，地战动摇环境健康(底层，严重1.5-2倍)。"
+                    "吉凶需看大运喜忌：冲克喜神→破财伤病官非，冲克忌神→换运转机去旧迎新。"
+                )
 
     return features
+
+
+def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
+    """v0.11.1: 扫描后聚类——识别连续桃花年，标注首发年和延续年。
+
+    逻辑：
+    - 连续≥2年出现正面桃花信号 → 形成"桃花簇"
+    - 簇中第一年标记为"最可能脱单/关系开始的年份"
+    - 簇中后续年份标记为"关系内事件（升温/危机/里程碑），非新恋情"
+    - 如果引擎已在运行时通过 relationship_state 做了标注，此处做补充校验
+    """
+    # 找出所有有正面桃花的年份
+    positive_years: list[int] = []
+    for r in results:
+        taohua_events = [e for e in r.events if e.category == "桃花" and e.direction == "正面"]
+        if taohua_events:
+            positive_years.append(r.year)
+
+    if len(positive_years) < 2:
+        return results
+
+    # 识别连续簇（间隔≤1年视为同一簇）
+    clusters: list[list[int]] = []
+    current_cluster = [positive_years[0]]
+    for i in range(1, len(positive_years)):
+        if positive_years[i] - positive_years[i-1] <= 1:
+            current_cluster.append(positive_years[i])
+        else:
+            clusters.append(current_cluster)
+            current_cluster = [positive_years[i]]
+    clusters.append(current_cluster)
+
+    # 为每个簇的首发年和后续年添加注记
+    year_to_note: dict[int, str] = {}
+    for cluster in clusters:
+        if len(cluster) >= 2:
+            first_year = cluster[0]
+            year_to_note[first_year] = (
+                f"连续{len(cluster)}年桃花簇首发年→最可能是感情开始的年份"
+            )
+            for y in cluster[1:]:
+                year_to_note[y] = (
+                    f"桃花簇第{cluster.index(y)+1}年→若已脱单则为关系内深化/升温，非新恋情；"
+                    f"若仍单身则信号可能虚浮（首发年{first_year}未兑现时）"
+                )
+
+    # 将注记添加到对应年份的桃花事件中
+    for r in results:
+        if r.year in year_to_note:
+            for e in r.events:
+                if e.category == "桃花" and e.direction == "正面":
+                    # 避免重复添加
+                    if year_to_note[r.year] not in str(e.notes):
+                        e.notes.insert(0, year_to_note[r.year])
+
+    return results
 
 
 def scan_years(
@@ -2646,6 +2747,7 @@ def scan_years(
         for y, status in known_events.items():
             known_rel[int(y)] = (status == "relationship")
     prev_year_rel = False
+    relationship_state = "single"  # v0.11.1: 跨年关系状态机 single/dating/married
 
     for year in range(start_year, end_year + 1):
         ln_tg, ln_dz = compute_liunian_pillar(year)
@@ -2677,7 +2779,7 @@ def scan_years(
         events: list[EventSignal] = []
         events.extend(detect_taohua_signals(
             ln_tg, ln_dz, year_branch, day_branch, day_master, gender,
-            dn_tg, dn_dz, prev_year_rel, favorable,
+            dn_tg, dn_dz, prev_year_rel, relationship_state, favorable,
             (year_branch, month_branch, day_branch, hour_branch),
         ))
         events.extend(detect_xuesheng_signals(
@@ -2880,15 +2982,24 @@ def scan_years(
                 is_ke_xishen = any("喜神" in str(s.triggers) for s in sui_yun_signals)
                 clash_level = "地战" if is_dizhan else ("天战" if is_tianzhan else "刑害")
 
-                # v0.10.1: 岁运交战系统级警告——加标志性note，不降星（降星需精细校准）
+                # v0.11.1: 岁运交战分方向处理——动荡加剧≠信号变弱
+                # 吉事打折(动荡中好事难落实)，凶事加码(动荡中坏事更易发生)
                 is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
                 for e in events:
                     if e.category == "健康":
                         continue
-                    if is_dizhan:
-                        e.notes.append("⚠ 岁运地战→根基动摇，本年度宜守不宜攻，重大决策暂缓")
+                    if e.direction == "正面":
+                        if is_dizhan:
+                            e.notes.append("⚠ 岁运地战→根基动摇，好事打折，宜守不宜攻")
+                        else:
+                            e.notes.append("⚠ 岁运交战→吉事可信度下降，好事可能落空或附带代价")
+                    elif e.direction == "负面":
+                        if is_dizhan:
+                            e.notes.append("⚠ 岁运地战→根基动摇，坏事加剧，重大决策暂缓")
+                        else:
+                            e.notes.append("⚠ 岁运交战→动荡加剧，负面事件更易坐实，不可轻视")
                     else:
-                        e.notes.append("⚠ 岁运交战→全局噪声，信号可信度下降，谨慎解读")
+                        e.notes.append("⚠ 岁运交战→波动大、变数多，中性事件偏负面方向倾斜")
 
         # ── LLM 推理层（v0.9.1: hybrid模式—提供流年近失特征）──
         if chart_data:
@@ -2899,6 +3010,8 @@ def scan_years(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,
                 )
+                # v0.11.1: 提取性格画像供LLM综合判断
+                personality_text = chart_data.get("personality", {}).get("profile", "")
                 llm_events = review_year_if_needed(
                     chart_data=chart_data,
                     year=year,
@@ -2911,6 +3024,7 @@ def scan_years(
                     dayun_mod=current_dayun_mod,
                     tansheng_wangke=tansheng_wangke,
                     year_features=yr_features,
+                    personality_text=personality_text,
                 )
                 for llm_evt in llm_events:
                     events.append(EventSignal(
@@ -2967,8 +3081,46 @@ def scan_years(
             dayun_weight_note=dn_weight_note,
         ))
 
-        # 更新前一年状态（简单判断：有桃花信号则认为有关系）
+        # ── v0.11.1: 跨年关系状态机更新 ──
         taohua_sigs = [e for e in events if e.category == "桃花"]
+        hunjia_sigs = [e for e in events if e.category == "婚嫁"]
         prev_year_rel = any(e.strength >= 2 for e in taohua_sigs)
+
+        # 状态转换
+        if relationship_state == "single":
+            # 单身→恋爱：桃花≥3★正面 或 婚嫁信号
+            has_strong_positive = any(
+                e.strength >= 3 and e.direction == "正面"
+                for e in taohua_sigs
+            )
+            has_hunjia = any(e.strength >= 2 for e in hunjia_sigs)
+            if has_strong_positive or has_hunjia:
+                relationship_state = "dating"
+        elif relationship_state == "dating":
+            # 恋爱→已婚：婚嫁信号≥3★
+            has_strong_hunjia = any(e.strength >= 3 for e in hunjia_sigs)
+            if has_strong_hunjia:
+                relationship_state = "married"
+            # 恋爱→分手：负面桃花≥2★ 且 有冲夫妻宫/劫财/伤官
+            has_breakup = any(
+                e.direction == "负面" and e.strength >= 2 and
+                any("冲夫妻宫" in str(t) or "劫财" in str(t) or "伤官克官" in str(t)
+                    for t in e.triggers)
+                for e in taohua_sigs
+            )
+            if has_breakup:
+                relationship_state = "single"
+        # married→single: 婚嫁负面信号（离婚）
+        elif relationship_state == "married":
+            has_divorce = any(
+                e.direction == "负面" and e.strength >= 3 and
+                any("冲夫妻宫" in str(t) or "伤官" in str(t) for t in e.triggers)
+                for e in hunjia_sigs + taohua_sigs
+            )
+            if has_divorce:
+                relationship_state = "single"
+
+    # ── v0.11.1: 扫描后聚类处理—标注连续桃花年的"首发年" ──
+    results = _annotate_taohua_clusters(results)
 
     return results
