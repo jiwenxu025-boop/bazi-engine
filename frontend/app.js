@@ -670,7 +670,7 @@ async function streamFusionReport(personality, family){
         if (!line.startsWith('data: ')) continue;
         var data = line.slice(6);
         if (data === '[DONE]'){
-          el.innerHTML = text || initialText;
+          el.innerHTML = md2html(text) || initialText;
           return;
         }
         try{
@@ -679,7 +679,7 @@ async function streamFusionReport(personality, family){
             text += chunk.token;
             el.innerHTML = md2html(text) + '<span class=fusion-cursor>|</span>';
           } else if (chunk.done){
-            el.innerHTML = text || initialText;
+            el.innerHTML = md2html(text) || initialText;
             return;
           } else if (chunk.error){
             el.textContent = initialText;
@@ -688,7 +688,7 @@ async function streamFusionReport(personality, family){
         }catch(e){}
       }
     }
-    el.innerHTML = text || initialText;
+    el.innerHTML = md2html(text) || initialText;
   }catch(e){
     el.textContent = initialText;
   }
