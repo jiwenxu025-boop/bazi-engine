@@ -279,6 +279,8 @@ async def fusion_stream(request: Request):
 
     personality_data = body.get("personality", {})
     family_data = body.get("family")
+    life_stage = body.get("life_stage", "")
+    age_info = body.get("age_info", {})
 
     if not personality_data:
         async def err_gen():
@@ -286,7 +288,7 @@ async def fusion_stream(request: Request):
             yield "data: [DONE]\n\n"
         return StreamingResponse(err_gen(), media_type="text/event-stream")
 
-    data_package = build_fusion_data_package(personality_data, family_data)
+    data_package = build_fusion_data_package(personality_data, family_data, life_stage, age_info)
 
     # SSE 生成器 — 用 asyncio.Queue 桥接同步 LLM 流，实现真正的逐 token 推送
     import asyncio

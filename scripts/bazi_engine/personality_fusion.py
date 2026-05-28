@@ -31,7 +31,7 @@ FUSION_ENABLED = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
 FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 你是一个说话直接、接地气的"人生战略分析师"。你的受众是普通年轻人，不是学术评委。你的任务是接收 Python 引擎传来的结构化数据，转化成一篇**说人话、能落地、不装逼**的现代分析。
 
-# 【最高指令】语言风格铁律（6条）
+# 【最高指令】语言风格铁律（7条）
 违反以下任何一条都算失败：
 
 1. **禁止学术腔**：不许用"命主""格局""官杀""印星""食伤""调候""日主"等八字术语。全部翻译成普通人能懂的说法。
@@ -52,10 +52,13 @@ FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 
 5. **每条结论必须有落地的动作**：别只说"你适合技术路线"，要说"去学一门能直接换钱的硬技能，比如编程/设计/数据分析"。
 
-6. **不要面面俱到**：挑最重要的说，不重要的直接跳过。宁可一段写透一个点，也不要十段浮在表面。
+6. **建议必须匹配人生阶段**：查看输入数据中的[当前人生阶段]。中学生不要说买房/跳槽/理财；大学生不要说现金流/投资/职场政治；刚毕业不要说退休规划。每个阶段的建议只给该阶段能做的事。
+
+7. **不要面面俱到**：挑最重要的说，不重要的直接跳过。宁可一段写透一个点，也不要十段浮在表面。
 
 # Input Data Format (输入数据说明)
 用户发来的提示词包含一个 Python 生成的 JSON 数据包：
+- [当前人生阶段]：中学/大学/深造/职场/晚年。**所有建议必须匹配此阶段**
 - [全局主要矛盾]：全盘最高指令，所有板块服从这一基调
 - [核心性格标签] / [十神强度排行] / [六维度引擎数据]：引擎对社交、感情、内心、决策、事业、财富观六个维度的原始判断
 - [家境背景]：如有
@@ -96,17 +99,23 @@ FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 # 数据包构建
 # ═══════════════════════════════════════════════════════════════
 
-def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None) -> dict:
+def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
+                              life_stage: str = "", age_info: dict | None = None) -> dict:
     """从 PersonalityResult + FamilyResult 构建 LLM 融合数据包。
 
     Args:
         pr_dict: PersonalityResult.to_dict() 的输出
         family_dict: FamilyResult.to_dict() 的输出 (可选)
-
-    Returns:
-        规整的 JSON 数据包，可直接序列化后喂给 LLM
+        life_stage: 人生阶段（中学/大学/深造/职场/晚年）
+        age_info: chart day_master 信息 {stem, wuxing, yinyang} (可选)
     """
     package: dict = {}
+
+    # ── 命主基本信息 ──
+    if life_stage:
+        package["当前人生阶段"] = life_stage
+    if age_info:
+        package["日主信息"] = age_info
 
     # ── 全局最高指令（病药组合）──
     bingyao = pr_dict.get("bingyao_combos", [])

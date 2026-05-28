@@ -102,7 +102,7 @@ async function go(){
     render(d);
     // LLM 融合引擎流式加载
     if (d.personality && d.personality._fusion_ready){
-      streamFusionReport(d.personality, d.family);
+      streamFusionReport(d.personality, d.family, d.life_stage, d.day_master);
     }
     // Scroll to results
     setTimeout(function(){
@@ -643,7 +643,7 @@ function copyBubble(btn){
 }
 
 /* ── LLM 融合引擎流式加载 ── */
-async function streamFusionReport(personality, family){
+async function streamFusionReport(personality, family, lifeStage, dayMaster){
   var el = document.querySelector('.personality-text');
   if (!el) return;
   var initialText = el.textContent;
@@ -653,7 +653,7 @@ async function streamFusionReport(personality, family){
   try{
     var resp = await fetch('/api/personality/fusion/stream', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({personality: personality, family: family || null})
+      body: JSON.stringify({personality: personality, family: family || null, life_stage: lifeStage, age_info: dayMaster || null})
     });
     var reader = resp.body.getReader();
     var decoder = new TextDecoder();
