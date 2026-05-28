@@ -239,6 +239,84 @@ async def chat_api(request: Request):
                                       "X-Accel-Buffering": "no"})
 
 
+@app.post("/api/personality/fusion/stream")
+async def fusion_stream(request: Request):
+    """LLM 融合引擎 — SSE 流式端点。
+
+    POST body:  PersonalityResult + FamilyResult 的 JSON（来自 /api/chart）
+    返回:     SSE text/event-stream，每行 data: {token} 或 data: [DONE]
+    失败:     返回 {"error": "..."} 并结束流
+
+    前端用法:
+        const es = new EventSource('/api/personality/fusion/stream');
+        // POST 不支持 EventSource，需用 fetch + ReadableStream 手动解析
+        const resp = await fetch('/api/personality/fusion/stream', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({personality: chartData.personality, family: chartData.family})
+        });
+        const reader = resp.body.getReader();
+        // ... 逐行解析 SSE
+    """
+    from .personality_fusion import (
+        FUSION_ENABLED, build_fusion_data_package,
+        generate_fusion_report, DEEPSEEK_KEY,
+    )
+
+    if not FUSION_ENABLED or not DEEPSEEK_KEY:
+        async def err_gen():
+            yield f"data: {json.dumps({'error': 'LLM 融合引擎未启用（设置 BAZI_FUSION_ENGINE=1 并配置 DEEPSEEK_API_KEY）'})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(err_gen(), media_type="text/event-stream")
+
+    try:
+        body = await request.json()
+    except Exception:
+        async def err_gen():
+            yield f"data: {json.dumps({'error': '请求体必须是有效的 JSON'})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(err_gen(), media_type="text/event-stream")
+
+    personality_data = body.get("personality", {})
+    family_data = body.get("family")
+
+    if not personality_data:
+        async def err_gen():
+            yield f"data: {json.dumps({'error': '缺少 personality 数据'})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(err_gen(), media_type="text/event-stream")
+
+    data_package = build_fusion_data_package(personality_data, family_data)
+
+    # SSE 生成器
+    async def stream_fusion():
+        chunks: list[str] = []
+
+        def collect(chunk: str):
+            chunks.append(chunk)
+
+        import asyncio
+        loop = asyncio.get_event_loop()
+        # 在线程池中运行同步流式调用
+        full_text = await loop.run_in_executor(
+            None, generate_fusion_report, data_package, collect
+        )
+
+        # 逐 chunk 发送
+        for chunk_text in chunks:
+            yield f"data: {json.dumps({'token': chunk_text})}\n\n"
+
+        if full_text:
+            yield f"data: {json.dumps({'done': True, 'length': len(full_text)})}\n\n"
+        else:
+            yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(stream_fusion(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/chat/quota")
 async def chat_quota(request: Request):
     """查询剩余追问次数"""

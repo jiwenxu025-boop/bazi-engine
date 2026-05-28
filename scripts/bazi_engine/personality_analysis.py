@@ -25,6 +25,8 @@ class PersonalityResult:
     traits: dict = field(default_factory=dict)  # {领域: 描述}
     profile: str = ""                   # 综合性格画像
     stress_profile: dict | None = None  # 抗压画像 (v0.10.0: 三引擎)
+    bingyao_combos: list[dict] = field(default_factory=list)  # 病药组合 (v0.11.0)
+    weighted_shishen: dict = field(default_factory=dict)      # 加权十神报告 (v0.11.0)
 
     def to_dict(self) -> dict:
         return {
@@ -36,6 +38,8 @@ class PersonalityResult:
             "traits": self.traits,
             "profile": self.profile,
             "stress_profile": self.stress_profile,
+            "bingyao_combos": self.bingyao_combos,
+            "weighted_shishen": self.weighted_shishen,
         }
 
 
@@ -72,6 +76,150 @@ class FamilyResult:
             "ancestral": self.ancestral,
             "profile": self.profile,
         }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 十神强弱加权算法 (v0.11.0)
+# ═══════════════════════════════════════════════════════════════
+
+# 权重常量
+TOUGAN_WEIGHT = 3.0            # 天干透出 — 全局可见，力量最强
+HIDDEN_WEIGHTS = {             # 地支藏干 — 分级加权
+    "本气": 2.0,
+    "中气": 1.5,
+    "余气": 1.0,
+}
+MONTH_MULTIPLIER = 1.5         # 月令当权 — 同月令五行者全局 ×1.5
+SAME_PILLAR_BONUS = 1.0        # 同柱共振 — 天干与藏干同十神 +1
+HEJU_WEIGHTS = {               # 合局化神加成
+    "三会": 3.0,
+    "三合": 2.5,
+    "半合": 1.5,
+    "地支六合": 2.0,
+}
+
+# 天干↔五行 双向映射
+STEM_TO_WUXING: dict[str, str] = {
+    "甲": "木", "乙": "木", "丙": "火", "丁": "火",
+    "戊": "土", "己": "土", "庚": "金", "辛": "金",
+    "壬": "水", "癸": "水",
+}
+WUXING_TO_STEMS: dict[str, list[str]] = {
+    "木": ["甲", "乙"], "火": ["丙", "丁"], "土": ["戊", "己"],
+    "金": ["庚", "辛"], "水": ["壬", "癸"],
+}
+
+
+def _extract_heju_wuxing(interactions: dict) -> dict[str, float]:
+    """从 interactions 中提取合局化神五行 → 加成权重。
+
+    三合/半合/三会/六合的 result 字段格式为 "化X"（X=五行）。
+    返回 {五行: 累计加成}。
+    """
+    wuxing_bonus: dict[str, float] = {}
+    dizhi_list = interactions.get("dizhi", [])
+    for inter in dizhi_list:
+        itype = inter.get("type", "")
+        weight = HEJU_WEIGHTS.get(itype, 0)
+        if weight <= 0:
+            continue
+        result = inter.get("result", "")
+        if result.startswith("化"):
+            wx = result[1:]  # "化火" → "火"
+            wuxing_bonus[wx] = wuxing_bonus.get(wx, 0) + weight
+    return wuxing_bonus
+
+
+def _get_month_branch_wuxing(pillars_data: list[dict]) -> str | None:
+    """获取月支本气五行（月令当权之气）"""
+    month_pillar = pillars_data[1] if len(pillars_data) > 1 else None
+    if not month_pillar:
+        return None
+    hidden = month_pillar.get("hidden_stems", [])
+    if hidden:
+        first = hidden[0]  # 本气
+        return STEM_TO_WUXING.get(first["stem"])
+    return STEM_TO_WUXING.get(month_pillar.get("branch", ""))
+
+
+def _compute_weighted_shishen(
+    pillars_data: list[dict],
+    interactions: dict,
+) -> dict[str, float]:
+    """计算十神加权强度。
+
+    计分规则（按优先级）：
+    1. 透干 +3.0 / 藏干 本气+2.0 中气+1.5 余气+1.0
+    2. 月令加成：与月支本气同五行的所有十神 ×1.5
+    3. 同柱共振：天干与藏干同一十神 +1.0
+    4. 合局化神：三合/三会/六合的化神五行对应的十神 +2.0~3.0
+
+    Returns:
+        {十神名: 加权分数}
+    """
+    scores: dict[str, float] = {}
+
+    def _add(ten_god: str, weight: float):
+        if ten_god:
+            scores[ten_god] = scores.get(ten_god, 0) + weight
+
+    # Step 1: 基础计分
+    for p in pillars_data:
+        tg = p.get("ten_god")
+        stem_wx = STEM_TO_WUXING.get(p.get("stem", ""), "")
+        hidden = p.get("hidden_stems", [])
+        hidden_tgs = p.get("hidden_ten_gods", [])
+
+        # 透干
+        if tg:
+            _add(tg, TOUGAN_WEIGHT)
+
+        # 藏干
+        for i, hs_name in enumerate(hidden_tgs):
+            level = hidden[i]["level"] if i < len(hidden) else "余气"
+            w = HIDDEN_WEIGHTS.get(level, 1.0)
+            _add(hs_name, w)
+
+    # Step 2: 月令加成
+    month_wx = _get_month_branch_wuxing(pillars_data)
+    if month_wx:
+        for p in pillars_data:
+            tg = p.get("ten_god")
+            stem = p.get("stem", "")
+            if tg and STEM_TO_WUXING.get(stem) == month_wx:
+                _add(tg, TOUGAN_WEIGHT * (MONTH_MULTIPLIER - 1.0))
+            hidden = p.get("hidden_stems", [])
+            hidden_tgs = p.get("hidden_ten_gods", [])
+            for i, hs_name in enumerate(hidden_tgs):
+                hs_stem = hidden[i]["stem"] if i < len(hidden) else ""
+                if STEM_TO_WUXING.get(hs_stem) == month_wx:
+                    level = hidden[i]["level"] if i < len(hidden) else "余气"
+                    base_w = HIDDEN_WEIGHTS.get(level, 1.0)
+                    _add(hs_name, base_w * (MONTH_MULTIPLIER - 1.0))
+
+    # Step 3: 同柱共振
+    for p in pillars_data:
+        tg = p.get("ten_god")
+        hidden_tgs = p.get("hidden_ten_gods", [])
+        if tg and tg in hidden_tgs:
+            _add(tg, SAME_PILLAR_BONUS)
+
+    # Step 4: 合局化神加成
+    heju_bonus = _extract_heju_wuxing(interactions)
+    for wx, bonus in heju_bonus.items():
+        for p in pillars_data:
+            tg = p.get("ten_god")
+            stem = p.get("stem", "")
+            if tg and STEM_TO_WUXING.get(stem) == wx:
+                _add(tg, bonus)
+            hidden = p.get("hidden_stems", [])
+            hidden_tgs = p.get("hidden_ten_gods", [])
+            for i, hs_name in enumerate(hidden_tgs):
+                hs_stem = hidden[i]["stem"] if i < len(hidden) else ""
+                if STEM_TO_WUXING.get(hs_stem) == wx:
+                    _add(hs_name, bonus)
+
+    return scores
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -251,25 +399,20 @@ def _get_hidden_ten_gods_flat(pillars_data: list[dict]) -> list[str]:
 
 
 def _find_dominant_shishen(pillars_data: list[dict],
-                           harmful_shishen: list[str]) -> tuple[str, bool, str]:
-    """找出最旺十神，返回 (十神名, 是否喜用, 性格描述)"""
-    all_counts: dict[str, int] = {}
-    tougan_set: set[str] = set()
-    for p in pillars_data:
-        tg_name = p.get("ten_god")
-        if tg_name:
-            all_counts[tg_name] = all_counts.get(tg_name, 0) + 1
-            if p.get("source") == "stem":
-                tougan_set.add(tg_name)
-        for hs_name in p.get("hidden_ten_gods", []):
-            all_counts[hs_name] = all_counts.get(hs_name, 0) + 1
+                           harmful_shishen: list[str],
+                           interactions: dict | None = None) -> tuple[str, bool, str]:
+    """找出最旺十神，返回 (十神名, 是否喜用, 性格描述)
 
-    if not all_counts:
+    v0.11.0: 使用加权算法（透干3.0/藏干本气2.0中气1.5余气1.0/月令×1.5/同柱共振+1/合局加成）
+    """
+    scores = _compute_weighted_shishen(pillars_data, interactions or {})
+    if not scores:
         return ("", True, "")
 
-    candidates = [(n, c, n in tougan_set) for n, c in all_counts.items()]
-    candidates.sort(key=lambda x: (x[2], x[1]), reverse=True)
-    dominant = candidates[0][0]
+    # 按加权分数降序排列
+    sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    dominant = sorted_items[0][0]
+    dominant_score = sorted_items[0][1]
 
     is_fav = dominant not in harmful_shishen
 
@@ -280,6 +423,217 @@ def _find_dominant_shishen(pillars_data: list[dict],
         desc = ""
 
     return (dominant, is_fav, desc)
+
+
+def get_weighted_shishen_report(pillars_data: list[dict],
+                                 interactions: dict) -> dict:
+    """返回完整的十神加权报告，供病药检测和 LLM 融合引擎使用。
+
+    Returns:
+        {
+            "scores": {十神: 加权分数},
+            "top3": [(十神, 分数), ...],
+            "month_wuxing": 月令五行 or None,
+            "heju_wuxing": {五行: 加成},
+        }
+    """
+    scores = _compute_weighted_shishen(pillars_data, interactions)
+    sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return {
+        "scores": scores,
+        "top3": sorted_items[:3],
+        "month_wuxing": _get_month_branch_wuxing(pillars_data),
+        "heju_wuxing": _extract_heju_wuxing(interactions),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 病药组合检测 (v0.11.0)
+# ═══════════════════════════════════════════════════════════════
+
+# 十神分组
+CAI_STARS = ("正财", "偏财")
+GUAN_STARS = ("正官", "偏官", "七杀")
+YIN_STARS = ("正印", "偏印")
+SHISHANG_STARS = ("食神", "伤官")
+BIJIE_STARS = ("比肩", "劫财")
+
+# 旺弱阈值（基于加权分数，典型范围 2~14）
+THRESHOLD_STRONG = 6.0     # ≥此值为"旺"
+THRESHOLD_PRESENT = 3.0    # ≥此值为"有力/存在"
+THRESHOLD_WEAK = 2.5       # <此值为"弱"
+
+
+def _sum_group(scores: dict[str, float], group: tuple[str, ...]) -> float:
+    """计算一组十神的加权总分"""
+    return sum(scores.get(s, 0) for s in group)
+
+
+def _is_adjacent(pillars_data: list[dict], shishen_a: str, shishen_b: str) -> bool:
+    """检查两个十神是否在相邻柱或同柱出现（贴身关系）"""
+    positions: dict[str, list[int]] = {}
+    for i, p in enumerate(pillars_data):
+        tg = p.get("ten_god")
+        if tg:
+            positions.setdefault(tg, []).append(i)
+        for htg in p.get("hidden_ten_gods", []):
+            positions.setdefault(htg, []).append(i)
+    pos_a = positions.get(shishen_a, [])
+    pos_b = positions.get(shishen_b, [])
+    for pa in pos_a:
+        for pb in pos_b:
+            if abs(pa - pb) <= 1:  # 同柱(差0)或相邻柱(差1)
+                return True
+    return False
+
+
+def detect_bingyao_combos(
+    weighted_scores: dict[str, float],
+    strength: str,
+    pattern: str,
+    pillars_data: list[dict],
+) -> list[dict]:
+    """检测病药组合，返回按优先级排序的全局指令列表。
+
+    Returns:
+        [{"combo": "伤官见官", "priority": 1, "directive": "...", "evidence": {...}}, ...]
+    """
+    scores = weighted_scores
+    combos: list[dict] = []
+
+    shang_guan = scores.get("伤官", 0)
+    shi_shen = scores.get("食神", 0)
+    zheng_guan = scores.get("正官", 0)
+    qi_sha = scores.get("偏官", scores.get("七杀", 0))
+    pian_yin = scores.get("偏印", 0)
+    zheng_yin = scores.get("正印", 0)
+    zheng_cai = scores.get("正财", 0)
+    pian_cai = scores.get("偏财", 0)
+
+    cai_total = _sum_group(scores, CAI_STARS)
+    guan_total = _sum_group(scores, GUAN_STARS)
+    yin_total = _sum_group(scores, YIN_STARS)
+    shishang_total = _sum_group(scores, SHISHANG_STARS)
+    bijie_total = _sum_group(scores, BIJIE_STARS)
+
+    is_weak = "弱" in strength
+
+    # ── 1. 伤官见官 ──
+    if shang_guan >= THRESHOLD_PRESENT and zheng_guan >= THRESHOLD_PRESENT:
+        combos.append({
+            "combo": "伤官见官",
+            "priority": 1,
+            "directive": (
+                "【强制约束】：典型'伤官见官'。命主具有极强的颠覆性思维，对低效的职场规则和愚蠢的管理层零容忍。"
+                "不要建议其考公或去传统大厂攀爬体制。请将解析重点放在："
+                "1. 建议从事凭硬技术说话、自由度高的职业（如独立开发者、顾问、创意总监）；"
+                "2. 提醒其在职场中容易因为直言不讳而背锅，需学习用'财星（利益交换）'或'印星（同理心/话术）'来润滑人际关系。"
+            ),
+            "evidence": {"伤官": shang_guan, "正官": zheng_guan},
+        })
+
+    # ── 2. 食神制杀 / 伤官驾杀 ──
+    if qi_sha >= THRESHOLD_STRONG and shishang_total >= THRESHOLD_PRESENT:
+        combo_name = "食神制杀" if shi_shen >= shang_guan else "伤官驾杀"
+        combos.append({
+            "combo": combo_name,
+            "priority": 1,
+            "directive": (
+                "【强制约束】：典型'食伤制杀'。命主属于'战时将领'或'救火队长'型人才，"
+                "越是危机、混乱的环境越能激发其恐怖的战斗力与才华。请将解析重点放在："
+                "1. 极佳的抗压能力和解决极度棘手问题的技术手腕；"
+                "2. 适合去开拓荒地、接手烂摊子或从事高风险高回报的行业；"
+                "3. 提醒其在和平稳定期容易感到无聊或制造不必要的摩擦，需学会在日常生活中合理释放过剩的攻击性。"
+            ),
+            "evidence": {"七杀": qi_sha, "食伤": shishang_total, "食神": shi_shen, "伤官": shang_guan},
+        })
+
+    # ── 3. 比劫夺财 ──
+    if (
+        bijie_total >= THRESHOLD_STRONG
+        and cai_total < THRESHOLD_PRESENT
+        and guan_total < THRESHOLD_PRESENT
+    ):
+        combos.append({
+            "combo": "比劫夺财",
+            "priority": 2,
+            "directive": (
+                "【强制约束】：典型'群劫争财'。命主正处于极度内卷、同质化竞争惨烈的红海环境中。"
+                "绝对禁止输出'适合合伙做生意'。请将解析重点放在："
+                "1. 财务上极容易发生合伙纠纷、借钱不还或因冲动消费破财，必须建立防火墙；"
+                "2. 破局点在于'官杀（建立壁垒/拥抱大平台）'或'食伤（技术创新打差异化）'；"
+                "3. 建议立刻停止无效社交，切断吸血型的人际关系。"
+            ),
+            "evidence": {"比劫": bijie_total, "财星": cai_total, "官杀": guan_total},
+        })
+
+    # ── 4. 财多身弱 ──
+    # 条件: 财星旺 + 身弱 + 财星压倒印星(财>印, 印为护身之本)
+    # 不要求印/比劫完全缺失——只要财的力量明显压倒支撑即为财多身弱
+    if cai_total >= THRESHOLD_STRONG and is_weak and cai_total > yin_total:
+        combos.append({
+            "combo": "财多身弱",
+            "priority": 1,
+            "directive": (
+                "【强制约束】：典型'财多身弱'。命主身边充满赚钱的机会和诱惑，但受限于自身的精力、资金或认知圈层，"
+                "不仅抓不住，反而会陷入严重的执行瘫痪和焦虑。请将解析重点放在："
+                "1. 机会恐慌症，想法多落地少；"
+                "2. 破局的唯一方式是做减法（印星护体），砍掉90%的无效目标，专注深耕一个极窄的细分领域；"
+                "3. 必须借助团队和合伙人的力量（比劫分担），绝不能单打独斗。"
+            ),
+            "evidence": {"财星": cai_total, "印星": yin_total, "比劫": bijie_total, "身强弱": strength},
+        })
+
+    # ── 5. 杀印相生 ──
+    # 官杀(正官+七杀)旺 + 印星有力 + 贴身
+    # 含官杀混杂+印化格局——官杀同在而印星化解，本质同属杀印相生
+    if guan_total >= THRESHOLD_STRONG and yin_total >= THRESHOLD_PRESENT:
+        # 额外检查: 官杀与印星是否贴身
+        adjacent = (
+            _is_adjacent(pillars_data, "偏官", "偏印") or
+            _is_adjacent(pillars_data, "偏官", "正印") or
+            _is_adjacent(pillars_data, "七杀", "偏印") or
+            _is_adjacent(pillars_data, "七杀", "正印") or
+            _is_adjacent(pillars_data, "正官", "偏印") or
+            _is_adjacent(pillars_data, "正官", "正印")
+        )
+        if adjacent:
+            combos.append({
+                "combo": "杀印相生",
+                "priority": 1,
+                "directive": (
+                    "【强制约束】：典型'杀印相生'。命主是处理复杂系统和应对高压政治环境的顶级高手。"
+                    "遭遇的打压和困难，最终都会变成晋升的阶梯。请将解析重点放在："
+                    "1. 极强的隐忍力、战略定力和对复杂局面的掌控感；"
+                    "2. 事业上非常适合在庞大的科层制组织体系（大企业、公职单位）中向上攀爬；"
+                    "3. 提醒其在高压下不要用蛮力硬扛，而是要寻找'印星（借力规则、寻找贵人或进修学历）'来巧妙化解。"
+                ),
+                "evidence": {"七杀": qi_sha, "印星": yin_total, "贴身": adjacent},
+            })
+
+    # ── 6. 枭神夺食 ──
+    if pian_yin >= THRESHOLD_STRONG and shi_shen >= THRESHOLD_PRESENT:
+        combos.append({
+            "combo": "枭神夺食",
+            "priority": 1,
+            "directive": (
+                "【强制约束】：典型'枭神夺食'。这是一种极易引发严重抑郁、表达障碍或突发性行动力丧失的高危信号。"
+                "请用极其温和、共情的语调，并将解析重点放在："
+                "1. 命主的表达欲、创造力或当前的饭碗正受到系统或长辈/上级的严重打压；"
+                "2. 容易陷入深度的自我怀疑和被害妄想；"
+                "3. 必须借助'偏财（现实的利益刺激/脱离原生环境）'来击碎精神压迫，"
+                "建议立即进行物理空间的转移或开展完全不需要动脑的体力运动。"
+            ),
+            "evidence": {"偏印": pian_yin, "食神": shi_shen},
+        })
+
+    # ── 排序：priority 升序（1最先），同 priority 按影响分数降序 ──
+    def _sort_key(c):
+        score_sum = sum(c.get("evidence", {}).values())
+        return (c["priority"], -score_sum)
+
+    combos.sort(key=_sort_key)
+    return combos
 
 
 # ── 辅助: 神煞本地计算（避免依赖 spirits 模块）──
@@ -837,7 +1191,19 @@ def analyze_personality(
         result.strength_label = f"身{strength}（{score}分）→ 中和状态，性格特征表现适中"
 
     # ── Step 3: 最旺十神 ──
-    dominant, is_fav, shishen_desc = _find_dominant_shishen(pillars_data, harmful_shishen)
+    dominant, is_fav, shishen_desc = _find_dominant_shishen(pillars_data, harmful_shishen, interactions)
+
+    # 存储加权十神报告，供病药检测和LLM融合引擎使用
+    result.stress_profile = result.stress_profile or {}
+    w_report = get_weighted_shishen_report(pillars_data, interactions)
+    result.stress_profile["_weighted_shishen"] = w_report  # type: ignore[assignment]
+    result.weighted_shishen = w_report
+
+    # 病药组合检测
+    result.bingyao_combos = detect_bingyao_combos(
+        w_report["scores"], strength, pattern, pillars_data
+    )
+
     if dominant:
         fav_label = "喜用" if is_fav else "忌神"
         result.dominant_ten_god = (
