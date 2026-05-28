@@ -53,28 +53,41 @@ FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 5. **不要面面俱到**：挑最重要的说，不重要的直接跳过。宁可一段写透一个点，也不要十段浮在表面。
 
 # Input Data Format (输入数据说明)
-用户发来的提示词包含一个 Python 生成的 JSON 数据包，维度包括：
+用户发来的提示词包含一个 Python 生成的 JSON 数据包：
 - [全局主要矛盾]：全盘最高指令，所有板块服从这一基调
-- [核心性格标签] / [十神强度排行] / [事业驱动力] / [财富变现路径] / [人际与感情状态] / [家境背景]
+- [核心性格标签] / [十神强度排行] / [六维度引擎数据]：引擎对社交、感情、内心、决策、事业、财富观六个维度的原始判断
+- [家境背景]：如有
 
 # Core Rule (核心规则：消灭矛盾)
 数据里可能出现表面矛盾的标签。你要找到现实中合理的融合点。
 *示例*：【学术】+【搞钱】→ "你最适合搞知识付费/技术专利变现，不是闷头做纯学问，也不是纯搞钱。"
 
 # Output Structure (输出排版规范)
-用 Markdown 标题，不要输出 JSON，不要废话。每段开头用一句话戳中核心。
+严格按以下六个维度组织输出，用 Markdown 标题。不要 JSON，不要废话。每个维度 2-4 句，挑最准的点写，不重要的直接跳过。
 
-## 你是个什么样的人
-（不罗列术语。用精准的大白话说清楚：这个人的底层逻辑是什么？最大的优势是什么？最容易掉进的坑是什么？）
+**全局诊断**先用一句话说清楚这个人的核心矛盾（依据[全局主要矛盾]）。
 
-## 工作和赚钱
-（事业+财富强融合。说清楚该走什么路、不该走什么路。冲突标签在这里融合成具体的职业建议。）
+然后依次：
 
-## 人际关系和感情
-（社交+感情融合。在团队里是什么角色？在亲密关系里最大的需求是什么？最容易炸的雷是什么？）
+## 社交
+（大场面还是小圈子？主动还是被动？跟人打交道时的真实状态。）
 
-## 三件你现在就能做的事
-（严格依据全局主要矛盾，给出 3 条具体动作——不是人生道理，是明天就能动手的事。每条不超过两句话。）"""
+## 感情
+（亲密关系里最需要什么？最容易在哪炸？择偶倾向。）
+
+## 内心
+（一个人的时候在想什么？焦虑来源？真正的驱动力是什么？）
+
+## 决策
+（做决定快还是慢？靠直觉还是靠分析？犹豫的原因是什么？）
+
+## 事业
+（适合什么赛道、什么角色？不适合什么？）
+
+## 财富观
+（对钱的态度。能存住还是散财？该用什么方式赚钱？）
+
+最后给 1-2 条**立刻能做的事**——不是道理，是动作。每条不超过两句话。"""
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -150,70 +163,15 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None) ->
         if heju:
             package["合局化神"] = heju
 
-    # ── 事业驱动力 ──
-    career_tags = []
-    if pattern_info:
-        career_tags.append(f"格局影响: {pattern_info[:200]}")
-
-    # 从十日神提取事业相关
-    if sorted_scores:
-        top3 = sorted_scores[:3]
-        for name, score in top3:
-            if name in ("正官", "偏官", "七杀"):
-                career_tags.append(f"官杀旺({name} {score:.1f})→ 管理/体制/竞争型驱动力")
-            elif name in ("食神", "伤官"):
-                career_tags.append(f"食伤旺({name} {score:.1f})→ 创意/技术/表达型驱动力")
-            elif name in ("正财", "偏财"):
-                career_tags.append(f"财星旺({name} {score:.1f})→ 商业/经营/结果导向型驱动力")
-            elif name in ("正印", "偏印"):
-                career_tags.append(f"印星旺({name} {score:.1f})→ 学术/研究/专业型驱动力")
-            elif name in ("比肩", "劫财"):
-                career_tags.append(f"比劫旺({name} {score:.1f})→ 执行/合作/体力型驱动力")
-
-    # 从格局提取
-    for combo in special_combos:
-        if any(kw in combo for kw in ("食神制", "伤官", "财", "官", "印", "杀")):
-            career_tags.append(combo[:200])
-
-    package["事业驱动力"] = career_tags if career_tags else ["十神分布均衡，驱动力多元化"]
-
-    # ── 财富变现路径 ──
-    wealth_tags = []
-    cai_scores = {k: v for k, v in (weighted.get("scores", {})).items() if "财" in k}
-    if cai_scores:
-        for name, score in cai_scores.items():
-            wealth_tags.append(f"{name}(强度{score:.1f})")
-    else:
-        wealth_tags.append("财星不显，需借助食伤/官杀间接生财")
-
-    # 从格局提取
-    for combo in special_combos:
-        if "财" in combo:
-            wealth_tags.append(combo[:200])
-
-    package["财富变现路径"] = wealth_tags
-
-    # ── 人际与感情状态 ──
-    social_tags = []
-    social_trait = area_traits.get("社交", "")
-    if social_trait:
-        social_tags.append(f"社交模式: {social_trait[:200]}")
-    emotion_trait = area_traits.get("感情", "")
-    if emotion_trait:
-        social_tags.append(f"感情模式: {emotion_trait[:200]}")
-    inner_trait = area_traits.get("内心", "")
-    if inner_trait:
-        social_tags.append(f"内心世界: {inner_trait[:200]}")
-
-    # 日支状况
-    stress = pr_dict.get("stress_profile", {}) or {}
-    if stress and "_weighted_shishen" not in str(stress):
-        for key in ("pressure_source", "defense_mechanism", "break_point"):
-            val = stress.get(key, "")
-            if val:
-                social_tags.append(f"压力特征: {val[:200]}")
-
-    package["人际与感情状态"] = social_tags if social_tags else ["社交模式无显著标签，待人接物较为随性"]
+    # ── 六维度引擎数据（直接传给 LLM，一一对应输出结构）──
+    package["六维度引擎数据"] = {
+        "社交": area_traits.get("社交", ""),
+        "感情": area_traits.get("感情", ""),
+        "内心": area_traits.get("内心", ""),
+        "决策": area_traits.get("决策", ""),
+        "事业": area_traits.get("事业", ""),
+        "财富观": area_traits.get("财富观", ""),
+    }
 
     # ── 家境信息（如有）──
     if family_dict:
