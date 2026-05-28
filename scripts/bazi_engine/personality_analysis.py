@@ -1299,32 +1299,36 @@ def analyze_personality(
         harmful_shishen, pattern,
     )
 
-    # ── Step 6: 分领域性格（6维度，每维5+分支，标注出处）──
+    # ── Step 6: 分领域性格（加权分数驱动，6维度）──
 
     dm_core = dm_info["core"] if dm_info else ""
     dm_neg = dm_info["negative"] if dm_info else ""
     is_strong = "强" in strength
     is_weak = "弱" in strength
 
-    # 预计算常用判断
-    all_tg_names_set = set(p.get("ten_god", "") for p in pillars_data)
-    all_hidden_tg_set = set()
-    for p in pillars_data:
-        for h in p.get("hidden_ten_gods", []):
-            all_hidden_tg_set.add(h)
-    all_names_combined = all_tg_names_set | all_hidden_tg_set
+    # ── 加权分数快捷访问 ──
+    ws = w_report["scores"]
+    def _s(name: str) -> float:
+        return ws.get(name, 0)
 
-    has_shishang = "食神" in all_names_combined or "伤官" in all_names_combined
-    has_yin = "正印" in favorable_shishen or "偏印" in favorable_shishen or "正印" in harmful_shishen or "偏印" in harmful_shishen
-    has_cai_star = any("财" in (p.get("ten_god") or "") for p in pillars_data)
-    has_guan_star = any(("官" in (p.get("ten_god") or "") or "杀" in (p.get("ten_god") or "")) for p in pillars_data)
-    bijie_count = sum(1 for p in pillars_data
-                      if p.get("ten_god") in ("比肩", "劫财"))
-    yin_count = sum(1 for p in pillars_data
-                    if p.get("ten_god") in ("正印", "偏印"))
+    shi_shen_s = _s("食神")
+    shang_guan_s = _s("伤官")
+    shishang_s = shi_shen_s + shang_guan_s
+    zheng_yin_s = _s("正印")
+    pian_yin_s = _s("偏印")
+    yin_s = zheng_yin_s + pian_yin_s
+    zheng_guan_s = _s("正官")
+    qi_sha_s = _s("偏官") + _s("七杀")
+    guan_s = zheng_guan_s + qi_sha_s
+    zheng_cai_s = _s("正财")
+    pian_cai_s = _s("偏财")
+    cai_s = zheng_cai_s + pian_cai_s
+    bijie_s = _s("比肩") + _s("劫财")
+
+    # 辅助判断
     day_branch = pillars_data[2].get("branch", "") if len(pillars_data) > 2 else ""
+    day_branch_str = day_branch
 
-    # 检查日支是否被冲/合
     day_branch_chong = False
     day_branch_he = False
     for inter in interactions.get("dizhi", []):
@@ -1334,299 +1338,220 @@ def analyze_personality(
             elif inter["type"] in ("六合", "三合", "半合"):
                 day_branch_he = True
 
-    # 检查正偏财/官混杂
-    zhengcai_stems = sum(1 for p in pillars_data if p.get("ten_god") == "正财" and p.get("source") == "stem")
-    piancai_stems = sum(1 for p in pillars_data if p.get("ten_god") == "偏财" and p.get("source") == "stem")
-    zhengguan_stems = sum(1 for p in pillars_data if p.get("ten_god") == "正官" and p.get("source") == "stem")
-    pianguan_stems = sum(1 for p in pillars_data if p.get("ten_god") in ("偏官", "七杀") and p.get("source") == "stem")
-    cai_hunza = zhengcai_stems > 0 and piancai_stems > 0
-    guan_hunza = zhengguan_stems > 0 and pianguan_stems > 0
-
-    # 伤官见官（含藏干）
-    shang_jian_guan = ("伤官" in all_names_combined and "正官" in all_names_combined)
-
-    # 七杀有制
-    qisha_youzhi = any("食神制七杀" in c for c in result.special_combos)
-
-    # 华盖
-    day_branch_str = day_branch
     has_huagai = bool(_huagai_branch(day_branch_str)) and \
                  _has_branch_in_pillars(_huagai_branch(day_branch_str), pillars_data)
-
-    # 桃花在日支
     taohua = _taohua_branch(day_branch_str)
     has_taohua_rizhi = taohua is not None and any(
         p.get("branch") == taohua and p.get("pillar_type") == "日柱"
         for p in pillars_data
     )
+    cai_po_yin_flag = any("财破印" in c for c in result.special_combos)
+    # 检查是否存在官杀混杂标签（病药检测已判断）
+    has_guansha_hunza = any("官杀混杂" == c["combo"] for c in result.bingyao_combos)
 
-    # 比劫多（3+）
-    bijie_duo = bijie_count >= 3
+    # ── 社交 ──
+    # 信号: 食伤(表达欲) + 比劫(群体融入) - 印星(内敛) - 官杀(拘谨)
+    social_extra = shishang_s * 0.6 + bijie_s * 0.4 - yin_s * 0.5 - guan_s * 0.2
+    if is_strong:
+        social_extra += 1.0
+    elif is_weak:
+        social_extra -= 1.0
 
-    # 财破印
-    cai_po_yin = any("财破印" in c for c in result.special_combos)
-
-    # --- 社交 (6 branches) ---
-    # 来源：《滴天髓》十天干性情 + 《渊海子平》十神性情
-    if is_strong and has_shishang and day_master_stem in ("壬", "丙", "甲", "庚"):
-        # 阳干+食伤社交风格（按五行）
-        wx_social_flavors_1 = {
-            "水": "如江河豪客，口才出众，朋友遍天下，社交场合如鱼得水",
-            "火": "如太阳普照，热情感染四方，走到哪都是焦点",
-            "木": "如参天大树，正直可靠，人缘好而不轻浮",
-            "金": "如刀剑出鞘，话语有分量，在朋友中自然成为核心",
-        }
-        wx_f1 = wx_social_flavors_1.get(day_master_wuxing,
-                                         "热情开朗，口才出众，社交场合如鱼得水")
+    if social_extra >= 4:
         result.traits["社交"] = (
-            f"日干{day_master_stem}身强+食伤吐秀→ {wx_f1}。"
-            f"《滴天髓》：{day_master_stem}主动外向，食伤泄其精华，人情练达"
+            f"外向主动。食伤(表达欲{shishang_s:.0f})驱动，在人群中如鱼得水，"
+            f"善于活跃气氛，社交是充电而非消耗。"
         )
-    elif is_strong and has_shishang:
-        # 按日干五行给出不同的社交风格
-        wx_social_flavors = {
-            "水": "如江河流淌，话题不断，轻松融入各种圈子",
-            "火": "如火焰般温暖明亮，热情感染身边人",
-            "木": "如春风拂面，正直温和，人缘自然来",
-            "金": "如金石掷地，话语有分量，朋友敬重多于亲近",
-            "土": "如大地承载，稳重可靠，慢热但深交持久",
-        }
-        wx_flavor = wx_social_flavors.get(day_master_wuxing, "善于表达，有亲和力")
+    elif social_extra >= 1:
         result.traits["社交"] = (
-            f"日干{day_master_stem}身强+食伤旺→ {wx_flavor}。"
-            "《渊海子平》：食伤旺者善言辞，通人情"
+            f"选择性社交。大场合能应付但不享受，熟人圈子里放得开。"
+            f"食伤{shishang_s:.0f}+印星{yin_s:.0f}→ 表达欲有但需要安全感才释放。"
         )
-    elif is_strong and has_guan_star and "正官" in [p.get("ten_god") for p in pillars_data]:
+    elif social_extra >= -2:
         result.traits["社交"] = (
-            f"身强+正官在柱→ 社交得体大方，有分寸感，不卑不亢，给人可靠印象。"
-            "《渊海子平》：正官者，礼节仪表，不怒自威"
-        )
-    elif is_strong:
-        result.traits["社交"] = (
-            f"日干{day_master_stem}身强→ 自信外向，主动社交，人缘不错但交友有选择性。"
-        )
-    elif has_yin and yin_count >= 2:
-        result.traits["社交"] = (
-            f"印星旺（{yin_count}个）→ 温和内敛，深交不多但真诚持久，喜安静不喜喧闹。"
-            "《渊海子平》：印多者寡言，不喜喧哗"
+            f"慢热型。不擅长跟谁都能聊，但在信任的小圈子里真诚放松。"
+            f"印星{yin_s:.0f}主导→ 需要先观察再参与，不是不合群，是慢热。"
         )
     else:
         result.traits["社交"] = (
-            f"身{strength}→ 社交偏内向，不擅大场合，但小圈子中放得开。"
-            "《穷通宝鉴》：弱者内向藏锋，非不能交，视对象而定"
+            f"内敛独立。印星(内敛{yin_s:.0f})压倒食伤(表达{shishang_s:.0f})，"
+            f"社交消耗能量，独处才能恢复。深交少但持久，不追求交际广度。"
         )
 
-    # --- 感情 (6 branches) ---
-    # 来源：《渊海子平》论妻妾 + 《三命通会》论夫妻宫
-    has_passive_combo = any("合身" in c for c in result.special_combos)
-
+    # ── 感情 ──
+    # 信号: 官杀(责任感/压力) + 财星(欲望/依附) + 日支状态 + 桃花
     if day_branch_chong:
-        chong_desc = ""
-        for inter in interactions.get("dizhi", []):
-            if "日柱" in inter.get("pillars", []) and inter["type"] == "六冲":
-                other = [p for p in inter["pillars"] if p != "日柱"]
-                chong_desc = f"（日支被{'/'.join(other)}冲）"
-                break
         result.traits["感情"] = (
-            f"日支（夫妻宫）被冲{chong_desc}→ 感情波动较大，晚婚倾向，需经历磨合方稳定。"
-            "《三命通会》：夫妻宫逢冲，婚姻多变，宜晚婚"
+            f"夫妻宫被冲+官杀{guan_s:.0f}→ 感情波动大，容易在关系中感到不安。"
+            f"需经历磨合才能稳定，晚婚倾向明显——不是找不到，是没准备好。"
         )
     elif day_branch_he:
         result.traits["感情"] = (
-            f"日支（夫妻宫）被合→ 配偶缘好，但也易受外界影响，须防第三者介入。"
-            "《三命通会》：夫妻宫逢合，姻缘早定但须防争合"
+            f"夫妻宫被合+官杀{guan_s:.0f}→ 配偶缘好，但也容易受外界/第三人影响。"
+            f"感情中需要清晰的边界感，否则容易出现复杂的三角关系。"
         )
-    elif has_passive_combo:
+    elif cai_s >= 6.0 and guan_s >= 4.0:
         result.traits["感情"] = (
-            "正财/正官合身→ 感情中偏被动，被选择多于主动选择，等待对方推进。"
-            "《渊海子平》：合身者被动，待人之求"
+            f"财星(欲望{cai_s:.0f})+官杀(责任{guan_s:.0f})双旺→ 感情需求强烈且认真，"
+            f"一旦投入就全力以赴。但也容易因期待过高而失望，需学会降低对伴侣的完美主义标准。"
         )
-    elif ("七杀" in (dominant or "") or "偏官" in (dominant or "")) and is_strong:
+    elif guan_s >= 5.0:
         result.traits["感情"] = (
-            "七杀旺+身强→ 感情中主动追求，敢爱敢恨，但也容易因强势引发摩擦。"
-            "《渊海子平》：七杀主冲动，爱憎分明"
+            f"官杀旺({guan_s:.0f})→ 在感情中偏传统，重责任和承诺。"
+            f"{'身强，敢主动追求' if is_strong else '身偏弱，容易在关系中感到压力，需要对方给足安全感'}"
         )
-    elif cai_hunza or guan_hunza:
-        hun_desc = "正偏财混杂" if cai_hunza else "官杀混杂"
+    elif cai_s >= 5.0:
         result.traits["感情"] = (
-            f"{hun_desc}→ 感情选择多，易纠结，须明辨真心与诱惑。"
-            "《渊海子平》：财官混杂，情路多岐"
+            f"财星旺({cai_s:.0f})→ 感情中重视实际付出和物质基础，浪漫体现在行动而非言语。"
+            f"对伴侣大方，但也要注意关系不是交易。"
         )
     elif has_taohua_rizhi:
         result.traits["感情"] = (
-            f"桃花坐日支→ 配偶颜值高，自身异性缘好，感情经历丰富。"
-            "《渊海子平》：桃花在日，妻美夫俊"
+            f"桃花坐日支→ 异性缘好，容易吸引关注，感情经历可能较丰富。"
+            f"需学会分辨一时心动和长期合适。"
         )
     else:
-        # 基于日支藏干给出个性化描述
         day_hidden = pillars_data[2].get("hidden_ten_gods", []) if len(pillars_data) > 2 else []
-        if day_hidden:
-            hs_desc = "、".join(day_hidden[:2])
-            result.traits["感情"] = (
-                f"夫妻宫藏{hs_desc}→ 感情模式受夫妻宫十神影响，"
-                f"具体取决于流年桃花引动。{'藏官杀，重责任感' if any('官' in h or '杀' in h for h in day_hidden) else '藏食伤/财星，感情表达较自然'}"
-            )
-        else:
-            result.traits["感情"] = "夫妻宫清纯→ 感情取向明确，不拖泥带水"
+        hidden_str = "、".join(day_hidden[:2]) if day_hidden else "清纯"
+        result.traits["感情"] = (
+            f"夫妻宫藏{hidden_str}→ 感情模式平稳，不极端的类型。"
+            f"需流年桃花引动才出现明显感情事件，平常比较随缘。"
+        )
 
-    # --- 决策/行事 (6 branches) ---
-    # 来源：《渊海子平》论七杀/伤官/印星 + 《滴天髓》
-    if qisha_youzhi and shang_jian_guan:
+    # ── 决策 ──
+    # 信号: 七杀(果断/冲动) + 印星(分析/拖延) - 食伤(直觉/跳脱)
+    decide_risk = qi_sha_s * 0.7 + (shishang_s if shang_guan_s > shi_shen_s else shi_shen_s * 0.3) - yin_s * 0.6
+    if is_strong:
+        decide_risk += 0.5
+    elif is_weak:
+        decide_risk -= 0.5
+
+    if decide_risk >= 4:
         result.traits["决策"] = (
-            "食神制杀+伤官见官→ 既有谋略又敢打破常规，智勇双全且不拘一格，行事出人意表但结果往往漂亮。"
-            "《渊海子平》：制杀化权配伤官之奇，非常人也"
+            f"果断激进型。七杀(敢冲{qi_sha_s:.0f})压制印星(犹豫{yin_s:.0f})，"
+            f"大事不拖，但偶尔冲动——做了再说的类型。"
         )
-    elif qisha_youzhi:
+    elif decide_risk >= 1:
         result.traits["决策"] = (
-            "食神制杀→ 胆识谋略兼备，临危不乱，大决策时果敢而有算计，不冲动不怯懦。"
-            "《渊海子平》：七杀有制化为权，智勇双全"
+            f"分析后决策型。印星(思考{yin_s:.0f})和七杀(果断{qi_sha_s:.0f})平衡，"
+            f"收集足够信息后能快速拍板。不是犹豫，是不打无准备之仗。"
         )
-    elif ("七杀" in (dominant or "") or "偏官" in (dominant or "")) and is_strong:
+    elif decide_risk >= -2:
         result.traits["决策"] = (
-            "身强七杀旺→ 大事果断敢为，不拖泥带水，但有时冲动欠思量。"
-            "《渊海子平》：七杀主刚强，势必争先"
-        )
-    elif shang_jian_guan:
-        result.traits["决策"] = (
-            "伤官见官→ 不按常理出牌，喜走捷径，常有意外之举，不被规则束缚。"
-            "《渊海子平》：伤官者，不拘常法，奇谋迭出"
-        )
-    elif yin_count >= 3:
-        result.traits["决策"] = (
-            f"印星过多（{yin_count}个）→ 决策偏保守，需反复斟酌才行动，但一旦决定就不轻易改变。"
-            "《渊海子平》：印绶多者，思多行少"
-        )
-    elif is_strong:
-        result.traits["决策"] = (
-            "身强→ 有主见，决策较果断，但也会权衡利弊后再出手。"
-            "行事风格稳健偏主动"
+            f"审慎型。印星(反复确认{yin_s:.0f})偏重，决策前需要反复权衡。"
+            f"但一旦决定了就不会轻易改——慢决策，稳执行。"
         )
     else:
         result.traits["决策"] = (
-            f"身{strength}→ 决策偏保守，需收集充分信息后才行动，但深思熟虑后少有失误。"
+            f"分析型拖延。印星(过度思考{yin_s:.0f})碾压行动力，"
+            f"每个细节都想通了才敢动。不是犹豫——是确定性的阈值太高了。"
         )
 
-    # --- 内心 (5 branches) ---
-    # 来源：《三命通会》华盖 + 《滴天髓》阴阳性情
-    if "偏印" in harmful_shishen and "偏印" in pattern:
+    # ── 内心 ──
+    # 信号: 偏印(疏离/精神世界) + 食神(自洽/快乐) + 华盖 + 比劫(自我意识)
+    inner_complex = pian_yin_s * 0.8 + (1 if has_huagai else 0) * 2.0 - shi_shen_s * 0.4
+    inner_self = bijie_s * 0.5
+
+    if inner_complex >= 5:
         result.traits["内心"] = (
-            "偏印忌神+偏印格→ 外表自如内心疏离，社交自如但独处时沉入自己的世界，思维异于同龄人。"
-            "《渊海子平》：倒食者孤僻，内心另成境界"
+            f"精神世界丰富但疏离。偏印(内省{ pian_yin_s:.0f})过旺{' + 华盖' if has_huagai else ''}→ "
+            f"外表自如合群，内心有一套完整的独立体系。思维深度远超同龄人，"
+            f"但也容易感到'没人真正理解我'。"
         )
     elif has_huagai:
-        # 华盖入命，按五行给出不同倾向
-        huagai_wx_flavors = {
-            "木": "对哲学/生命科学有天然亲近感，喜思考生长与变化之道",
-            "火": "对宗教/心灵成长/仪式感有偏向，喜灯火阑珊处的独思",
-            "土": "对历史/传统/玄学有天然亲近感，沉稳中藏着对古老智慧的向往",
-            "金": "对规则/逻辑/玄理有偏好，刚硬外表下有不可动摇的精神信仰",
-            "水": "对玄学/神秘学/潜意识有天然亲近感，智慧深沉如渊",
-        }
-        wx_flavor = huagai_wx_flavors.get(day_master_wuxing, "对玄学/哲学/艺术有天然亲近感")
         result.traits["内心"] = (
-            f"华盖入命→ 内心有独立的精神世界，喜独处钻研，{wx_flavor}。"
-            "《三命通会》：「华盖者，主孤独清高，善思悟道」"
+            f"华盖入命→ 有独立的精神追求，喜欢钻研感兴趣的事，不介意独处。"
+            f"对玄学/哲学/深度思考有天然亲近感。"
         )
-    elif bijie_duo:
+    elif inner_complex >= 2:
         result.traits["内心"] = (
-            f"比劫多（{bijie_count}个）→ 自我意识强，重视自我感受和立场，内心不易被他人动摇。"
-            "《渊海子平》：比劫多者，心志自坚"
+            f"偏好深度思考，内心世界有自己的逻辑体系。"
+            f"偏印{ pian_yin_s:.0f}+食神{shi_shen_s:.0f}→ 既能享受独处，也能在创造中找到快乐。"
         )
-    elif cai_po_yin:
+    elif cai_po_yin_flag:
         result.traits["内心"] = (
-            "财破印→ 内心现实，当理想与现实冲突时倾向于选择眼前利益，但也因此内心常有挣扎。"
-            "《渊海子平》：贪财坏印，内心德行与欲望交战"
+            f"财破印→ 内心在'想要'和'该要'之间不断拉扯。"
+            f"明知该深耕耘，但短期反馈太诱人——不是没定力，是内部分裂。"
+        )
+    elif inner_self >= 4:
+        result.traits["内心"] = (
+            f"自我意识强(比劫{ bijie_s:.0f})，内心不易被他人动摇。"
+            f"知道自己要什么，不轻易被带节奏。"
         )
     elif "印" in pattern:
         result.traits["内心"] = (
-            "印星为格→ 内心安稳恬淡，重视精神修养，思虑深远，有自己的精神支撑。"
-            "《渊海子平》：印绶者，内心温厚，自信不疑"
+            f"印星为格→ 内心安稳，重视精神积累，有自己的底层价值观做支撑。"
         )
     else:
         is_yang = day_master_yinyang == "阳"
         result.traits["内心"] = (
             f"日干{day_master_stem}（{'阳' if is_yang else '阴'}干）→ "
-            + ("内心与外表基本一致，直率坦诚，不藏心思。" if is_yang
-               else "外表温和内心有主见，外圆内方，不轻易表露真实想法。")
-            + ("《滴天髓》：阳干外向表里如一，阴干内敛藏锋不露" if is_yang
-               else "《滴天髓》：阴干如珠玉，光芒外露而内里暗藏锋芒")
+            + ("内心与外表较一致，偏直率。" if is_yang
+               else "外表温和内有主见，不轻易表达真实想法。")
         )
 
-    # --- 事业倾向 (NEW, 6 branches) ---
-    # 来源：《渊海子平》论格局 + 《三命通会》看命口诀
-    if "正官" in pattern or "七杀" in pattern:
-        if "七杀" in pattern:
-            result.traits["事业"] = (
-                "七杀格→ 适合竞争性行业（军警/法律/管理），挑战越大越兴奋，能扛高压。"
-                "《渊海子平》：七杀主威权，掌生杀之柄"
-            )
-        else:
-            result.traits["事业"] = (
-                "正官格→ 适合体制内/大企业/稳定机构，按部就班晋升，重纪律规章。"
-                "《渊海子平》：正气官星，宜仕途稳步上升"
-            )
-    elif "正财" in pattern or "偏财" in pattern:
+    # ── 事业 ──
+    # 信号: 格局 + 加权十神分布，输出最适配的赛道描述
+    career_parts = []
+    # 按十神强度给事业方向打分
+    career_scores = {
+        "体制/管理": guan_s * 0.8 + yin_s * 0.4,
+        "商业/经营": cai_s * 0.8 + shishang_s * 0.3,
+        "技术/创意": shishang_s * 0.8 + pian_yin_s * 0.4,
+        "学术/专业": yin_s * 0.8 + guan_s * 0.2,
+        "创业/独立": bijie_s * 0.5 + shishang_s * 0.4 + qi_sha_s * 0.3,
+    }
+    top_career = sorted(career_scores.items(), key=lambda x: x[1], reverse=True)
+    primary, secondary = top_career[0], top_career[1]
+
+    if primary[1] - secondary[1] > 2.0:
         result.traits["事业"] = (
-            f"{'偏财' if '偏财' in pattern else '正财'}格→ 适合商业/金融/经营类，求财导向，对数字和市场敏感。"
-            "《渊海子平》：财格主经营，善于理财"
-        )
-    elif "食神" in pattern or "伤官" in pattern:
-        result.traits["事业"] = (
-            f"{'伤官' if '伤官' in pattern else '食神'}格→ 适合技术/艺术/创意领域，靠才华吃饭，不宜受太多约束。"
-            "《渊海子平》：食伤格以技艺立身"
-        )
-    elif "正印" in pattern or "偏印" in pattern:
-        result.traits["事业"] = (
-            f"{'偏印' if '偏印' in pattern else '正印'}格→ 适合学术/教育/研究/文化领域，以学识立足，厚积薄发。"
-            "《渊海子平》：印绶格宜文途，以学养身"
-        )
-    elif "建禄" in pattern or "羊刃" in pattern:
-        result.traits["事业"] = (
-            f"{pattern}→ 不喜为他人打工，有创业基因，靠自己的本事吃饭，独立性强。"
-            "《三命通会》：建禄羊刃，自立自成"
+            f"方向明确：{primary[0]}型。{primary[0]}驱动力({primary[1]:.1f})远超次位{secondary[0]}({secondary[1]:.1f})，"
+            f"不推荐{secondary[0]}路线。格局{pattern}也指向同一方向。"
         )
     else:
         result.traits["事业"] = (
-            f"格局{pattern}→ 事业发展路径偏综合型，多领域可发展，具体看大运流年导向。"
+            f"混合型：{primary[0]}({primary[1]:.1f})+{secondary[0]}({secondary[1]:.1f})双驱。"
+            f"适合{primary[0]}为主、{secondary[0]}为辅的交叉赛道，而非纯单一方向。"
         )
 
-    # --- 财富观 (NEW, 6 branches) ---
-    # 来源：《渊海子平》论财星 + 《三命通会》论贫富
-    has_cai_tougan = any("财" in (p.get("ten_god") or "") and p.get("source") == "stem"
-                         for p in pillars_data)
-    bijie_duo_cai = bijie_duo and has_cai_star
-
-    if has_cai_tougan and is_strong:
-        cai_wei = "偏财" if any(p.get("ten_god") == "偏财" and p.get("source") == "stem"
-                              for p in pillars_data) else "正财"
+    # ── 财富观 ──
+    # 信号: 财星(欲望/获取) + 比劫(散财/分享) + 印星(保守/储蓄) + 食伤(创造力变现)
+    if cai_s >= 6.0 and is_strong:
         result.traits["财富观"] = (
-            f"{cai_wei}透干+身强→ 擅理财，有赚钱头脑，钱能生钱，不守死工资。"
-            "《渊海子平》：财透干逢身强，财为我用"
+            f"财星旺({cai_s:.0f})+身强→ 有赚钱头脑，钱能生钱，不守死工资。"
+            f"对机会敏感，但也需注意{'比劫散财' if bijie_s >= 4 else '分散投资风险'}。"
         )
-    elif has_cai_tougan and not is_strong:
+    elif cai_s >= 6.0 and not is_strong:
         result.traits["财富观"] = (
-            "财星透干但身弱→ 想赚钱但难守财，易为财所累，须先补身（增强自身实力）再求财。"
-            "《渊海子平》：财多身弱，富屋贫人"
+            f"财星旺({cai_s:.0f})+身弱→ 想赚钱但精力撑不起野心。"
+            f"机会多但抓不住，容易陷入'看着钱从眼前飘过'的焦虑。"
+            f"先补身——增加印星护体(专业壁垒/团队)，再求财。"
         )
-    elif bijie_duo_cai:
+    elif bijie_s >= 6.0 and cai_s < 3.0:
         result.traits["财富观"] = (
-            "比劫多+财星现→ 钱财易散，合伙须谨慎，适合与人合作求财而非独揽。"
-            "《渊海子平》：比劫争财，财来财去，宜合伙分利"
+            f"比劫旺({ bijie_s:.0f})+财弱→ 钱财易散，不适合合伙或借钱给朋友。"
+            f"赚钱方式应走差异化路线——做别人做不了的事，而不是跟人抢同一块蛋糕。"
         )
-    elif cai_po_yin:
+    elif cai_po_yin_flag:
         result.traits["财富观"] = (
-            "财破印→ 为钱可能牺牲原则或学业，花钱买心安，须警惕价值观漂移。"
-            "《渊海子平》：贪财坏印，利令智昏"
+            f"财破印→ 容易为了短期利益放弃长期积累。"
+            f"不是贪财，是等不了长期回报——需把大目标拆成短期可交付的里程碑。"
         )
-    elif not has_cai_tougan and has_cai_star:
+    elif shishang_s >= 6.0 and cai_s < 3.0:
         result.traits["财富观"] = (
-            "财藏地支（不透干）→ 闷声发财型，不炫富，财不外露，实际家底比表面看起来厚。"
-            "《渊海子平》：财藏地支，财帛不露"
+            f"食伤旺({shishang_s:.0f})+财弱→ 才华是最大的资产，变现靠创造力而非资本。"
+            f"适合靠技术/内容/创意赚钱，而不是靠投资或经营。"
+        )
+    elif cai_s < 2.0:
+        result.traits["财富观"] = (
+            f"财星不显→ 对钱不执着，够用就行。更看重工作意义和人生体验，"
+            f"物质欲望不高，但也要注意基本的财务规划。"
         )
     else:
         result.traits["财富观"] = (
-            "财星不显→ 对钱财不执着，够用即安，更看重工作意义和人生体验。"
-            "《三命通会》：无财不贪，清贵自守"
+            f"财星适中({cai_s:.0f})→ 对钱有正常欲望但不极端。"
+            f"{'身强，能守能赚' if is_strong else '需优先增强自身实力，钱自然跟来'}。"
         )
 
     # ── 综合画像 ──
@@ -2302,11 +2227,11 @@ def analyze_family(
     # 年财月印 → 商贾富家
     if "财" in str(year_tg_name) and "印" in str(month_tg_name):
         ft_notes.append("年财月印—《滴天髓》：帮父兴家，家业有望")
-    # 年伤月劫 → 寒门
+    # 年伤+月劫 或 年伤→ 出身
     if "伤" in str(year_tg_name) and "劫" in str(month_tg_name):
-        ft_notes.append("年伤月劫—《滴天髓》：出身寒窘，创业之命")
-    elif "伤" in str(year_tg_name):
-        ft_notes.append("年柱伤官—《渊海子平》：祖业凋零，需靠自己")
+        ft_notes.append("年伤月劫—出身靠自己，白手起家类型")
+    if "伤" in str(year_tg_name):
+        ft_notes.append("年柱伤官—祖业助力有限，独立性强")
     # 月柱七杀 → 早年艰苦
     if "七杀" in str(month_tg_name) or "偏官" in str(month_tg_name):
         ft_notes.append("月柱七杀—《渊海子平》：早年艰苦，家境不丰")
