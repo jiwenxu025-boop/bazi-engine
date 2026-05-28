@@ -101,6 +101,152 @@ def chart_api(
     return JSONResponse(content=result)
 
 
+@app.get("/api/chart/stream")
+async def chart_stream(
+    name: str = Query("", description="姓名（可选）"),
+    gender: str = Query(..., pattern="^(男|女)$"),
+    year: int = Query(..., ge=1900, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    day: int = Query(..., ge=1, le=31),
+    hour: int = Query(..., ge=0, le=23),
+    liunian_from: int | None = Query(None),
+    liunian_to: int | None = Query(None),
+    favorable: list[str] | None = Query(None),
+    life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
+    hour_confirmed: bool = Query(False),
+    practical: bool = Query(False),
+    request: Request = None,
+):
+    """流式排盘 — SSE 端点。
+
+    先返回规则引擎结果（代码层），再流式推送 LLM 推理结果。
+    前端可立即渲染规则引擎部分，LLM 结果逐 token 追加。
+
+    SSE 事件类型:
+      data: {"phase":"rules_done","chart":{...}}   — 规则引擎完成，可立即渲染
+      data: {"phase":"llm_result","year":2026,"signals":[...]}  — 某年LLM审查完成
+      data: {"phase":"personality_token","token":"..."}  — 性格报告逐token
+      data: {"phase":"personality_done","full":"..."}    — 性格报告完成
+      data: {"phase":"done"}                             — 全流程结束
+    """
+    import asyncio
+    import concurrent.futures
+
+    ln_range = None
+    if liunian_from and liunian_to:
+        ln_range = (liunian_from, liunian_to)
+
+    fav_set = set(favorable) if favorable else None
+
+    async def stream_chart():
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_event_loop()
+
+        def on_llm(year_val: int, signals: list[dict]):
+            """LLM审查完成回调：推入队列"""
+            loop.call_soon_threadsafe(
+                queue.put_nowait,
+                ("llm", {"phase": "llm_result", "year": year_val, "signals": signals})
+            )
+
+        def run_build():
+            """在线程中执行完整的 build_chart（含LLM审查）"""
+            try:
+                c = build_chart(
+                    name=name or "未知", gender=gender,
+                    year=year, month=month, day=day, hour=hour,
+                    liunian_range=ln_range,
+                    favorable=fav_set,
+                    calibrate=False,
+                    life_stage_override=life_stage if life_stage != "auto" else "",
+                    hour_confirmed=hour_confirmed,
+                    on_llm_result=on_llm,
+                )
+                result = c.to_dict()
+                if practical:
+                    _strip_technical(result)
+                loop.call_soon_threadsafe(queue.put_nowait, ("chart", result))
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        loop.run_in_executor(executor, run_build)
+
+        # 缓冲LLM结果（它们在build_chart线程中先到达，但前端应先看到rules_done）
+        buffered_llm: list[dict] = []
+
+        while True:
+            msg_type, msg_data = await queue.get()
+            if msg_type == "error":
+                yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
+                yield "data: [DONE]\n\n"
+                executor.shutdown(wait=False)
+                return
+            elif msg_type == "llm":
+                buffered_llm.append(msg_data)
+            elif msg_type == "chart":
+                chart_data = msg_data
+                # 1. 先发规则引擎结果
+                yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
+
+                # 2. 刷新缓冲的LLM结果
+                for llm_msg in buffered_llm:
+                    yield f"data: {json.dumps(llm_msg)}\n\n"
+
+                # 3. 性格融合报告逐token流式输出
+                fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
+                fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
+                if fusion_enabled and fusion_key and chart_data.get("personality"):
+                    try:
+                        from .personality_fusion import (
+                            build_fusion_data_package, generate_fusion_report
+                        )
+                        pkg = build_fusion_data_package(
+                            chart_data.get("personality", {}),
+                            chart_data.get("family"),
+                            chart_data.get("life_stage", ""),
+                        )
+                        fusion_queue: asyncio.Queue = asyncio.Queue()
+
+                        def on_token(tok: str):
+                            loop.call_soon_threadsafe(
+                                fusion_queue.put_nowait, ("token", tok))
+
+                        def run_fusion():
+                            try:
+                                full = generate_fusion_report(pkg, on_chunk=on_token)
+                                loop.call_soon_threadsafe(
+                                    fusion_queue.put_nowait, ("fusion_done", full or ""))
+                            except Exception:
+                                loop.call_soon_threadsafe(
+                                    fusion_queue.put_nowait, ("fusion_done", ""))
+
+                        fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                        loop.run_in_executor(fusion_ex, run_fusion)
+
+                        while True:
+                            ft, fd = await fusion_queue.get()
+                            if ft == "token":
+                                yield f"data: {json.dumps({'phase': 'personality_token', 'token': fd})}\n\n"
+                            elif ft == "fusion_done":
+                                if fd:
+                                    yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd})}\n\n"
+                                fusion_ex.shutdown(wait=False)
+                                break
+                    except Exception:
+                        pass
+
+                # 4. 结束
+                yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+                yield "data: [DONE]\n\n"
+                executor.shutdown(wait=False)
+                return
+
+    return StreamingResponse(stream_chart(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
 def _strip_technical(data: dict):
     """去除经典引用，不暴露技术推导。保留其他所有内容。"""
     import re

@@ -294,6 +294,7 @@ def build_chart(
     life_stage_override: str = "",
     family_context: dict | None = None,
     hour_confirmed: bool = True,
+    on_llm_result=None,  # v0.11.1: 流式回调 callable(year, signals)
 ) -> BaziChart:
     """一站式八字排盘
 
@@ -575,6 +576,7 @@ def build_chart(
             tansheng_wangke=chart.tansheng_wangke,
             health_profile=chart.health_profile,
             chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
+            on_llm_result=on_llm_result,
         )
 
     # ── 11b. 十二长生参断 ──

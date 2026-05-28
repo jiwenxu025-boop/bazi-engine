@@ -1435,15 +1435,20 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # ── 多柱联动: 墓库相冲核爆（v0.8.0）──
     # 流年引动原局/大运中辰戌或丑未冲 → 土气激增+杂气损毁
     # v0.10.1: 仅流年参与的墓库冲才触发年度健康信号（原局墓库冲是体质，非年度事件）
+    # v0.11.1: 去重——同一流年支可能与原局+大运中相同地支形成多对，只计一次
     from .interactions import analyze_muku_chong
     muku_branches = list(all_branches)
     if dayun_branch:
         muku_branches.append(dayun_branch)
     muku_branches.append(ln_branch)
     muku_results = analyze_muku_chong(muku_branches, day_master)
+    seen_muku_names: set[str] = set()
     for mr in muku_results:
         if ln_branch not in mr.pair:
             continue  # 流年未参与→原局体质特征，非年度健康事件
+        if mr.name in seen_muku_names:
+            continue  # 已处理过的墓库冲类型（如原局戌+流年辰与大运戌+流年辰重复）
+        seen_muku_names.add(mr.name)
         if mr.zaqi_damaged:
             strength = max(strength, 2)
             triggers.append(f"流年引动墓库相冲({mr.name})→杂气损毁")
@@ -1534,15 +1539,16 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         triggers.append("流年七杀攻身")
         notes.append("七杀为忌→压力伤害/意外风险 (textbook)")
 
-    # 地支藏七杀+日主衰 → 隐性七杀攻身
+    # 地支藏七杀+日主临衰地 → 隐性七杀攻身
+    # 注意：十二长生"病/死/绝/墓"是流年气数，不等于全局身强弱
     if not (ln_shishen == Shishen.偏官):
         ln_canggan_sha = [get_ten_god(day_master, hs.stem) for hs in DIZHI_CANGGAN.get(ln_branch, [])]
         has_sha_in_branch = Shishen.偏官 in ln_canggan_sha
         cs_sha = _changsheng_status(day_master, ln_branch)
         if has_sha_in_branch and cs_sha in ("病", "死", "绝", "墓"):
             strength = max(strength, 2)
-            triggers.append("流年地支藏七杀+日主衰")
-            notes.append("隐性七杀攻身+身弱→健康风险/意外手术 (textbook)")
+            triggers.append(f"流年地支藏七杀+日主临{cs_sha}地")
+            notes.append(f"隐性七杀攻身+日主流年气衰(临{cs_sha})→健康风险/意外手术 (textbook)")
 
     # 枭神夺食
     if ln_shishen == Shishen.偏印 and not is_suiyun_binglin:
@@ -2641,6 +2647,78 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
     return features
 
 
+def _execute_llm_reviews_streaming(results: list[AnnualScan],
+                                    llm_tasks: list[tuple[int, dict]],
+                                    on_llm_result):
+    """v0.11.1: 并行执行LLM审查，每完成一个立即回调（供SSE流式推送）。"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from .llm_review import call_llm_review
+
+    with ThreadPoolExecutor(max_workers=min(5, len(llm_tasks))) as executor:
+        futures = {}
+        for idx, ctx in llm_tasks:
+            year = results[idx].year if idx < len(results) else 0
+            future = executor.submit(call_llm_review, ctx)
+            futures[future] = (idx, year)
+
+        for future in as_completed(futures):
+            idx, year = futures[future]
+            try:
+                llm_results = future.result(timeout=60)
+                signals = []
+                for llm_evt in llm_results:
+                    sig = EventSignal(
+                        category=llm_evt.category,
+                        direction=llm_evt.direction,
+                        strength=llm_evt.strength,
+                        prediction=llm_evt.prediction,
+                        triggers=llm_evt.triggers,
+                        notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                    )
+                    results[idx].events.append(sig)
+                    signals.append(sig)
+                # 回调通知前端
+                sig_dicts = [{ "category": s.category, "direction": s.direction,
+                              "strength": s.strength, "prediction": s.prediction,
+                              "triggers": s.triggers, "notes": s.notes }
+                            for s in signals]
+                on_llm_result(year, sig_dicts)
+            except Exception:
+                pass
+
+
+def _execute_llm_reviews_parallel(results: list[AnnualScan],
+                                   llm_tasks: list[tuple[int, dict]]):
+    """v0.11.1: 并行执行所有收集到的LLM审查任务，结果合并回results。
+
+    使用 ThreadPoolExecutor 最多5个并发，将多年审查从串行N×3s压缩到~3s。
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from .llm_review import call_llm_review
+
+    with ThreadPoolExecutor(max_workers=min(5, len(llm_tasks))) as executor:
+        futures = {}
+        for idx, ctx in llm_tasks:
+            future = executor.submit(call_llm_review, ctx)
+            futures[future] = idx
+
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                llm_results = future.result(timeout=60)
+                for llm_evt in llm_results:
+                    results[idx].events.append(EventSignal(
+                        category=llm_evt.category,
+                        direction=llm_evt.direction,
+                        strength=llm_evt.strength,
+                        prediction=llm_evt.prediction,
+                        triggers=llm_evt.triggers,
+                        notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                    ))
+            except Exception:
+                pass  # 单个LLM审查失败不影响整体
+
+
 def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
     """v0.11.1: 扫描后聚类——识别连续桃花年，标注首发年和延续年。
 
@@ -2721,6 +2799,7 @@ def scan_years(
     tansheng_wangke: list[dict] | None = None,
     health_profile: dict | None = None,
     chart_data: dict | None = None,
+    on_llm_result=None,  # v0.11.1: 流式回调 callable(year, llm_events)
 ) -> list[AnnualScan]:
     """逐年扫描，返回每年所有事件信号
 
@@ -2748,6 +2827,7 @@ def scan_years(
             known_rel[int(y)] = (status == "relationship")
     prev_year_rel = False
     relationship_state = "single"  # v0.11.1: 跨年关系状态机 single/dating/married
+    llm_tasks: list[tuple[int, dict]] = []  # v0.11.1: (result_index, review_context) 延迟并行执行
 
     for year in range(start_year, end_year + 1):
         ln_tg, ln_dz = compute_liunian_pillar(year)
@@ -3001,42 +3081,29 @@ def scan_years(
                     else:
                         e.notes.append("⚠ 岁运交战→波动大、变数多，中性事件偏负面方向倾斜")
 
-        # ── LLM 推理层（v0.9.1: hybrid模式—提供流年近失特征）──
+        # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
         if chart_data:
             try:
-                from .llm_review import review_year_if_needed
-                # 提取流年近失特征（信号检测函数内部计算但未触发规则的关键信息）
+                from .llm_review import should_invoke_llm, build_review_context
                 yr_features = _extract_year_features(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,
                 )
-                # v0.11.1: 提取性格画像供LLM综合判断
                 personality_text = chart_data.get("personality", {}).get("profile", "")
-                llm_events = review_year_if_needed(
-                    chart_data=chart_data,
-                    year=year,
-                    age=age,
-                    liunian_stem=ln_tg.value,
-                    liunian_branch=ln_dz.value,
-                    dayun_stem=dn_tg.value if dn_tg else None,
-                    dayun_branch=dn_dz.value if dn_dz else None,
-                    rule_events=events,
-                    dayun_mod=current_dayun_mod,
-                    tansheng_wangke=tansheng_wangke,
-                    year_features=yr_features,
-                    personality_text=personality_text,
-                )
-                for llm_evt in llm_events:
-                    events.append(EventSignal(
-                        category=llm_evt.category,
-                        direction=llm_evt.direction,
-                        strength=llm_evt.strength,
-                        prediction=llm_evt.prediction,
-                        triggers=llm_evt.triggers,
-                        notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
-                    ))
+                # 判断是否需要 LLM，需要则收集上下文（不立即调用）
+                if should_invoke_llm(events, year, age):
+                    review_ctx = build_review_context(
+                        chart_data, year, age,
+                        ln_tg.value, ln_dz.value,
+                        dn_tg.value if dn_tg else None,
+                        dn_dz.value if dn_dz else None,
+                        events, current_dayun_mod, tansheng_wangke,
+                        year_features=yr_features,
+                        personality_text=personality_text,
+                    )
+                    llm_tasks.append((len(results), review_ctx))
             except Exception:
-                pass  # LLM review failure is non-blocking
+                pass  # LLM review prep failure is non-blocking
 
         # ── 贪生忘克化解（v0.8.0: P7—七杀/伤官攻击日主若有通关→减凶）──
         if tansheng_wangke:
@@ -3119,6 +3186,14 @@ def scan_years(
             )
             if has_divorce:
                 relationship_state = "single"
+
+    # ── v0.11.1: LLM审查并行执行（循环中收集，此处并行发射）──
+    if llm_tasks:
+        if on_llm_result is not None:
+            # 流式模式：逐个回调
+            _execute_llm_reviews_streaming(results, llm_tasks, on_llm_result)
+        else:
+            _execute_llm_reviews_parallel(results, llm_tasks)
 
     # ── v0.11.1: 扫描后聚类处理—标注连续桃花年的"首发年" ──
     results = _annotate_taohua_clusters(results)

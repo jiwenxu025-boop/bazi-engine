@@ -375,7 +375,10 @@ def build_review_prompt(ctx: dict) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 def call_llm_review(ctx: dict) -> list[LLMReviewResult]:
-    """同步调用 DeepSeek API，解析响应。
+    """调用 DeepSeek API（流式），解析响应。
+
+    v0.11.1: 改用流式 API（stream=True），边收token边攒，首token延迟更低。
+    配合 scan_years 的并行调用，多年审查可在单次网络往返内完成。
 
     Returns:
         LLMReviewResult 列表。API 失败或 LLM 无发现时返回空列表。
@@ -397,25 +400,42 @@ def call_llm_review(ctx: dict) -> list[LLMReviewResult]:
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": messages,
-        "stream": False,
+        "stream": True,
         "temperature": 0.3,
-        "max_tokens": 4096,  # v0.9.1: V4 Pro 推理模型需更大 token 预算
+        "max_tokens": 4096,
     }
 
     try:
-        # V4 Pro 推理模型需要更长超时（思考阶段消耗时间）
         _timeout = 90.0 if "v4" in DEEPSEEK_MODEL.lower() or "reasoner" in DEEPSEEK_MODEL.lower() else 30.0
+        full_text_parts: list[str] = []
         with httpx.Client(timeout=_timeout) as client:
-            resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
-            if resp.status_code != 200:
-                return []
+            with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
+                if resp.status_code != 200:
+                    return []
 
-            body = resp.json()
-            content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if not content:
-                return []
+                for line in resp.iter_lines():
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_text_parts.append(content)
+                    except json.JSONDecodeError:
+                        continue
 
-            return _parse_review_response(content, ctx["liunian"]["year"])
+        content = "".join(full_text_parts)
+        if not content:
+            return []
+
+        return _parse_review_response(content, ctx["liunian"]["year"])
 
     except (httpx.TimeoutException, httpx.ConnectError, Exception):
         return []
