@@ -206,43 +206,7 @@ def build_review_context(
         for e in rule_events
     ]
 
-    # ── 7. 流年近失特征（规则引擎算了但没触发）──
-    if year_features:
-        ctx["year_features"] = year_features
-
     return ctx
-
-
-def _extract_implicit_factors(chart_data, year, ln_stem, ln_branch,
-                               dn_stem, dn_branch) -> list[str]:
-    """提取不触发规则但 LLM 可能关注的隐式因子"""
-    factors = []
-
-    # 流年十神
-    dm = chart_data.get("day_master", {})
-    dm_stem_val = dm.get("stem", "")
-    if dm_stem_val and ln_stem:
-        # Can't compute shishen here without enums, skip for now
-        pass
-
-    # 调候提示
-    tiaohou = chart_data.get("tiaohou", {})
-    if tiaohou.get("is_fei_ju"):
-        factors.append("命局为调候废局→所有事件烈度打折，即使有信号也偏向虚浮")
-
-    # 大运主题提示
-    if dn_stem and dn_branch:
-        factors.append(f"当前大运{dn_stem}{dn_branch}→此十年底色已定，流年在此底色上叠加波动")
-
-    # 流年神煞提示
-    spirits = chart_data.get("spirits", {})
-    if spirits:
-        for spirit_name in ["天乙贵人", "驿马", "文昌", "红鸾", "天喜", "桃花"]:
-            val = spirits.get(spirit_name, "")
-            if val:
-                factors.append(f"原局{spirit_name}在{val}")
-
-    return factors
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -262,7 +226,6 @@ def build_review_prompt(ctx: dict) -> str:
     dayun = ctx.get("dayun", {})
     liunian = ctx["liunian"]
     rule_signals = ctx.get("rule_signals", [])
-    implicit = ctx.get("implicit_factors", [])
 
     # ── 把结构化数据序列化成紧凑文本 ──
     prompt_parts = []
@@ -374,11 +337,11 @@ def build_review_prompt(ctx: dict) -> str:
 # LLM 调用
 # ═══════════════════════════════════════════════════════════════
 
-def call_llm_review(ctx: dict) -> list[LLMReviewResult]:
+def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
     """调用 DeepSeek API（流式），解析响应。
 
     v0.11.1: 改用流式 API（stream=True），边收token边攒，首token延迟更低。
-    配合 scan_years 的并行调用，多年审查可在单次网络往返内完成。
+    v0.11.2: 支持 on_token 回调，供前端逐字渲染推理过程。
 
     Returns:
         LLMReviewResult 列表。API 失败或 LLM 无发现时返回空列表。
@@ -428,6 +391,8 @@ def call_llm_review(ctx: dict) -> list[LLMReviewResult]:
                             content = delta.get("content", "")
                             if content:
                                 full_text_parts.append(content)
+                                if on_token:
+                                    on_token(content)
                     except json.JSONDecodeError:
                         continue
 

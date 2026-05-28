@@ -107,6 +107,7 @@ async function go(){
     var d = null;           // 完整命盘数据
     var personalityEl = null;
     var personalityText = '';
+    var llmTokens = {};  // v0.11.2: {year: accumulated_text}
 
     while(true){
       var chunk = await streamReader.read();
@@ -124,6 +125,11 @@ async function go(){
           if (msg.phase === 'started'){
             // 连接已建立，更新加载提示
             r.innerHTML = '<div class=loading-state><div class=spinner></div><div>规则引擎计算中...</div></div>';
+          } else if (msg.phase === 'llm_token'){
+            // LLM推理逐token——某年的推理文字流式追加
+            if (!llmTokens[msg.year]) llmTokens[msg.year] = '';
+            llmTokens[msg.year] += msg.token;
+            updateLlmTokenDisplay(msg.year, llmTokens[msg.year]);
           } else if (msg.phase === 'rules_done'){
             // 1. 规则引擎完成，立即渲染
             d = msg.chart;
@@ -146,17 +152,18 @@ async function go(){
               refreshFlowSection(d);
             }
           } else if (msg.phase === 'personality_token'){
-            // 3. 性格报告逐token
+            // 3. 性格报告逐token——纯文本追加，不重复解析markdown
             if (!personalityEl){
               personalityEl = document.querySelector('.personality-text');
               if (personalityEl) personalityEl.innerHTML = '';
             }
             if (personalityEl){
               personalityText += msg.token;
-              personalityEl.innerHTML = md2html(personalityText) + '<span class=fusion-cursor>|</span>';
+              // 流式期间用textContent（快），完成后才转HTML
+              personalityEl.textContent = personalityText + '|';
             }
           } else if (msg.phase === 'personality_done'){
-            // 4. 性格报告完成
+            // 4. 性格报告完成——一次性转markdown
             if (personalityEl && msg.full){
               personalityEl.innerHTML = md2html(msg.full);
             }
@@ -555,6 +562,32 @@ document.addEventListener('click', function(e){
     return;
   }
 });
+
+/* ── LLM推理逐字显示 ── */
+function updateLlmTokenDisplay(year, text){
+  var el = document.querySelector('.llm-live-section');
+  if (!el){
+    // 在流年区域前插入实时显示区
+    var flowEl = document.querySelector('.events-section');
+    if (!flowEl) return;
+    el = document.createElement('div');
+    el.className = 'llm-live-section';
+    el.innerHTML = '<div class=section-title>AI 分析中...</div>';
+    flowEl.parentNode.insertBefore(el, flowEl);
+  }
+  var yearEl = el.querySelector('[data-llm-year="' + year + '"]');
+  if (!yearEl){
+    yearEl = document.createElement('div');
+    yearEl.className = 'llm-year-item';
+    yearEl.setAttribute('data-llm-year', year);
+    yearEl.innerHTML = '<span class=llm-year-label>' + year + '年：</span><span class=llm-year-text></span>';
+    el.appendChild(yearEl);
+  }
+  var textEl = yearEl.querySelector('.llm-year-text');
+  if (textEl) textEl.textContent = text;
+  // 自动滚动到最新
+  el.scrollTop = el.scrollHeight;
+}
 
 /* ── 流式排盘: 局部刷新流年区域（LLM结果到达时）── */
 function refreshFlowSection(d){

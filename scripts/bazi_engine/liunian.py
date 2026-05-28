@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from .enums import Tiangan, Dizhi, Shishen
 from ._constants import (
-    HONGLUAN, TIANXI, TAOHUA, YIMA, WENCHANG, hour_to_dizhi, chong_pair,
+    HONGLUAN, TIANXI, TAOHUA, YIMA, WENCHANG, chong_pair,
     TIANGAN_WUHE, DIZHI_LIUHE, DIZHI_LIUCHONG, DIZHI_XIANGHAI, DIZHI_XIANGXING,
     DIZHI_ZIXING, DIZHI_SANHE, DIZHI_CANGGAN, SHIER_CHANGSHENG, _TIANYI_FLAT,
 )
@@ -564,7 +564,6 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           day_master: Tiangan, gender: str,
                           dayun_stem: Tiangan | None, dayun_branch: Dizhi | None,
                           prev_year_has_relationship: bool = False,
-                          relationship_state: str = "single",
                           favorable: set[str] | None = None,
                           all_branches: tuple[Dizhi, ...] = ()) -> list[EventSignal]:
     """检测桃花/感情信号
@@ -573,8 +572,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     - 天喜合动 = 感情机遇打开 (2/2 verified)
     - 红鸾+伏吟 = 方向取决于有无自刑和前一年感情状态
     - 卯辰穿 = 负面人际/情绪困扰 (3/3)
-    - v0.11.1: relationship_state 跨年状态机——single/dating/married
-      已有感情时桃花信号语境化为"关系深化/危机"而非"脱单"
+    - v0.11.2: 双场景标注——每个信号同时说明单身和已有对象两种情况
     """
     signals: list[EventSignal] = []
 
@@ -673,7 +671,6 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         notes.append("夫妻宫逢冲→感情波动/分手可能性")
 
     # 卯辰穿 (calibration: 3/3 负面) — 扩展至全部四柱
-    from ._constants import DIZHI_XIANGHAI, DIZHI_LIUHE
     tianxi_activated = (
         ln_branch == tianxi
         or (tianxi and (ln_branch, tianxi) in DIZHI_LIUHE)
@@ -803,19 +800,13 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         elif "困扰" in _notes_str or "不稳" in _notes_str:
             direction = "中性"
 
-        # ── v0.11.1: 跨年关系状态语境化 ──
-        # 已有感情时，桃花信号≠脱单，而是关系内部事件
-        if relationship_state == "dating" and direction == "正面":
-            # 正面桃花在恋爱中→关系升温/深化/里程碑，不是新恋情
-            notes.insert(0, "已有感情→此年桃花为关系内升温/深化，非新恋情")
-            # 降半级强度（不是新开始的冲击力）
-            strength = max(1, strength - 1)
-        elif relationship_state == "dating" and direction == "负面":
-            # 负面桃花在恋爱中→感情危机，比单身时更严重
-            notes.insert(0, "已有感情→此年桃花负面信号实为感情危机/分手风险")
-            strength = min(3, strength + 1)  # 危机信号加码
-        elif relationship_state == "married":
-            notes.insert(0, "已婚状态→桃花信号解读为婚姻内事件（升温/危机/外部诱惑），非婚变")
+        # ── v0.11.2: 双场景标注——不猜状态，两种情况都说清楚 ──
+        if direction == "正面":
+            notes.insert(0, "若单身→恋爱机会/脱单窗口；若已有对象→关系升温/深化/里程碑")
+        elif direction == "负面":
+            notes.insert(0, "若单身→烂桃花/感情困扰；若已有对象→感情危机/分手风险")
+        else:
+            notes.insert(0, "若单身→感情波动期，宜观望；若已有对象→关系平淡期或小摩擦")
 
         # v0.10.1: 仅≥★2桃花输出——★1弱信号(红鸾/桃花/配偶星透干/流年合夫妻宫)不独立发信号
         if strength >= 2:
@@ -2649,22 +2640,30 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
 
 def _execute_llm_reviews_streaming(results: list[AnnualScan],
                                     llm_tasks: list[tuple[int, dict]],
-                                    on_llm_result):
-    """v0.11.1: 并行执行LLM审查，每完成一个立即回调（供SSE流式推送）。"""
+                                    on_llm_result, on_llm_token=None):
+    """v0.11.2: 并行执行LLM审查，逐token回调+完成回调（供SSE逐字渲染）。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from .llm_review import call_llm_review
+
+    def _do_review(idx, year, ctx):
+        """单年审查，token级回调"""
+        def _on_token(tok: str):
+            if on_llm_token:
+                on_llm_token(year, tok)
+        llm_results = call_llm_review(ctx, on_token=_on_token)
+        return idx, year, llm_results
 
     with ThreadPoolExecutor(max_workers=min(5, len(llm_tasks))) as executor:
         futures = {}
         for idx, ctx in llm_tasks:
             year = results[idx].year if idx < len(results) else 0
-            future = executor.submit(call_llm_review, ctx)
+            future = executor.submit(_do_review, idx, year, ctx)
             futures[future] = (idx, year)
 
         for future in as_completed(futures):
             idx, year = futures[future]
             try:
-                llm_results = future.result(timeout=60)
+                ridx, ryear, llm_results = future.result(timeout=60)
                 signals = []
                 for llm_evt in llm_results:
                     sig = EventSignal(
@@ -2675,14 +2674,13 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
                         triggers=llm_evt.triggers,
                         notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
                     )
-                    results[idx].events.append(sig)
+                    results[ridx].events.append(sig)
                     signals.append(sig)
-                # 回调通知前端
                 sig_dicts = [{ "category": s.category, "direction": s.direction,
                               "strength": s.strength, "prediction": s.prediction,
                               "triggers": s.triggers, "notes": s.notes }
                             for s in signals]
-                on_llm_result(year, sig_dicts)
+                on_llm_result(ryear, sig_dicts)
             except Exception:
                 pass
 
@@ -2800,6 +2798,7 @@ def scan_years(
     health_profile: dict | None = None,
     chart_data: dict | None = None,
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, llm_events)
+    on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
 ) -> list[AnnualScan]:
     """逐年扫描，返回每年所有事件信号
 
@@ -2859,7 +2858,7 @@ def scan_years(
         events: list[EventSignal] = []
         events.extend(detect_taohua_signals(
             ln_tg, ln_dz, year_branch, day_branch, day_master, gender,
-            dn_tg, dn_dz, prev_year_rel, relationship_state, favorable,
+            dn_tg, dn_dz, prev_year_rel, favorable,
             (year_branch, month_branch, day_branch, hour_branch),
         ))
         events.extend(detect_xuesheng_signals(
@@ -3164,11 +3163,7 @@ def scan_years(
             if has_strong_positive or has_hunjia:
                 relationship_state = "dating"
         elif relationship_state == "dating":
-            # 恋爱→已婚：婚嫁信号≥3★
-            has_strong_hunjia = any(e.strength >= 3 for e in hunjia_sigs)
-            if has_strong_hunjia:
-                relationship_state = "married"
-            # 恋爱→分手：负面桃花≥2★ 且 有冲夫妻宫/劫财/伤官
+            # 恋爱→分手：负面桃花≥2★ 且 有冲夫妻宫/劫财/伤官（优先判断）
             has_breakup = any(
                 e.direction == "负面" and e.strength >= 2 and
                 any("冲夫妻宫" in str(t) or "劫财" in str(t) or "伤官克官" in str(t)
@@ -3177,6 +3172,9 @@ def scan_years(
             )
             if has_breakup:
                 relationship_state = "single"
+            # 恋爱→已婚：婚嫁信号≥3★（未分手才可能结婚）
+            elif any(e.strength >= 3 for e in hunjia_sigs):
+                relationship_state = "married"
         # married→single: 婚嫁负面信号（离婚）
         elif relationship_state == "married":
             has_divorce = any(
@@ -3190,8 +3188,8 @@ def scan_years(
     # ── v0.11.1: LLM审查并行执行（循环中收集，此处并行发射）──
     if llm_tasks:
         if on_llm_result is not None:
-            # 流式模式：逐个回调
-            _execute_llm_reviews_streaming(results, llm_tasks, on_llm_result)
+            # 流式模式：逐个回调（含token级逐字推送）
+            _execute_llm_reviews_streaming(results, llm_tasks, on_llm_result, on_llm_token)
         else:
             _execute_llm_reviews_parallel(results, llm_tasks)
 

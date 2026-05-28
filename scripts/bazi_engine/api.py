@@ -115,7 +115,6 @@ async def chart_stream(
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
     hour_confirmed: bool = Query(False),
     practical: bool = Query(False),
-    request: Request = None,
 ):
     """流式排盘 — SSE 端点。
 
@@ -149,6 +148,13 @@ async def chart_stream(
                 ("llm", {"phase": "llm_result", "year": year_val, "signals": signals})
             )
 
+        def on_llm_tok(year_val: int, token: str):
+            """LLM审查逐token回调"""
+            loop.call_soon_threadsafe(
+                queue.put_nowait,
+                ("llm_token", {"phase": "llm_token", "year": year_val, "token": token})
+            )
+
         def run_build():
             """在线程中执行完整的 build_chart（含LLM审查）"""
             try:
@@ -161,6 +167,7 @@ async def chart_stream(
                     life_stage_override=life_stage if life_stage != "auto" else "",
                     hour_confirmed=hour_confirmed,
                     on_llm_result=on_llm,
+                    on_llm_token=on_llm_tok,
                 )
                 result = c.to_dict()
                 if practical:
@@ -175,8 +182,9 @@ async def chart_stream(
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         loop.run_in_executor(executor, run_build)
 
-        # 缓冲LLM结果（它们在build_chart线程中先到达，但前端应先看到rules_done）
+        # 缓冲LLM结果和token（它们在build_chart线程中先到达，前端应先看到rules_done）
         buffered_llm: list[dict] = []
+        buffered_llm_tokens: list[dict] = []
 
         while True:
             msg_type, msg_data = await queue.get()
@@ -185,6 +193,8 @@ async def chart_stream(
                 yield "data: [DONE]\n\n"
                 executor.shutdown(wait=False)
                 return
+            elif msg_type == "llm_token":
+                buffered_llm_tokens.append(msg_data)
             elif msg_type == "llm":
                 buffered_llm.append(msg_data)
             elif msg_type == "chart":
@@ -192,7 +202,11 @@ async def chart_stream(
                 # 1. 先发规则引擎结果
                 yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
 
-                # 2. 刷新缓冲的LLM结果
+                # 2. 刷新缓冲的LLM token（逐字推理过程）
+                for tok_msg in buffered_llm_tokens:
+                    yield f"data: {json.dumps(tok_msg)}\n\n"
+
+                # 3. 刷新缓冲的LLM结果
                 for llm_msg in buffered_llm:
                     yield f"data: {json.dumps(llm_msg)}\n\n"
 

@@ -152,7 +152,8 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         package["全局最高指令"] = f"{top['combo']}：{top['directive']}"
         if len(bingyao) > 1:
             package["次要病药"] = [
-                f"{c['combo']}：{c['directive'][:150]}..." for c in bingyao[1:]
+                f"{c['combo']}：{c['directive'][:150]}{'...' if len(c['directive']) > 150 else ''}"
+                for c in bingyao[1:]
             ]
 
     # ── 日主核心（只传原始特质，不传引擎写的描述文字）──
@@ -288,7 +289,7 @@ def generate_fusion_report(
 
         return "".join(full_text_parts) if full_text_parts else None
 
-    except (httpx.TimeoutException, httpx.ConnectError, Exception):
+    except Exception:
         return None
 
 
@@ -326,5 +327,5 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
             content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
             return content or None
 
-    except (httpx.TimeoutException, httpx.ConnectError, Exception):
+    except Exception:
         return None

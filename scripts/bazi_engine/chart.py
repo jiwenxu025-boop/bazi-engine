@@ -252,6 +252,23 @@ def compute_taiyuan(month_stem: Tiangan, month_branch: Dizhi) -> tuple[Tiangan, 
     return ty_stem, ty_branch, nayin
 
 
+def _build_llm_interactions(chart) -> dict:
+    """构建 LLM 审查用的干支交互数据（天干五合 + 地支六合/三合/六冲/相刑/相害）。"""
+    result = {
+        "天干五合": [it.to_dict() for it in chart.tiangan_interactions],
+        "地支六合": [], "三合": [], "六冲": [], "相刑": [], "相害": [],
+    }
+    type_map = {
+        "地支六合": "地支六合", "三合": "三合", "半合": "三合", "三会": "三合",
+        "六冲": "六冲", "相刑": "相刑", "自刑": "相刑", "相害": "相害",
+    }
+    for it in chart.dizhi_interactions:
+        bucket = type_map.get(it.inter_type)
+        if bucket:
+            result[bucket].append(it.to_dict())
+    return result
+
+
 def _build_llm_context(chart) -> dict:
     """为 LLM review 构建精简上下文（不包含 annual_scans，因为尚未生成）"""
     return {
@@ -271,10 +288,7 @@ def _build_llm_context(chart) -> dict:
         },
         "yongshen": chart._yongshen_result or {},
         "tiaohou": chart.tiaohou_result or {},
-        "interactions": {
-            "天干五合": [it.to_dict() for it in chart.tiangan_interactions],
-            "地支六合": [], "三合": [], "六冲": [], "相刑": [], "相害": [],
-        },
+        "interactions": _build_llm_interactions(chart),
         "known_events": {},
     }
 
@@ -295,6 +309,7 @@ def build_chart(
     family_context: dict | None = None,
     hour_confirmed: bool = True,
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, signals)
+    on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
 ) -> BaziChart:
     """一站式八字排盘
 
@@ -577,6 +592,7 @@ def build_chart(
             health_profile=chart.health_profile,
             chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
             on_llm_result=on_llm_result,
+            on_llm_token=on_llm_token,
         )
 
     # ── 11b. 十二长生参断 ──
