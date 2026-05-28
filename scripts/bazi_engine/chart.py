@@ -665,6 +665,21 @@ def build_chart(
         )
         chart.personality_result = pr.to_dict()
 
+        # 格局成格/破格验证
+        try:
+            from .pattern import validate_pattern
+            tiaohou = chart.tiaohou_result or {}
+            pattern_val = validate_pattern(
+                chart.pattern, chart.day_master, pd,
+                harmful_shishen=harm_shishen,
+                weighted_scores=pr.weighted_shishen.get("scores", {}),
+                strength=yongshen_data.get("strength", "中和"),
+                tiaohou_is_fei_ju=tiaohou.get("is_fei_ju", False),
+            )
+            chart.personality_result["pattern_validation"] = pattern_val
+        except Exception:
+            pass
+
         # 家境分析
         fr = analyze_family(
             day_master_stem=chart.day_master.value,

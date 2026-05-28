@@ -188,6 +188,22 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         "'食伤'在现代=内容创作/技术创新/表达输出能力。请过滤掉古籍引用和古代社会特有的职业建议。"
     )
 
+    # ── 格局验证（成格/破格/带忌/不成格）──
+    pattern_val = pr_dict.get("pattern_validation", {})
+    if pattern_val:
+        package["格局状态"] = {
+            "判定": pattern_val.get("status", "不成格"),
+            "说明": pattern_val.get("note", ""),
+        }
+        if pattern_val.get("status") == "破格":
+            package["格局状态"]["提示"] = "当前格局已破，不要用此格局的特性来解读命主。请忽略引擎标签中格局相关描述，基于十神分布和病药组合来分析。"
+        elif pattern_val.get("status") == "带忌":
+            package["格局状态"]["提示"] = "格局成中有败，可以部分参考格局特性，但需标注矛盾。"
+        elif pattern_val.get("status") == "成格":
+            package["格局状态"]["提示"] = "格局成立，可以放心参考格局特性。"
+        else:
+            package["格局状态"]["提示"] = "格局信号偏弱，不建议强调格局特性，以实际十神分布为准。"
+
     # ── 全局最高指令（病药组合）──
     bingyao = pr_dict.get("bingyao_combos", [])
     if bingyao:
