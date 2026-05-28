@@ -31,7 +31,7 @@ FUSION_ENABLED = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
 FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 你是一个说话直接、接地气的"人生战略分析师"。你的受众是普通年轻人，不是学术评委。你的任务是接收 Python 引擎传来的结构化数据，转化成一篇**说人话、能落地、不装逼**的现代分析。
 
-# 【最高指令】语言风格铁律（7条）
+# 【最高指令】语言风格铁律（8条）
 违反以下任何一条都算失败：
 
 1. **禁止学术腔**：不许用"命主""格局""官杀""印星""食伤""调候""日主"等八字术语。全部翻译成普通人能懂的说法。
@@ -54,7 +54,15 @@ FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 
 6. **建议必须匹配人生阶段**：查看输入数据中的[当前人生阶段]。中学生不要说买房/跳槽/理财；大学生不要说现金流/投资/职场政治；刚毕业不要说退休规划。每个阶段的建议只给该阶段能做的事。
 
-7. **不要面面俱到**：挑最重要的说，不重要的直接跳过。宁可一段写透一个点，也不要十段浮在表面。
+7. **古代标签现代翻译**：输入数据基于古代命理规则生成，部分标签带有古代社会语境，你必须做现代翻译：
+   - "印格/印星旺=爱读书"→ 现代指"吸收信息能力强、需要理论支撑后才行动、擅长考证/学历路径"，不一定是传统意义上的爱看书
+   - "官杀=适合公务员"→ 现代指"在结构化组织（大公司/体制/专业机构/层级分明的地方）中发挥更好"
+   - "财星=善于经营"→ 现代包含数字资产/知识付费/技术变现/副业等多元财富路径
+   - "食伤=才艺"→ 现代=内容创作/技术创新/表达输出
+   - "比劫=朋友多"→ 现代=社交网络/协作能力/人脉资源
+   参考输入数据中的[古今差异提示]做翻译。绝对不要输出"适合考功名""适合走仕途"等古代职业建议。
+
+8. **不要面面俱到**：挑最重要的说，不重要的直接跳过。宁可一段写透一个点，也不要十段浮在表面。
 
 # Input Data Format (输入数据说明)
 用户发来的提示词包含一个 Python 生成的 JSON 数据包：
@@ -102,16 +110,21 @@ FUSION_SYSTEM_PROMPT = """# Role (角色设定)
 # 数据包构建
 # ═══════════════════════════════════════════════════════════════
 
+def _clean_ancient_refs(text: str) -> str:
+    """去除古籍引用标记，只保留行为描述。"""
+    import re
+    # 去《xxx》：「...」
+    text = re.sub(r'《[^》]+》[：:「][^」」]*[」」]', '', text)
+    # 去《xxx》：xxx，
+    text = re.sub(r'《[^》]+》[^，。]*，', '', text)
+    # 去开头的【古籍标注】
+    text = re.sub(r'【[^】]+】', '', text)
+    return text.strip()
+
+
 def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                               life_stage: str = "", age_info: dict | None = None) -> dict:
-    """从 PersonalityResult + FamilyResult 构建 LLM 融合数据包。
-
-    Args:
-        pr_dict: PersonalityResult.to_dict() 的输出
-        family_dict: FamilyResult.to_dict() 的输出 (可选)
-        life_stage: 人生阶段（中学/大学/深造/职场/晚年）
-        age_info: chart day_master 信息 {stem, wuxing, yinyang} (可选)
-    """
+    """从 PersonalityResult + FamilyResult 构建 LLM 融合数据包。"""
     package: dict = {}
 
     # ── 命主基本信息 ──
@@ -120,10 +133,18 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
     if age_info:
         package["日主信息"] = age_info
 
+    # ── 古今差异说明（注入数据包，让 LLM 知道要做现代翻译）──
+    package["古今差异提示"] = (
+        "【重要】以下引擎数据基于古代命理规则生成，部分描述带有古代社会语境。"
+        "请做现代翻译：'印星=爱读书'在现代指'吸收信息能力强、需要理论支撑后才行动、擅长考证/学历路径'，"
+        "不一定是传统意义上的爱学习。'官杀=适合公务员'在现代指'在结构化组织（大公司/体制/专业机构）中发挥更好'。"
+        "'财星=善于经营'在现代包含数字资产/知识付费/技术变现等多元路径。"
+        "'食伤'在现代=内容创作/技术创新/表达输出能力。请过滤掉古籍引用和古代社会特有的职业建议。"
+    )
+
     # ── 全局最高指令（病药组合）──
     bingyao = pr_dict.get("bingyao_combos", [])
     if bingyao:
-        # 取优先级最高的病药组合
         top = bingyao[0]
         package["全局最高指令"] = f"{top['combo']}：{top['directive']}"
         if len(bingyao) > 1:
@@ -131,35 +152,38 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                 f"{c['combo']}：{c['directive'][:150]}..." for c in bingyao[1:]
             ]
 
-    # ── 核心性格标签 ──
+    # ── 核心性格标签（清洗古籍引用）──
     traits = []
     dm_core = pr_dict.get("day_master_core", "")
     if dm_core:
-        # 从日干核心提取第一句
-        first_line = dm_core.split("\n")[0] if "\n" in dm_core else dm_core[:120]
-        traits.append(first_line)
+        first_line = _clean_ancient_refs(dm_core.split("\n")[0] if "\n" in dm_core else dm_core[:120])
+        if first_line:
+            traits.append(first_line)
 
     dominant = pr_dict.get("dominant_ten_god", "")
     if dominant:
-        traits.append(dominant)
+        traits.append(_clean_ancient_refs(dominant))
 
     pattern_info = pr_dict.get("pattern_influence", "")
     if pattern_info:
-        traits.append(pattern_info)
+        traits.append(_clean_ancient_refs(pattern_info))
 
     strength_label = pr_dict.get("strength_label", "")
     if strength_label:
-        traits.append(strength_label)
+        traits.append(_clean_ancient_refs(strength_label))
 
-    # 从分领域 traits 中提取
     area_traits = pr_dict.get("traits", {})
     for area, desc in area_traits.items():
         if desc:
-            traits.append(f"[{area}] {desc[:200]}")
+            cleaned = _clean_ancient_refs(desc[:200])
+            if cleaned:
+                traits.append(f"[{area}] {cleaned}")
 
     special_combos = pr_dict.get("special_combos", [])
-    for combo in special_combos:
-        traits.append(combo[:200])
+    for combo in special_combos[:5]:  # 最多5条，避免过多噪音
+        cleaned = _clean_ancient_refs(combo[:200])
+        if cleaned:
+            traits.append(cleaned)
 
     package["核心性格标签"] = traits
 
@@ -177,14 +201,14 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         if heju:
             package["合局化神"] = heju
 
-    # ── 六维度引擎数据（直接传给 LLM，一一对应输出结构）──
+    # ── 六维度引擎数据（清洗后传给 LLM）──
     package["六维度引擎数据"] = {
-        "社交": area_traits.get("社交", ""),
-        "感情": area_traits.get("感情", ""),
-        "内心": area_traits.get("内心", ""),
-        "决策": area_traits.get("决策", ""),
-        "事业": area_traits.get("事业", ""),
-        "财富观": area_traits.get("财富观", ""),
+        "社交": _clean_ancient_refs(area_traits.get("社交", "")),
+        "感情": _clean_ancient_refs(area_traits.get("感情", "")),
+        "内心": _clean_ancient_refs(area_traits.get("内心", "")),
+        "决策": _clean_ancient_refs(area_traits.get("决策", "")),
+        "事业": _clean_ancient_refs(area_traits.get("事业", "")),
+        "财富观": _clean_ancient_refs(area_traits.get("财富观", "")),
     }
 
     # ── 家境信息（如有）──
