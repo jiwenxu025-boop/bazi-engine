@@ -656,7 +656,7 @@ async function streamFusionReport(personality, family, lifeStage, dayMaster){
   var el = document.querySelector('.personality-text');
   if (!el) return;
   var initialText = el.textContent;
-  el.innerHTML = '<span style="color:var(--text-tertiary)">正在生成融合报告</span><span class=fusion-cursor>|</span>';
+  el.innerHTML = '<span class=fusion-placeholder>正在生成融合报告</span><span class=fusion-cursor>|</span>';
   var text = '';
 
   try{
