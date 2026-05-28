@@ -259,20 +259,29 @@ function render(d){
   }
 
   // 性格与家境分析
+  var fusionReady = d.personality && d.personality._fusion_ready;
   if (d.personality){
-    h += '<div class=section-title>性格 <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'性格\')">问AI</span></div>';
-    h += '<div class=info-panel><div class=personality-text>' + d.personality.profile + '</div>';
-    h += '<div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px">';
-    var traitLabels = {社交:'社交',感情:'感情',决策:'决策',内心:'内心',事业:'事业',财富观:'财富观'};
-    for (var tk in traitLabels){
-      if (d.personality.traits && d.personality.traits[tk]){
-        h += '<div><span style="font-size:11px;color:var(--text-tertiary)">' + tk + '</span><br><span style="font-size:13px;color:var(--text)">' + d.personality.traits[tk] + '</span></div>';
+    h += '<div class=section-title>' + (fusionReady ? '性格与家境' : '性格') + ' <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'性格\')">问AI</span></div>';
+    h += '<div class=info-panel><div class=personality-text>';
+    if (!fusionReady){
+      h += d.personality.profile;
+    }
+    h += '</div>';
+    // 六维度网格：仅非融合模式显示
+    if (!fusionReady){
+      h += '<div class=traits-grid style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px">';
+      var traitLabels = {社交:'社交',感情:'感情',决策:'决策',内心:'内心',事业:'事业',财富观:'财富观'};
+      for (var tk in traitLabels){
+        if (d.personality.traits && d.personality.traits[tk]){
+          h += '<div><span style="font-size:11px;color:var(--text-tertiary)">' + tk + '</span><br><span style="font-size:13px;color:var(--text)">' + d.personality.traits[tk] + '</span></div>';
+        }
       }
+      h += '</div>';
     }
     h += '</div></div>';
   }
 
-  if (d.family){
+  if (d.family && !fusionReady){
     h += '<div class=section-title>家境 <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'家境\')">问AI</span></div>';
     h += '<div class=info-panel>';
     h += '<div class=family-level><span class=family-badge>' + (d.family.level_label || '') + '</span></div>';
