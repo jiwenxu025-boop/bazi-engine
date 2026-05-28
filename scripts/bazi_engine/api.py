@@ -169,6 +169,9 @@ async def chart_stream(
             except Exception as e:
                 loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
 
+        # 立即告知前端连接已建立
+        yield f"data: {json.dumps({'phase': 'started', 'message': '规则引擎计算中...'})}\n\n"
+
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         loop.run_in_executor(executor, run_build)
 

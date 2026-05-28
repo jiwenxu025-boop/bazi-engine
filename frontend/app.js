@@ -121,7 +121,10 @@ async function go(){
         if (payload === '[DONE]'){ buf = ''; break; }
         try {
           var msg = JSON.parse(payload);
-          if (msg.phase === 'rules_done'){
+          if (msg.phase === 'started'){
+            // 连接已建立，更新加载提示
+            r.innerHTML = '<div class=loading-state><div class=spinner></div><div>规则引擎计算中...</div></div>';
+          } else if (msg.phase === 'rules_done'){
             // 1. 规则引擎完成，立即渲染
             d = msg.chart;
             render(d);
