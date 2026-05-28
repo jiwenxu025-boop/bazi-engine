@@ -288,29 +288,46 @@ async def fusion_stream(request: Request):
 
     data_package = build_fusion_data_package(personality_data, family_data)
 
-    # SSE 生成器
+    # SSE 生成器 — 用 asyncio.Queue 桥接同步 LLM 流，实现真正的逐 token 推送
+    import asyncio
+    import concurrent.futures
+
     async def stream_fusion():
-        chunks: list[str] = []
-
-        def collect(chunk: str):
-            chunks.append(chunk)
-
-        import asyncio
+        queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
-        # 在线程池中运行同步流式调用
-        full_text = await loop.run_in_executor(
-            None, generate_fusion_report, data_package, collect
-        )
 
-        # 逐 chunk 发送
-        for chunk_text in chunks:
-            yield f"data: {json.dumps({'token': chunk_text})}\n\n"
+        def on_token(token: str):
+            """LLM 每吐一个 token，立刻推入 queue"""
+            loop.call_soon_threadsafe(queue.put_nowait, ("token", token))
 
-        if full_text:
-            yield f"data: {json.dumps({'done': True, 'length': len(full_text)})}\n\n"
-        else:
-            yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
-        yield "data: [DONE]\n\n"
+        def run_llm():
+            """在线程中跑同步流式 LLM 调用"""
+            try:
+                full = generate_fusion_report(data_package, on_chunk=on_token)
+                loop.call_soon_threadsafe(queue.put_nowait, ("done", full))
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        loop.run_in_executor(executor, run_llm)
+
+        while True:
+            msg_type, msg_data = await queue.get()
+            if msg_type == "token":
+                yield f"data: {json.dumps({'token': msg_data})}\n\n"
+            elif msg_type == "done":
+                if msg_data:
+                    yield f"data: {json.dumps({'done': True, 'length': len(msg_data)})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
+                yield "data: [DONE]\n\n"
+                executor.shutdown(wait=False)
+                return
+            elif msg_type == "error":
+                yield f"data: {json.dumps({'error': msg_data})}\n\n"
+                yield "data: [DONE]\n\n"
+                executor.shutdown(wait=False)
+                return
 
     return StreamingResponse(stream_fusion(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
