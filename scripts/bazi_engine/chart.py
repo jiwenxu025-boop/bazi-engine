@@ -675,6 +675,7 @@ def build_chart(
                 weighted_scores=pr.weighted_shishen.get("scores", {}),
                 strength=yongshen_data.get("strength", "中和"),
                 tiaohou_is_fei_ju=tiaohou.get("is_fei_ju", False),
+                interactions=interactions_dict,
             )
             chart.personality_result["pattern_validation"] = pattern_val
         except Exception:

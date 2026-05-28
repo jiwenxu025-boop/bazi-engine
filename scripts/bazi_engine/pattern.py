@@ -54,7 +54,8 @@ def validate_pattern(pattern: str, day_master,
                      harmful_shishen: list[str],
                      weighted_scores: dict | None = None,
                      strength: str = "中和",
-                     tiaohou_is_fei_ju: bool = False) -> dict:
+                     tiaohou_is_fei_ju: bool = False,
+                     interactions: dict | None = None) -> dict:
     """验证格局成格/破格/带忌/不成格。
 
     来源:
@@ -104,12 +105,25 @@ def validate_pattern(pattern: str, day_master,
                 "壬": "水", "癸": "水"}
     _WX_KE = {"水": "火", "火": "金", "金": "木", "木": "土", "土": "水"}
 
+    # ── 贪合忘贵/救应：透干用神被天干五合或地支六合 ──
+    # 《子平真诠》: 善神被合失其用,凶神被合减其凶
+    he_stems: set[str] = set()  # 被合的天干
+    if interactions:
+        for inter in interactions.get("tiangan", []):
+            if inter.get("type") == "天干五合":
+                for p_name in inter.get("participants", []):
+                    he_stems.add(str(p_name))
+        # 地支六合影响格局用神 — 暂按日支被合处理(已在各格中处理)
+
     pk = pattern.replace("格", "")
     is_weak = "弱" in strength
     tiaohou_penalty = tiaohou_is_fei_ju
 
     # ═══ 正官格(善神,顺用:喜财生印护) ═══
     if pk == "正官":
+        guan_he = any(p.get("ten_god") == "正官" and p.get("stem") in he_stems and p.get("source") == "stem" for p in pillars_data)
+        if guan_he:
+            issues.append("正官被合——官星贪合忘贵,《子平真诠》:官被合去,同于无官")
         if shang_tg:
             issues.append("伤官见官——格局已破(《子平真诠》:伤官克官)")
         if guan_tg and sha_tg:
@@ -123,6 +137,9 @@ def validate_pattern(pattern: str, day_master,
 
     # ═══ 七杀格(凶神,逆用:喜食制/印化) ═══
     elif pk in ("七杀", "偏官"):
+        sha_he = any((p.get("ten_god") or "") in ("偏官", "七杀") and p.get("stem") in he_stems and p.get("source") == "stem" for p in pillars_data)
+        if sha_he:
+            supports.append("七杀被合——凶神受制,《子平真诠》:合杀为贵,减其凶性")
         zhi_clean = shi_w >= sha_w * 1.5 or shang_w >= sha_w * 1.5
         zhi_barely = (shi_w >= sha_w * 0.7) or (shang_w >= sha_w * 0.7)
         has_zhi = shi_tg or shang_tg; has_hua = yin_tg
@@ -144,6 +161,9 @@ def validate_pattern(pattern: str, day_master,
 
     # ═══ 财格(善神,顺用:喜食生/官护) ═══
     elif pk in ("正财", "偏财"):
+        cai_he = any("财" in (p.get("ten_god") or "") and p.get("stem") in he_stems and p.get("source") == "stem" for p in pillars_data)
+        if cai_he:
+            issues.append("财星被合——贪合忘财,《子平真诠》:财被合去,求财不得")
         if bijie_w >= 4 and not guan_tg and not shi_tg:
             issues.append("比劫夺财无救——财被劫,无官护/食泄(《子平真诠》:财轻比重)")
         if sha_tg and not shi_tg and not shang_tg:
@@ -157,6 +177,9 @@ def validate_pattern(pattern: str, day_master,
 
     # ═══ 印格(善神,顺用:喜官杀生/食泄) ═══
     elif pk in ("正印", "偏印"):
+        yin_he = any("印" in (p.get("ten_god") or "") and p.get("stem") in he_stems and p.get("source") == "stem" for p in pillars_data)
+        if yin_he:
+            issues.append("印星被合——用神被合走,《子平真诠》:印被合去,失其庇护")
         if cai_tg and not guan_tg and not sha_tg:
             issues.append("财破印无救——独印被财坏,无官杀通关(《子平真诠》:印轻逢财)")
 
@@ -193,6 +216,9 @@ def validate_pattern(pattern: str, day_master,
 
     # ═══ 食神格(善神,顺用:喜生财/制杀) ═══
     elif pk == "食神":
+        shi_he = any((p.get("ten_god") or "") == "食神" and p.get("stem") in he_stems and p.get("source") == "stem" for p in pillars_data)
+        if shi_he:
+            issues.append("食神被合——食神贪合忘生财/制杀,《子平真诠》:食被合去,秀气不出")
         # 印克食：偏印=枭神夺食(重)，正印也克食(轻但同样堵泄秀)
         yin_ke_shi = False
         for p in pillars_data:
@@ -221,6 +247,9 @@ def validate_pattern(pattern: str, day_master,
 
     # ═══ 伤官格(凶神,逆用:喜生财/佩印/驾杀) ═══
     elif pk == "伤官":
+        shang_he = any((p.get("ten_god") or "") == "伤官" and p.get("stem") in he_stems and p.get("source") == "stem" for p in pillars_data)
+        if shang_he:
+            supports.append("伤官被合——凶性受制,《子平真诠》:合伤留官或合伤生财,反为美格")
         if has_guan:
             issues.append("伤官见官——除金水伤官外格局有伤(《子平真诠》:伤官见官,为祸百端)")
         if cai_tg:
