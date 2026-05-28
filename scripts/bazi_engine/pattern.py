@@ -98,6 +98,12 @@ def validate_pattern(pattern: str, day_master,
     has_guan = "正官" in all_shishen; has_sha = "偏官" in all_shishen or "七杀" in all_shishen
     has_yin = "正印" in all_shishen or "偏印" in all_shishen
 
+    # 五行生克映射(印夺食/枭神夺食检测用)
+    _STEM_WX = {"甲": "木", "乙": "木", "丙": "火", "丁": "火",
+                "戊": "土", "己": "土", "庚": "金", "辛": "金",
+                "壬": "水", "癸": "水"}
+    _WX_KE = {"水": "火", "火": "金", "金": "木", "木": "土", "土": "水"}
+
     pk = pattern.replace("格", "")
     is_weak = "弱" in strength
     tiaohou_penalty = tiaohou_is_fei_ju
@@ -187,8 +193,24 @@ def validate_pattern(pattern: str, day_master,
 
     # ═══ 食神格(善神,顺用:喜生财/制杀) ═══
     elif pk == "食神":
-        if pian_yin_tg and "偏印" in harmful_shishen:
-            issues.append("枭神夺食——创造本能被绞杀(《子平真诠》:食逢枭)")
+        # 印克食：偏印=枭神夺食(重)，正印也克食(轻但同样堵泄秀)
+        yin_ke_shi = False
+        for p in pillars_data:
+            tg = p.get("ten_god") or ""
+            stem = p.get("stem") or ""
+            if tg and "印" in tg and p.get("source") == "stem":
+                yin_wx = STEM_WX.get(stem, "")
+                for p2 in pillars_data:
+                    if (p2.get("ten_god") or "") == "食神" and p2.get("source") == "stem":
+                        shi_wx = STEM_WX.get(p2.get("stem", ""), "")
+                        if WX_KE.get(yin_wx, "") == shi_wx:
+                            yin_ke_shi = True
+                            break
+
+        if pian_yin_tg and yin_ke_shi:
+            issues.append("枭神夺食——偏印绞杀创造力(《子平真诠》:食逢枭,夺食最凶)")
+        elif yin_ke_shi:
+            issues.append("印克食——印星压制食神泄秀通道(《子平真诠》:印食不宜并透,透则相碍)")
         if cai_tg:
             supports.append("食神生财——创造力能变现")
         if sha_tg:
