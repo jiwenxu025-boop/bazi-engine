@@ -250,6 +250,8 @@ async def chart_stream(
                             loop.call_soon_threadsafe(
                                 fusion_queue.put_nowait, ("token", tok))
 
+                        fusion_done_flag = {"done": False}
+
                         def run_fusion():
                             try:
                                 if not fusion_key:
@@ -259,17 +261,31 @@ async def chart_stream(
                                 if full:
                                     loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_done", full))
                                 else:
-                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "API返回空，可能是模型不可用或网络问题"))
+                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "API返回空"))
+                                fusion_done_flag["done"] = True
                             except Exception as e:
                                 loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", str(e)))
+                                fusion_done_flag["done"] = True
 
                         fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                         loop.run_in_executor(fusion_ex, run_fusion)
 
+                        _fusion_start = loop.time()
                         while True:
-                            ft, fd = await fusion_queue.get()
+                            try:
+                                ft, fd = await asyncio.wait_for(fusion_queue.get(), timeout=15.0)
+                            except asyncio.TimeoutError:
+                                if fusion_done_flag["done"]:
+                                    break  # thread finished but queue empty
+                                elapsed = loop.time() - _fusion_start
+                                if elapsed > 90:
+                                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合超时({elapsed:.0f}s)'})}\n\n"
+                                    fusion_ex.shutdown(wait=False)
+                                    break
+                                continue
                             if ft == "token":
                                 yield f"data: {json.dumps({'phase': 'personality_token', 'token': fd})}\n\n"
+                                _fusion_start = loop.time()  # reset timeout on activity
                             elif ft == "fusion_done":
                                 if fd:
                                     yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd})}\n\n"
