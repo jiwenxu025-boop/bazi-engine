@@ -163,20 +163,23 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                 for c in bingyao[1:]
             ]
 
-    # ── 日主核心（只传原始特质，不传引擎写的描述文字）──
-    dm_info = {}
-    dm_core = pr_dict.get("day_master_core", "")
-    if dm_core:
-        dm_info["原始描述"] = _clean_ancient_refs(dm_core[:300])
+    # ── 日主核心（结构化数据，LLM自己写描述）──
+    dm_core = pr_dict.get("day_master_core", {})
+    if isinstance(dm_core, dict):
+        package["日主画像"] = dm_core
+    elif isinstance(dm_core, str) and dm_core:
+        package["日主画像"] = {"原始描述": _clean_ancient_refs(dm_core[:300])}
     strength_label = pr_dict.get("strength_label", "")
-    if strength_label:
-        dm_info["强弱"] = _clean_ancient_refs(strength_label[:100])
-    package["日主画像"] = dm_info
+    if strength_label and isinstance(package.get("日主画像"), dict):
+        package["日主画像"]["身强弱"] = _clean_ancient_refs(strength_label[:100])
 
-    # ── 关键组合（只传组合名+结论，不传引擎描述）──
+    # ── 关键组合（只传组合名+涉及十神，不传引擎结论）──
     special_combos_raw = []
     for combo in pr_dict.get("special_combos", [])[:8]:
-        cleaned = _clean_ancient_refs(combo[:200])
+        # 提取组合名（→之前的部分），去掉古籍引用和结论
+        name_part = combo.split("→")[0].strip() if "→" in combo else combo[:80]
+        # 去古籍引用
+        cleaned = _clean_ancient_refs(name_part)
         if cleaned and not cleaned.startswith("──"):
             special_combos_raw.append(cleaned)
     package["关键组合"] = special_combos_raw

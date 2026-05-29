@@ -222,10 +222,25 @@ async def chart_stream(
                         from .personality_fusion import (
                             build_fusion_data_package, generate_fusion_report
                         )
+                        from datetime import date
+                        age_info = None
+                        if chart and hasattr(chart, 'birth_dt'):
+                            today = date.today()
+                            age = today.year - chart.birth_dt.year
+                            if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
+                                age -= 1
+                            dm = chart_data.get("day_master", {})
+                            age_info = {
+                                "年龄": age,
+                                "日干": dm.get("stem", ""),
+                                "五行": dm.get("wuxing", ""),
+                                "阴阳": dm.get("yinyang", ""),
+                            }
                         pkg = build_fusion_data_package(
                             chart_data.get("personality", {}),
                             chart_data.get("family"),
                             chart_data.get("life_stage", ""),
+                            age_info=age_info,
                         )
                         fusion_queue: asyncio.Queue = asyncio.Queue()
 

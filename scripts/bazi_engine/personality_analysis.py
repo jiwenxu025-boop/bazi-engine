@@ -1240,26 +1240,20 @@ def analyze_personality(
     """
     result = PersonalityResult()
 
-    # ── Step 1: 日干核心性格 ──
+    # ── Step 1: 日干核心性格 → 结构化数据（不做预判文字）──
     dm_info = DAY_MASTER_PERSONALITY.get(day_master_stem)
     if dm_info:
-        result.day_master_core = (
-            f"日干{day_master_stem}（{day_master_wuxing}·{day_master_yinyang}）——{dm_info['image']}。\n"
-            f"核心：{dm_info['core']}。\n"
-            f"注意：{dm_info['negative']}。\n"
-            f"特点：{dm_info['key']}。\n"
-            f"五德：{dm_info['wude']}。"
-        )
+        result.day_master_core = {
+            "五行": day_master_wuxing,
+            "阴阳": day_master_yinyang,
+            "形象": dm_info["image"],
+            "五德": dm_info["wude"],
+        }
     else:
-        result.day_master_core = f"日干{day_master_stem}（{day_master_wuxing}·{day_master_yinyang}）"
+        result.day_master_core = {"五行": day_master_wuxing, "阴阳": day_master_yinyang}
 
-    # ── Step 2: 身强弱调节 ──
-    if "强" in strength:
-        result.strength_label = f"身{strength}（{score}分）→ 自信果断，抗压能力强，能担财官，日干正面特征充分展现"
-    elif "弱" in strength:
-        result.strength_label = f"身{strength}（{score}分）→ 优柔寡断，依赖性强，压力敏感，日干负面特征更明显"
-    else:
-        result.strength_label = f"身{strength}（{score}分）→ 中和状态，性格特征表现适中"
+    # ── Step 2: 身强弱调节 → 只传数值，不做性格预判 ──
+    result.strength_label = f"{strength}（{score}分）"
 
     # ── Step 3: 最旺十神 ──
     dominant, is_fav, shishen_desc = _find_dominant_shishen(pillars_data, harmful_shishen, interactions)
@@ -1379,14 +1373,20 @@ def analyze_personality(
     # ── 感情：官杀(责任) + 财星(欲望) + 日支状态 + 桃花 ──
     day_hidden = pillars_data[2].get("hidden_ten_gods", []) if len(pillars_data) > 2 else []
     fq_state = "冲" if day_branch_chong else ("合" if day_branch_he else "平稳")
+    spouse_star_note = "男命以财为妻星，女命以官杀为夫星" if gender in ("男", "女") else ""
     result.trait_signals["感情"] = {
         "责任感_官杀": round(guan_s, 1),
         "欲望_财星": round(cai_s, 1),
+        "同辈竞争_比劫": round(bijie_s, 1),
+        "独立反叛_伤官": round(shang_guan_s, 1),
         "夫妻宫状态": fq_state,
         "桃花坐日支": has_taohua_rizhi,
         "日支藏干": day_hidden[:3],
         "身强弱": "强" if is_strong else ("弱" if is_weak else "中和"),
+        "性别": gender,
     }
+    if spouse_star_note:
+        result.trait_signals["感情"]["_性别提示"] = spouse_star_note
     _romance_parts = []
     if day_branch_chong:
         _romance_parts.append("夫妻宫被冲，感情波动较大，磨合期长")
@@ -1396,7 +1396,11 @@ def analyze_personality(
         _romance_parts.append("责任感强，在关系中重承诺" + ("，敢主动追求" if is_strong else "，但也容易感到压力"))
     elif cai_s >= 5:
         _romance_parts.append("重视实际付出和物质基础，浪漫体现在行动而非言语")
-    elif has_taohua_rizhi:
+    if bijie_s >= 5 and gender == "男":
+        _romance_parts.append("比劫旺，感情中注意同辈竞争或第三者介入")
+    if shang_guan_s >= 5:
+        _romance_parts.append("伤官旺，对传统关系模式有抵触，需要更多自由空间" if gender == "女" else "伤官旺，容易对伴侣挑剔，需注意沟通方式")
+    if has_taohua_rizhi:
         _romance_parts.append("桃花坐日支，异性缘好，需学会分辨心动和合适")
     if not _romance_parts:
         _romance_parts.append("感情模式平稳，平常比较随缘")
