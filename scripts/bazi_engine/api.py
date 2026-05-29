@@ -253,7 +253,28 @@ async def chart_stream(
                     except Exception:
                         pass
 
-                # 4. 结束
+                # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
+                try:
+                    from .llm_review import enrich_dayun_interpretations
+                    loop_dy = asyncio.get_running_loop()
+                    dy_queue: asyncio.Queue = asyncio.Queue()
+
+                    def _run_dayun():
+                        try:
+                            result = enrich_dayun_interpretations(chart)
+                            loop_dy.call_soon_threadsafe(dy_queue.put_nowait, result)
+                        except Exception:
+                            loop_dy.call_soon_threadsafe(dy_queue.put_nowait, [])
+
+                    executor.submit(_run_dayun)
+                    dayun_result = await dy_queue.get()
+                    if dayun_result:
+                        chart.dayun_interpretations = dayun_result
+                        yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': dayun_result})}\n\n"
+                except Exception:
+                    pass
+
+                # 5. 结束
                 yield f"data: {json.dumps({'phase': 'done'})}\n\n"
                 yield "data: [DONE]\n\n"
                 executor.shutdown(wait=False)

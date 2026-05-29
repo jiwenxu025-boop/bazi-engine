@@ -167,8 +167,15 @@ async function go(){
             if (personalityEl && msg.full){
               personalityEl.innerHTML = md2html(msg.full);
             }
+          } else if (msg.phase === 'dayun_done'){
+            // 5. 大运解读完成——更新DOM
+            if (msg.interpretations && msg.interpretations.length){
+              d.dayun.interpretations = msg.interpretations;
+              var dyEl = document.querySelector('.dayun-interpretations');
+              if (dyEl) dyEl.innerHTML = _buildDayunInterpretations(d);
+            }
           } else if (msg.phase === 'done'){
-            // 5. 全流程结束——清理LLM推理实时显示区
+            // 6. 全流程结束——清理LLM推理实时显示区
             var liveEl = document.querySelector('.llm-live-section');
             if (liveEl) liveEl.remove();
           }
@@ -273,6 +280,10 @@ function render(d){
     h += '<span class=dayun-tag>' + p.stem + p.branch + ' <span style="color:var(--text-tertiary)">' + p.age + '岁</span></span>';
   }
   h += '</div></div>';
+  // 大运 LLM 解读（v0.14.0: SSE 异步填充）
+  h += '<div class=dayun-interpretations>';
+  h += _buildDayunInterpretations(d);
+  h += '</div>';
   h += '</div></div>'; // /info-panel + /info-grid
 
   // 人生阶段指示器
@@ -567,6 +578,25 @@ document.addEventListener('click', function(e){
 });
 
 /* ── LLM推理逐字显示 ── */
+function _buildDayunInterpretations(d){
+  var h = '';
+  if (d.dayun.interpretations && d.dayun.interpretations.length){
+    h += '<div class="info-item full dayun-interps">';
+    h += '<span class=info-label>大运解读</span>';
+    for (var i = 0; i < Math.min(d.dayun.interpretations.length, 8); i++){
+      var di = d.dayun.interpretations[i];
+      var p = d.dayun.periods[di.index] || {};
+      h += '<div style="padding:4px 0;font-size:13px;line-height:1.7;color:var(--text-secondary)">';
+      h += '<strong style="color:var(--text-primary)">' + (p.stem||'') + (p.branch||'') + '</strong> ';
+      h += '<span style="color:var(--text-tertiary)">' + (p.age||'') + '</span> — ';
+      h += di.interpretation;
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  return h;
+}
+
 function updateLlmTokenDisplay(year, text){
   var el = document.querySelector('.llm-live-section');
   if (!el){
