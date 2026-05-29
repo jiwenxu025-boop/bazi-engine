@@ -215,6 +215,7 @@ async def chart_stream(
                     yield f"data: {json.dumps(llm_msg)}\n\n"
 
                 # 3. 性格融合报告逐token流式输出
+                chart = chart_obj_ref[0] if chart_obj_ref else None
                 fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
                 fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
                 _status_msg = f"开关={fusion_enabled} key={bool(fusion_key)} 数据={bool(chart_data.get('personality'))} 模型={os.getenv('DEEPSEEK_MODEL', 'deepseek-v4-flash')}"
@@ -305,7 +306,6 @@ async def chart_stream(
                     yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合跳过: ' + '; '.join(detail)})}\n\n"
 
                 # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
-                chart = chart_obj_ref[0] if chart_obj_ref else None
                 try:
                     from .llm_review import enrich_dayun_interpretations, DEEPSEEK_KEY, LLM_REVIEW_ENABLED
                     loop_dy = asyncio.get_running_loop()
