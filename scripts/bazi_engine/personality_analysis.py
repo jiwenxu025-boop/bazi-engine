@@ -699,8 +699,16 @@ def detect_bingyao_combos(
         })
 
     # ── 排序：priority 升序（1最先），同 priority 按影响分数降序 ──
+    _STRENGTH_MAP = {"强": 0.8, "偏强": 0.6, "中和": 0.5, "偏弱": 0.4, "弱": 0.2}
     def _sort_key(c):
-        score_sum = sum(c.get("evidence", {}).values())
+        ev = c.get("evidence", {})
+        nums = []
+        for v in ev.values():
+            if isinstance(v, (int, float, bool)):
+                nums.append(float(v))
+            elif isinstance(v, str) and v in _STRENGTH_MAP:
+                nums.append(_STRENGTH_MAP[v])
+        score_sum = sum(nums)
         return (c["priority"], -score_sum)
 
     combos.sort(key=_sort_key)
