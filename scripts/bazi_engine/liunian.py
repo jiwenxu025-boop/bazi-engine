@@ -1527,7 +1527,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # ═══ ★★ 级别 ═══
 
-    # 岁运并临 (calibration: 2026 案例A，喜用非凶)
+    # 岁运并临 (calibration: 2026 徐继文，喜用非凶)
     if is_suiyun_binglin:
         strength = max(strength, 2)
         triggers.append("岁运并临")
@@ -2701,7 +2701,6 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
                         triggers=llm_evt.triggers,
                         notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
                     )
-                    results[ridx].events.append(sig)
                     signals.append(sig)
                 sig_dicts = [{ "category": s.category, "direction": s.direction,
                               "strength": s.strength, "prediction": s.prediction,
