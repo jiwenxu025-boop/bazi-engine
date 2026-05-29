@@ -2180,6 +2180,59 @@ def apply_personality_notes(events: list[EventSignal],
             e.personality_note = note
 
 
+def _merge_same_category_events(events: list[EventSignal]) -> list[EventSignal]:
+    """同类别信号合并：同一年的多个桃花/婚嫁等信号汇总为一条，避免前端重复冗杂。"""
+    if len(events) <= 1:
+        return events
+
+    groups: dict[str, list[EventSignal]] = {}
+    for e in events:
+        groups.setdefault(e.category, []).append(e)
+
+    merged: list[EventSignal] = []
+    for cat, sigs in groups.items():
+        if len(sigs) == 1:
+            merged.append(sigs[0])
+            continue
+
+        best = max(sigs, key=lambda s: (s.strength, 0))
+        all_triggers: list[str] = []
+        seen_t = set()
+        for s in sigs:
+            for t in s.triggers:
+                if t not in seen_t:
+                    all_triggers.append(t)
+                    seen_t.add(t)
+        all_notes: list[str] = []
+        seen_n = set()
+        for s in sigs:
+            for n in s.notes:
+                if n not in seen_n:
+                    all_notes.append(n)
+                    seen_n.add(n)
+        all_cal_refs: list[str] = []
+        seen_c = set()
+        for s in sigs:
+            for c in s.calibration_refs:
+                if c not in seen_c:
+                    all_cal_refs.append(c)
+                    seen_c.add(c)
+
+        merged.append(EventSignal(
+            category=cat,
+            direction=best.direction,
+            strength=best.strength,
+            prediction=_make_prediction(cat, best.direction, best.strength,
+                                        all_triggers, all_notes),
+            triggers=all_triggers,
+            notes=all_notes,
+            calibration_refs=all_cal_refs,
+            personality_note=best.personality_note,
+            magnitude=best.magnitude,
+        ))
+    return merged
+
+
 def _check_event_conflicts(events: list[EventSignal],
                           ln_dz: Dizhi, day_branch: Dizhi,
                           day_master: Tiangan, year_branch: Dizhi,
@@ -3139,6 +3192,9 @@ def scan_years(
                         shang_triggers = [t for t in e.triggers if "伤官" in t]
                         if shang_triggers:
                             e.notes.append("贪生忘克提示：若有印星通关，伤官克官之凶可减")
+
+        # 合并同类别信号（同类多触发源→汇总为一条）
+        events = _merge_same_category_events(events)
 
         results.append(AnnualScan(
             year=year,
