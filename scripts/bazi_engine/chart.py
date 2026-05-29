@@ -430,7 +430,8 @@ def build_chart(
     try:
         from .tiaohou import analyze_tiaohou
         chart.tiaohou_result = analyze_tiaohou(
-            chart.day_master, chart.month.branch, chart.day.branch, all_branches
+            chart.day_master, chart.month.branch, chart.day.branch, all_branches,
+            all_stems=all_stems,
         ).to_dict()
     except Exception as e:
         chart.warnings.append(f"调候分析失败: {e}")
@@ -463,8 +464,9 @@ def build_chart(
 
     # ── 7. 格局 ──
     all_stems = [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem]
+    cong_ge = (chart._yongshen_result or {}).get("cong_ge")
     chart.pattern, chart.pattern_notes = determine_pattern(
-        chart.month.branch, all_stems, chart.day_master
+        chart.month.branch, all_stems, chart.day_master, cong_ge=cong_ge
     )
 
     # 格局用神（陆致极: 格局用神 ≠ 有用之神）

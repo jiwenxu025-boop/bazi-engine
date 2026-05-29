@@ -34,7 +34,8 @@ class TiaohouResult:
 
 
 def analyze_tiaohou(day_master: Tiangan, month_branch: Dizhi,
-                    day_branch: Dizhi, all_branches: list[Dizhi]) -> TiaohouResult:
+                    day_branch: Dizhi, all_branches: list[Dizhi],
+                    all_stems: list[Tiangan] | None = None) -> TiaohouResult:
     """独立的调候分析——陆致极"调候为先"原则。
 
     优先级: 调候 > 格局 > 强弱
@@ -59,6 +60,11 @@ def analyze_tiaohou(day_master: Tiangan, month_branch: Dizhi,
     for dz in all_branches:
         wx = dz.wuxing.value
         wx_counts[wx] = wx_counts.get(wx, 0) + 1
+    # v0.13.0: 天干也参与气候计数（权重0.5，天干为表，地支为根）
+    if all_stems:
+        for tg in all_stems:
+            wx = tg.wuxing.value
+            wx_counts[wx] = wx_counts.get(wx, 0) + 0.5
 
     fire_count = wx_counts["火"]
     water_count = wx_counts["水"]
@@ -101,10 +107,10 @@ def analyze_tiaohou(day_master: Tiangan, month_branch: Dizhi,
 
     is_fei_ju = bool(need_wx) and not has_tiaohou
 
-    # 气候判定
-    if fire_count >= 3 and water_count == 0:
+    # 气候判定（v0.13.0: 含天干0.5权重，零值容忍<0.5）
+    if fire_count >= 3 and water_count < 0.5:
         climate = "大燥"
-    elif water_count >= 3 and fire_count == 0:
+    elif water_count >= 3 and fire_count < 0.5:
         climate = "大寒"
     elif fire_count >= 2 and water_count <= 1:
         climate = "偏燥"

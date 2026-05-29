@@ -20,7 +20,7 @@ import httpx
 # ── API 配置（复用 chat.py 的环境变量）──
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 # ── LLM Review 开关 ──
 LLM_REVIEW_ENABLED = os.getenv("BAZI_LLM_REVIEW", "0") == "1"

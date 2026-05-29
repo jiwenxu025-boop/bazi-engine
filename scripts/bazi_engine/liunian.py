@@ -105,9 +105,10 @@ class EventSignal:
     notes: list[str] = field(default_factory=list)
     calibration_refs: list[str] = field(default_factory=list)
     personality_note: str = ""  # 性格联动备注
+    magnitude: str = ""         # v0.13.0: 财运量级 "大额"/"中额"/"小额"/"大破财"/"破财"
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "category": self.category,
             "direction": self.direction,
             "strength": self.strength,
@@ -117,6 +118,9 @@ class EventSignal:
             "calibration_refs": self.calibration_refs,
             "personality_note": self.personality_note,
         }
+        if self.magnitude:
+            d["magnitude"] = self.magnitude
+        return d
 
 
 @dataclass
@@ -942,7 +946,8 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           year_branch: Dizhi, gender: str,
                           favorable: set[str] | None = None,
                           dayun_branch: Dizhi | None = None,
-                          age: int = 0) -> list[EventSignal]:
+                          age: int = 0,
+                          all_branches: tuple[Dizhi, ...] = ()) -> list[EventSignal]:
     """检测婚嫁/婚姻信号 — v0.6.0: 打分制 + 大运联动"""
     signals: list[EventSignal] = []
     spouse_star = Shishen.正财 if gender == "男" else Shishen.正官
@@ -1075,10 +1080,12 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if gender == "女" and ln_shishen == Shishen.伤官:
         s.add(-3, "伤官克官→婚姻危机", "伤官年→女命婚姻高危年 (段建业)")
 
-    # 夫妻宫被穿害
-    for br_dummy in []:  # placeholder — actual check would need all_branches
-        pass
-    # (简化: 穿害在人际模块已处理, 此处不重复)
+    # 夫妻宫被穿害 — v0.12.0: 实现穿害检测
+    if all_branches:
+        for br in all_branches:
+            if br == day_branch and _has_branch_interaction(ln_branch, br, "相害"):
+                hai_pair = f"{ln_branch.value}{br.value}穿"
+                s.add(-2, f"{hai_pair}夫妻宫→婚姻不和", "穿害入夫妻宫→感情伤害/离婚风险")
 
     # 空亡（仅在总分≥3时才扣分，避免弱信号被空亡全吞）
     kw = _kongwang_branches(day_master, day_branch)
@@ -1328,6 +1335,7 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         s.add(-1, "财星落空亡→得财虚浮")
 
     if s.is_significant():
+        magnitude = _wealth_magnitude(s.total)
         signals.append(EventSignal(
             category="财运",
             direction=s.direction,
@@ -1335,10 +1343,29 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             prediction=_make_prediction("财运", s.direction, s.strength, s.triggers(), s.notes()),
             triggers=s.triggers(),
             notes=s.notes(),
+            magnitude=magnitude,
         ))
     return signals
 
     return signals
+
+
+def _wealth_magnitude(total: int) -> str:
+    """v0.13.0: 根据 ScoreAccumulator 原始总分判定财运量级"""
+    t = abs(total)
+    if total >= 7:
+        return "大额"
+    elif total >= 4:
+        return "中额"
+    elif total >= 2:
+        return "小额"
+    elif total <= -7:
+        return "大破财"
+    elif total <= -4:
+        return "破财"
+    elif total <= -2:
+        return "小额破财"
+    return "小额" if total > 0 else "小额破财"
 
 
 def _has_root(stem: Tiangan, branch: Dizhi) -> bool:
@@ -2866,6 +2893,7 @@ def scan_years(
         ))
         events.extend(detect_hunjia_signals(
             ln_tg, ln_dz, day_branch, day_master, year_branch, gender, favorable, dn_dz, age,
+            (year_branch, month_branch, day_branch, hour_branch),
         ))
         events.extend(detect_shiye_signals(
             ln_tg, ln_dz, day_master, year_branch, month_branch, day_branch,

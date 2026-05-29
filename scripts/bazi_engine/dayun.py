@@ -164,11 +164,16 @@ class DayunModulator:
         self._harm_ss = harmful_shishen
 
         from .ten_gods import get_ten_god
-        from ._constants import DIZHI_LIUCHONG, DIZHI_LIUHE, DIZHI_XIANGHAI
+        from ._constants import (DIZHI_LIUCHONG, DIZHI_LIUHE, DIZHI_XIANGHAI,
+                                 DIZHI_SANHE, DIZHI_SANHUI, DIZHI_XIANGXING, DIZHI_ZIXING)
         self._get_ten_god = get_ten_god
         self._liuchong = DIZHI_LIUCHONG
         self._liuhe = DIZHI_LIUHE
         self._xianghai = DIZHI_XIANGHAI
+        self._sanhe = DIZHI_SANHE
+        self._sanhui = DIZHI_SANHUI
+        self._xiangxing = DIZHI_XIANGXING
+        self._zixing = DIZHI_ZIXING
 
     def modulate(self) -> list[DayunModulation]:
         """分析所有大运，返回调制结果列表"""
@@ -257,8 +262,12 @@ class DayunModulator:
         return inters
 
     def _check_branch_interactions(self, dayun_branch) -> list[str]:
-        """检查大运地支与原局地支的冲合害"""
+        """检查大运地支与原局地支的冲合刑害（含三合/三会/相刑/自刑）"""
         inters: list[str] = []
+        natal_set = set(self._natal_branches)
+        all_set = natal_set | {dayun_branch}
+
+        # 1. 六冲/六合/相害/相刑 (pairwise, 优先级: 冲>合>害>刑>自刑)
         for natal_branch in self._natal_branches:
             pair = (dayun_branch, natal_branch)
             if pair in self._liuchong:
@@ -267,6 +276,31 @@ class DayunModulator:
                 inters.append(f"合原局{natal_branch.value}")
             elif pair in self._xianghai:
                 inters.append(f"害原局{natal_branch.value}")
+            elif pair in self._xiangxing:
+                inters.append(f"刑原局{natal_branch.value}")
+            elif dayun_branch == natal_branch and dayun_branch in self._zixing:
+                inters.append(f"与原局{natal_branch.value}自刑")
+
+        # 2. 三合/半合: 大运参与即触发
+        for trio_set, wx in self._sanhe.items():
+            trio = list(trio_set)
+            if dayun_branch not in trio:
+                continue
+            match_count = sum(1 for b in trio if b in all_set)
+            if match_count == 3:
+                inters.append(f"与原局三合{getattr(wx, 'value', str(wx))}局")
+            elif match_count == 2:
+                other = [b for b in trio if b in all_set and b != dayun_branch][0]
+                inters.append(f"与原局{other.value}半合{getattr(wx, 'value', str(wx))}")
+
+        # 3. 三会: 三支齐聚方成局
+        for trio_set, wx in self._sanhui.items():
+            trio = list(trio_set)
+            if dayun_branch not in trio:
+                continue
+            if sum(1 for b in trio if b in all_set) == 3:
+                inters.append(f"与原局三会{getattr(wx, 'value', str(wx))}方")
+
         return inters
 
     def _check_stem_favorability(self, dayun_stem) -> bool | None:

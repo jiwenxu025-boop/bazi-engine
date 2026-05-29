@@ -102,7 +102,8 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
                 for ev in scan.events:
                     if ev.prediction:
                         stars = "★" * ev.strength + "☆" * (3 - ev.strength)
-                        p(f"      [{ev.category}] {stars} {ev.prediction}")
+                        mag = f" [{ev.magnitude}]" if getattr(ev, 'magnitude', '') else ""
+                        p(f"      [{ev.category}] {stars}{mag} {ev.prediction}")
                 # 仅输出最高优先级的 practical notes
                 for ev in scan.events:
                     for note in ev.notes:
@@ -238,7 +239,8 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
                     p(f"      ⚖ {scan.dayun_weight_note}")
                 for ev in scan.events:
                     stars = "★" * ev.strength + "☆" * (3 - ev.strength)
-                    p(f"      [{ev.category}] {stars} {'+'.join(ev.triggers)}")
+                    mag = f" [{ev.magnitude}]" if getattr(ev, 'magnitude', '') else ""
+                    p(f"      [{ev.category}] {stars}{mag} {'+'.join(ev.triggers)}")
                     if ev.prediction:
                         p(f"          → {ev.prediction}")
                     for note in ev.notes:

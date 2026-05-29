@@ -14,17 +14,29 @@ from .ten_gods import get_ten_god
 
 
 def determine_pattern(month_branch: Dizhi, all_stems: list[Tiangan],
-                      day_master: Tiangan) -> tuple[str, list[str]]:
+                      day_master: Tiangan,
+                      cong_ge: dict | None = None) -> tuple[str, list[str]]:
     """返回 (格局名, 透干说明).
 
     all_stems: 四柱天干列表 [年干, 月干, 日干, 时干]
+    cong_ge: yongshen._detect_cong_ge() 的返回值，存在时覆盖月令格局
 
     优先级：
+    0. 从格覆盖（日主屈服，不以月令常格论）
     1. 本气透干 → 取本气十神为格（建禄格/羊刃格特殊处理）
     2. 中气透干 → 取中气十神为格
     3. 余气透干 → 取余气十神为格
     4. 均不透 → 取本气十神为格
     """
+    # v0.13.0: 从格覆盖
+    if cong_ge and cong_ge.get("type"):
+        cg_type = cong_ge["type"]
+        # 从势(X旺) → 从势格
+        if cg_type.startswith("从势"):
+            return "从势格", [f"从格: {cg_type}"]
+        # 从财/从杀/从儿/从旺
+        return f"{cg_type}格", [f"从格: {cg_type}"]
+
     hidden_list = DIZHI_CANGGAN[month_branch]
     notes: list[str] = []
 
@@ -70,6 +82,15 @@ def validate_pattern(pattern: str, day_master,
          "supports": [成格支撑],
          "note": 一句话说明}
     """
+    # v0.13.0: 从格不按常格校验
+    if pattern.startswith("从"):
+        return {
+            "status": "成格",
+            "issues": [],
+            "supports": ["从格: 日主顺从旺势，不以常格论"],
+            "note": "从格格局成立——全局力量一边倒，日主顺势而为即吉。忌神为逆势之行（如从财忌比劫，从杀忌食伤）。",
+        }
+
     issues: list[str] = []
     supports: list[str] = []
 

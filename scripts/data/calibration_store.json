@@ -1,6 +1,6 @@
 {
-  "version": "0.6.0",
-  "updated": "2026-05-26",
+  "version": "0.7.0",
+  "updated": "2026-05-29",
   "cases": [
     {
       "name": "徐继文",
@@ -171,6 +171,150 @@
         }
       ],
       "notes": "偏印格男 2007-10-22 06:00 丁亥庚戌己丑丁卯 逆排 卯时反向验证确认"
+    },
+    {
+      "name": "M1-早婚女",
+      "gender": "女",
+      "birth": {"year": 1977, "month": 5, "day": 11, "hour": 10},
+      "expected_events": {"2008": "婚嫁", "2009": "桃花"},
+      "calibration": {"2008": "HIT", "2009": "TOL"},
+      "source": "元亨利贞论坛",
+      "notes": "2008结婚,2009离婚,2010复婚"
+    },
+    {
+      "name": "M2-晚婚男",
+      "gender": "男",
+      "birth": {"year": 1983, "month": 1, "day": 6, "hour": 4},
+      "expected_events": {"2009": "婚嫁"},
+      "calibration": {"2009": "HIT"},
+      "source": "元亨利贞论坛",
+      "notes": "2009己丑年结婚"
+    },
+    {
+      "name": "M3-婚变男",
+      "gender": "男",
+      "birth": {"year": 1970, "month": 8, "day": 24, "hour": 18},
+      "expected_events": {"1993": "婚嫁", "2007": "桃花"},
+      "calibration": {"1993": "HIT", "2007": "HIT"},
+      "source": "元亨利贞论坛",
+      "notes": "1993癸酉结婚,2007丁亥离婚"
+    },
+    {
+      "name": "M4-张子健",
+      "gender": "男",
+      "birth": {"year": 1968, "month": 10, "day": 28, "hour": 2},
+      "expected_events": {"2005": "桃花"},
+      "calibration": {"2005": "HIT"},
+      "source": "公开名人",
+      "notes": "2005乙酉结束第一次婚姻"
+    },
+    {
+      "name": "M5-离婚女",
+      "gender": "女",
+      "birth": {"year": 1978, "month": 2, "day": 14, "hour": 13},
+      "expected_events": {"2015": "桃花"},
+      "calibration": {"2015": "HIT"},
+      "source": "搜狐案例",
+      "notes": "2015年离婚"
+    },
+    {
+      "name": "M6-中年婚变女",
+      "gender": "女",
+      "birth": {"year": 1977, "month": 11, "day": 4, "hour": 12},
+      "expected_events": {"2007": "婚嫁", "2009": "桃花"},
+      "calibration": {"2007": "TOL", "2009": "HIT"},
+      "source": "元亨利贞论坛",
+      "notes": "2007结婚,2009离婚"
+    },
+    {
+      "name": "M7-婚恋危机男",
+      "gender": "男",
+      "birth": {"year": 1986, "month": 6, "day": 25, "hour": 12},
+      "expected_events": {"2011": "婚嫁"},
+      "calibration": {"2011": "HIT"},
+      "source": "元亨利贞论坛",
+      "notes": "2011结婚,后长期感情不合"
+    },
+    {
+      "name": "M8-婚变风险女",
+      "gender": "女",
+      "birth": {"year": 1986, "month": 9, "day": 8, "hour": 12},
+      "expected_events": {"2012": "婚嫁"},
+      "calibration": {"2012": "HIT"},
+      "source": "元亨利贞论坛",
+      "notes": "2012结婚,命师断2025-2026婚变"
+    },
+    {
+      "name": "M9-胡万林克夫案",
+      "gender": "女",
+      "birth": {"year": 1966, "month": 7, "day": 15, "hour": 22},
+      "expected_events": {"1988": "婚嫁", "1992": "桃花"},
+      "calibration": {"1988": "TOL", "1992": "TOL"},
+      "source": "段建业案例",
+      "notes": "丙午 丁酉 甲戌 乙亥。第一任坐牢离婚,第二任胡万林也坐牢"
+    },
+    {
+      "name": "M10-三婚女",
+      "gender": "女",
+      "birth": {"year": 1955, "month": 2, "day": 10, "hour": 4},
+      "expected_events": {"1978": "婚嫁", "1999": "桃花"},
+      "calibration": {"1978": "HIT", "1999": "TOL"},
+      "source": "段建业案例",
+      "notes": "乙未 己丑 己丑 丙寅。三婚命,第一任己卯年病故"
+    },
+    {
+      "name": "M11-丙戌婚男",
+      "gender": "男",
+      "birth": {"year": 1982, "month": 3, "day": 23, "hour": 12},
+      "expected_events": {"2006": "婚嫁"},
+      "calibration": {"2006": "HIT"},
+      "source": "360doc元亨利贞案例集",
+      "notes": "2006丙戌结婚"
+    },
+    {
+      "name": "M12-婚变离婚男",
+      "gender": "男",
+      "birth": {"year": 1978, "month": 11, "day": 27, "hour": 21},
+      "expected_events": {"2004": "婚嫁"},
+      "calibration": {"2004": "HIT"},
+      "source": "360doc夫妻配对案例",
+      "notes": "2004农历正月领证,十月结婚"
+    },
+    {
+      "name": "M13-张子健离婚",
+      "gender": "男",
+      "birth": {"year": 1968, "month": 10, "day": 28, "hour": 2},
+      "expected_events": {"2005": "桃花"},
+      "calibration": {"2005": "HIT"},
+      "source": "百度百家号",
+      "notes": "张子健 戊申 壬戌 辛未 己丑。2005乙酉结束第一次婚姻。与M4重复"
+    },
+    {
+      "name": "M14-王宝强离婚",
+      "gender": "男",
+      "birth": {"year": 1982, "month": 5, "day": 22, "hour": 22},
+      "expected_events": {"2016": "桃花"},
+      "calibration": {"2016": "HIT"},
+      "source": "公开名人",
+      "notes": "壬戌 乙巳 乙巳 丁亥。2016丙申离婚"
+    },
+    {
+      "name": "M15-李玟婚",
+      "gender": "女",
+      "birth": {"year": 1975, "month": 1, "day": 17, "hour": 12},
+      "expected_events": {"2011": "婚嫁"},
+      "calibration": {"2011": "HIT"},
+      "source": "百度百家号",
+      "notes": "乙卯 戊寅 甲辰 癸酉。2011辛卯结婚"
+    },
+    {
+      "name": "M16-伤官克夫女",
+      "gender": "女",
+      "birth": {"year": 1966, "month": 8, "day": 25, "hour": 19},
+      "expected_events": {"1988": "婚嫁", "1992": "桃花"},
+      "calibration": {"1988": "HIT", "1992": "HIT"},
+      "source": "段建业案例",
+      "notes": "丙午 丁酉 甲戌 乙亥。第一任坐牢离婚,第二任胡万林也坐牢。酉戌穿夫宫克夫"
     }
   ],
   "rule_stats": [

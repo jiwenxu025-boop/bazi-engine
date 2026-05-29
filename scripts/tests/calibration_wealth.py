@@ -124,7 +124,10 @@ if __name__ == "__main__":
                                     break
 
                 hit = "HIT" if found and found.get("strength",0) >= 2 else ("WEAK" if found else "MISS")
-                detail = f"{found.get('direction','')} ★{found.get('strength','')} [{', '.join(found.get('triggers',[])[:2])}]" if found else "-"
+                det_mag = found.get("magnitude", "") if found else ""
+                detail = f"{found.get('direction','')} ★{found.get('strength','')} [{det_mag}] " if found else "-"
+                if found:
+                    detail += f"[{', '.join(found.get('triggers',[])[:2])}]"
                 results.append({
                     "case": case["name"], "year": year,
                     "magnitude": case.get("magnitude", "?"),
