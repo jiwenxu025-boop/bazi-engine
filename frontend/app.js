@@ -172,6 +172,9 @@ async function go(){
             }
           } else if (msg.phase === 'personality_error'){
             // 4b. 性格融合失败——显示原因
+            if (!personalityEl){
+              personalityEl = document.querySelector('.personality-text');
+            }
             if (personalityEl){
               personalityEl.innerHTML = '<div class=dayun-error>⚠ 性格分析融合失败：' + (msg.message || '未知错误') + '</div>';
             }
