@@ -1527,7 +1527,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # ═══ ★★ 级别 ═══
 
-    # 岁运并临 (calibration: 2026 徐继文，喜用非凶)
+    # 岁运并临 (calibration: 2026 案例A，喜用非凶)
     if is_suiyun_binglin:
         strength = max(strength, 2)
         triggers.append("岁运并临")
