@@ -747,7 +747,9 @@ def build_chart(
             pass
 
     except Exception as e:
-        chart.warnings.append(f"性格家境分析失败: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        chart.warnings.append(f"性格家境分析失败: {e}\n{tb}")
 
     # ── 13b. 宫位叠象 ──
     try:
