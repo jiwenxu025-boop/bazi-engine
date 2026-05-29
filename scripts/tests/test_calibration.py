@@ -9,19 +9,19 @@ def test_store_loads_known_events():
     """校准数据库应正确加载已知事件"""
     store = CalibrationStore()
 
-    # 案例A
-    ev = store.get_known_events("案例A")
-    assert ev is not None, "案例A case not found"
+    # 徐继文
+    ev = store.get_known_events("徐继文")
+    assert ev is not None, "徐继文 case not found"
     assert ev.get(2023) == "relationship", f"2023 should be relationship: {ev}"
     assert ev.get(2024) == "single", f"2024 should be single: {ev}"
 
-    # 案例B
-    ev2 = store.get_known_events("案例B")
+    # 方飞翔
+    ev2 = store.get_known_events("方飞翔")
     assert ev2 is not None
     assert ev2.get(2022) == "relationship"
 
-    # 案例C
-    ev3 = store.get_known_events("案例C")
+    # 轩潇雅
+    ev3 = store.get_known_events("轩潇雅")
     assert ev3 is not None
 
     print("[PASS] 已知事件加载 — 三案例全部正确")
@@ -46,9 +46,9 @@ def test_list_cases():
     store = CalibrationStore()
     cases = store.list_cases()
     names = [c["name"] for c in cases]
-    assert "案例A" in names
-    assert "案例B" in names
-    assert "案例C" in names
+    assert "徐继文" in names
+    assert "方飞翔" in names
+    assert "轩潇雅" in names
     print("[PASS] 案例列表 — 三案例全部注册")
 
 
@@ -64,7 +64,7 @@ def test_chart_integration():
     """build_chart calibrate=True 应自动加载 known_events"""
     from bazi_engine.chart import build_chart
     chart = build_chart(
-        name="案例A", gender="男",
+        name="徐继文", gender="男",
         year=2007, month=8, day=26, hour=20,
         liunian_range=(2023, 2024),
         calibrate=True,
