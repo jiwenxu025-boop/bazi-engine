@@ -28,6 +28,9 @@ class PersonalityResult:
     stress_profile: dict | None = None  # 抗压画像 (v0.10.0: 三引擎)
     bingyao_combos: list[dict] = field(default_factory=list)  # 病药组合 (v0.11.0)
     weighted_shishen: dict = field(default_factory=dict)      # 加权十神报告 (v0.11.0)
+    sub_traits: list[dict] = field(default_factory=list)      # 十神子特质 (v0.15.0)
+    combo_traits: list[dict] = field(default_factory=list)    # 十神组合特质 (v0.15.0)
+    dizhi_traits: list[dict] = field(default_factory=list)    # 地支关系→性格 (v0.15.0)
 
     def to_dict(self) -> dict:
         return {
@@ -42,6 +45,9 @@ class PersonalityResult:
             "stress_profile": self.stress_profile,
             "bingyao_combos": self.bingyao_combos,
             "weighted_shishen": self.weighted_shishen,
+            "sub_traits": self.sub_traits,
+            "combo_traits": self.combo_traits,
+            "dizhi_traits": self.dizhi_traits,
         }
 
 
@@ -372,6 +378,332 @@ SHISHEN_PERSONALITY = {
              "孤僻固执，自尊过强，与家人关系需用心经营，不善合作"),
     "劫财": ("热诚坦直，坚韧不拔，讲义气，奋斗不屈",
              "盲目冲动，蛮横霸道，好色贪财，惹是生非"),
+}
+
+# ── v0.15.0: 十神粒度性格特质 ──
+# 每个十神拆解为具体行为子特质，含触发阈值（加权分数）
+# 来源：《渊海子平》《滴天髓》《穷通宝鉴》十神性情篇
+SHISHEN_SUB_TRAITS: dict[str, list[dict]] = {
+    "正印": [
+        {"name": "爱读书思考", "description": "有学习习惯，对知识有天然亲近感",
+         "source": "《渊海子平》印绶主学业", "trigger_score": 2.0},
+        {"name": "仁慈包容", "description": "心软有同理心，不易与人计较",
+         "source": "《渊海子平》印绶主慈", "trigger_score": 2.0},
+        {"name": "保守求稳", "description": "喜安定环境，不轻易换赛道",
+         "source": "《渊海子平》印重则保守", "trigger_score": 3.0},
+        {"name": "贵人运", "description": "遇事有人庇护，长辈缘好",
+         "source": "《渊海子平》印绶为庇护之神", "trigger_score": 2.5},
+        {"name": "依赖性强", "description": "习惯有人兜底，独自面对时容易退缩",
+         "source": "《渊海子平》印绶太过则依赖", "trigger_score": 2.0},
+        {"name": "好面子", "description": "在意他人看法，不愿在人前露怯",
+         "source": "《渊海子平》印重则爱惜羽毛", "trigger_score": 2.5},
+    ],
+    "偏印": [
+        {"name": "深度思考", "description": "对事物表层答案不满足，习惯往深挖",
+         "source": "《渊海子平》偏印主偏门学问洞察", "trigger_score": 2.0},
+        {"name": "钻牛角尖", "description": "一个问题不啃透不罢休，容易陷入细节",
+         "source": "《滴天髓》枭神夺食则思虑过度", "trigger_score": 2.5},
+        {"name": "独处需求", "description": "需要大块独处时间充电，嘈杂环境消耗心力",
+         "source": "《渊海子平》偏印孤独善思", "trigger_score": 2.0},
+        {"name": "冷门兴趣", "description": "偏爱小众、偏门、烧脑的事物",
+         "source": "《渊海子平》偏印善偏门冷门", "trigger_score": 2.0},
+        {"name": "直觉洞察", "description": "不靠逻辑推理，直觉能抓到关键",
+         "source": "《滴天髓》印绶得用则直觉敏锐", "trigger_score": 3.0},
+        {"name": "多疑敏感", "description": "对人不容易完全信任，总在观察和判断",
+         "source": "《渊海子平》偏印多疑善防", "trigger_score": 2.0},
+        {"name": "不善表达情感", "description": "心里有但嘴上不说，情感内敛到让人误解冷漠",
+         "source": "《滴天髓》枭神夺食则情不外露", "trigger_score": 2.5},
+    ],
+    "正官": [
+        {"name": "守规矩", "description": "自我约束力强，遵守规则不越界",
+         "source": "《渊海子平》正官主自律", "trigger_score": 2.0},
+        {"name": "重名誉", "description": "在意别人的评价和自身声誉",
+         "source": "《渊海子平》官星重名誉", "trigger_score": 2.0},
+        {"name": "责任感", "description": "答应的事一定做到，不轻易推脱",
+         "source": "《渊海子平》正官有担当", "trigger_score": 2.5},
+        {"name": "心理压力", "description": "对自己要求高，容易给自己加压",
+         "source": "《渊海子平》官重则压力大", "trigger_score": 2.0},
+        {"name": "处事周全", "description": "考虑问题全面细致，做事让人放心",
+         "source": "《渊海子平》正官周全稳重", "trigger_score": 2.5},
+        {"name": "不喜冲突", "description": "回避正面冲突，宁可自己吃亏息事宁人",
+         "source": "《渊海子平》官星以和为贵", "trigger_score": 2.0},
+    ],
+    "偏官": [
+        {"name": "竞争意识", "description": "不服输，有强烈的超越欲",
+         "source": "《渊海子平》七杀主竞争魄力", "trigger_score": 2.0},
+        {"name": "果断勇猛", "description": "做决定不拖泥带水，敢闯敢拼",
+         "source": "《渊海子平》七杀有胆略", "trigger_score": 2.5},
+        {"name": "不服权威", "description": "对长辈/上级不盲从，有反抗意识",
+         "source": "《渊海子平》七杀主叛逆不服管", "trigger_score": 2.0},
+        {"name": "危机嗅觉", "description": "对环境变化敏感，提前感知风险",
+         "source": "《滴天髓》杀为危机之神", "trigger_score": 3.0},
+        {"name": "报复心", "description": "被冒犯后不容易翻篇，会找机会回击",
+         "source": "《渊海子平》七杀记仇报复", "trigger_score": 2.5},
+        {"name": "急躁冲动", "description": "遇事容易上头，等不及慢慢来",
+         "source": "《渊海子平》七杀急躁如火", "trigger_score": 2.0},
+    ],
+    "七杀": [
+        {"name": "竞争意识", "description": "不服输，有强烈的超越欲",
+         "source": "《渊海子平》七杀主竞争魄力", "trigger_score": 2.0},
+        {"name": "果断勇猛", "description": "做决定不拖泥带水，敢闯敢拼",
+         "source": "《渊海子平》七杀有胆略", "trigger_score": 2.5},
+        {"name": "不服权威", "description": "对长辈/上级不盲从，有反抗意识",
+         "source": "《渊海子平》七杀主叛逆不服管", "trigger_score": 2.0},
+        {"name": "危机嗅觉", "description": "对环境变化敏感，提前感知风险",
+         "source": "《滴天髓》杀为危机之神", "trigger_score": 3.0},
+        {"name": "报复心", "description": "被冒犯后不容易翻篇，会找机会回击",
+         "source": "《渊海子平》七杀记仇报复", "trigger_score": 2.5},
+        {"name": "急躁冲动", "description": "遇事容易上头，等不及慢慢来",
+         "source": "《渊海子平》七杀急躁如火", "trigger_score": 2.0},
+    ],
+    "食神": [
+        {"name": "享受生活", "description": "注重生活品质，知道怎么让自己舒服",
+         "source": "《渊海子平》食神主享乐口福", "trigger_score": 2.0},
+        {"name": "温和表达", "description": "说话不刺耳，表达方式让人舒服",
+         "source": "《渊海子平》食神温厚", "trigger_score": 2.5},
+        {"name": "心宽体胖", "description": "心态放松不较劲，不容易焦虑",
+         "source": "《渊海子平》食神心宽", "trigger_score": 2.0},
+        {"name": "博而不精", "description": "兴趣广泛什么都想试试，但容易浅尝辄止",
+         "source": "《渊海子平》食多变通", "trigger_score": 2.0},
+        {"name": "乐观豁达", "description": "天塌下来当被盖，困境中也能找到乐子",
+         "source": "《渊海子平》食神主乐观", "trigger_score": 2.0},
+        {"name": "懒得争执", "description": "觉得吵架浪费时间，宁愿退一步",
+         "source": "《渊海子平》食神不争", "trigger_score": 2.5},
+    ],
+    "伤官": [
+        {"name": "分享表达欲", "description": "想通了必须说出来，憋不住，不吐不快",
+         "source": "《渊海子平》伤官主口才宣泄", "trigger_score": 2.0},
+        {"name": "才华外露", "description": "有才不藏着，喜欢展示自己的能力和成果",
+         "source": "《渊海子平》伤官多才艺傲物", "trigger_score": 2.0},
+        {"name": "反叛性", "description": "不喜欢被管束，反感教条和权威",
+         "source": "《渊海子平》伤官见官为祸百端", "trigger_score": 2.5},
+        {"name": "完美主义", "description": "输出质量要求高，不满意的宁可憋着不发",
+         "source": "《滴天髓》伤官配印则精益求精", "trigger_score": 3.0},
+        {"name": "情绪敏感", "description": "情绪起伏大，容易被他人的话影响",
+         "source": "《渊海子平》伤官情绪多变", "trigger_score": 2.0},
+        {"name": "毒舌犀利", "description": "一针见血，说话不拐弯，有时伤人不自知",
+         "source": "《渊海子平》伤官尖刻锋利", "trigger_score": 2.5},
+        {"name": "审美挑剔", "description": "对美丑好坏有自己强烈的标准，不将就",
+         "source": "《滴天髓》伤官主审美品位", "trigger_score": 2.0},
+    ],
+    "正财": [
+        {"name": "务实节俭", "description": "花钱有计划，不喜欢浪费",
+         "source": "《渊海子平》正财主节俭", "trigger_score": 2.0},
+        {"name": "稳定追求", "description": "喜欢可预期的收入和生活方式",
+         "source": "《渊海子平》正财主稳定", "trigger_score": 2.0},
+        {"name": "家庭观念", "description": "重视家庭关系，对配偶忠诚",
+         "source": "《渊海子平》正财为妻", "trigger_score": 2.5},
+        {"name": "精打细算", "description": "对数字敏感，花钱和存钱都心里有数",
+         "source": "《渊海子平》正财善理财", "trigger_score": 2.0},
+        {"name": "安于现状", "description": "不喜欢冒险，满足于已有的舒适区",
+         "source": "《渊海子平》正财守成", "trigger_score": 2.5},
+    ],
+    "偏财": [
+        {"name": "商业头脑", "description": "对赚钱机会敏感，有投资意识",
+         "source": "《渊海子平》偏财主生意", "trigger_score": 2.0},
+        {"name": "慷慨大方", "description": "对朋友不小气，花钱大方",
+         "source": "《渊海子平》偏财慷慨", "trigger_score": 2.0},
+        {"name": "灵活变通", "description": "不一条道走到黑，善于抓机会",
+         "source": "《渊海子平》偏财投机应变", "trigger_score": 2.5},
+        {"name": "情感丰富", "description": "容易对人产生好感，感情上不太专一",
+         "source": "《滴天髓》偏财多情", "trigger_score": 2.0},
+        {"name": "社交手腕", "description": "会来事，知道怎么让人舒服以达到目的",
+         "source": "《渊海子平》偏财善交际", "trigger_score": 2.5},
+        {"name": "冒险精神", "description": "敢投入敢尝试，不怕亏",
+         "source": "《渊海子平》偏财敢搏", "trigger_score": 2.0},
+    ],
+    "比肩": [
+        {"name": "独立自主", "description": "不依赖他人，自己的事自己扛",
+         "source": "《渊海子平》比肩主自立", "trigger_score": 2.0},
+        {"name": "朋友多", "description": "社交圈活跃，同辈关系紧密",
+         "source": "《渊海子平》比肩为兄弟朋友", "trigger_score": 2.0},
+        {"name": "自我意识强", "description": "有主见不随大流，不容易被说服",
+         "source": "《渊海子平》比肩有主见", "trigger_score": 2.5},
+        {"name": "竞争意识", "description": "身处同辈竞争中，不想落后于人",
+         "source": "《渊海子平》比肩分夺竞争", "trigger_score": 2.0},
+        {"name": "固执己见", "description": "认定的事很难被改变，不听劝",
+         "source": "《渊海子平》比肩执拗", "trigger_score": 2.5},
+        {"name": "重情义", "description": "对兄弟朋友讲感情，有难必帮",
+         "source": "《渊海子平》比肩重义", "trigger_score": 2.0},
+    ],
+    "劫财": [
+        {"name": "讲义气", "description": "对朋友够意思，关键时刻肯出力",
+         "source": "《渊海子平》劫财重义", "trigger_score": 2.0},
+        {"name": "冲动行事", "description": "容易一时上头做决定，事后后悔",
+         "source": "《渊海子平》劫财冲动", "trigger_score": 2.0},
+        {"name": "社交能量", "description": "精力充沛喜欢热闹，朋友聚会少不了",
+         "source": "《渊海子平》劫财活跃", "trigger_score": 2.5},
+        {"name": "争强好胜", "description": "不喜欢被人比下去，暗中和人较劲",
+         "source": "《渊海子平》劫财争胜", "trigger_score": 2.0},
+        {"name": "花钱大手大脚", "description": "钱来得快去得快，对朋友大方自己也留不住",
+         "source": "《渊海子平》劫财破耗", "trigger_score": 2.0},
+        {"name": "护短", "description": "自己人永远是对的，对外护犊子",
+         "source": "《渊海子平》劫财护内", "trigger_score": 2.5},
+    ],
+}
+
+# 十神组合→衍生性格特质
+# 当两个十神同时具备一定强度时，产生新的行为特征
+SHISHEN_COMBINATION_TRAITS: list[dict] = [
+    {
+        "combo": ("偏印", "伤官"),
+        "trait": "深度思考后的表达冲动",
+        "description": "想通了必须说出来——思维深度与表达欲的结合。一个人琢磨得越透，越想找人分享",
+        "source": "偏印主深思+伤官主宣泄，印伤相济则思而后发",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("偏印", "七杀"),
+        "trait": "压力转化为深度钻研",
+        "description": "外部压力不会压垮你，反而激发更深的思考和研究，越难越钻",
+        "source": "七杀施压+偏印化杀，杀印相生则压力成动力",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("偏印", "偏财"),
+        "trait": "冷门领域的商业嗅觉",
+        "description": "能在小众、偏门的领域中发现赚钱机会，不走寻常路",
+        "source": "偏印主冷门+偏财主商机，以冷制胜",
+        "min_each_score": 2.5,
+    },
+    {
+        "combo": ("正官", "伤官"),
+        "trait": "外规矩内反叛",
+        "description": "表面上守规矩不惹事，内心有自己的态度和不服，不会真的顺从",
+        "source": "正官主外守规矩+伤官主内心叛逆，表里不一",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("伤官", "偏财"),
+        "trait": "才华商业变现冲动",
+        "description": "不满足于纯创作，有把才华变成钱的本能驱动",
+        "source": "伤官主才华+偏财主变现，食伤生财",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("七杀", "食神"),
+        "trait": "权威感中的亲和力",
+        "description": "有魄力有气场，但又不让人觉得压迫，能服众",
+        "source": "七杀主威+食神主和，食神制杀则威而不猛",
+        "min_each_score": 2.5,
+    },
+    {
+        "combo": ("比肩", "伤官"),
+        "trait": "强烈的自我表达",
+        "description": "自信地展示自己的想法和个性，不怕别人怎么看",
+        "source": "比肩主自我+伤官主表达，自我表达欲极强",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("正财", "偏印"),
+        "trait": "务实主义与精神追求的矛盾",
+        "description": "一方面追求稳定收入，一方面又对精神世界放不下，内心有两股力量拉扯",
+        "source": "正财主务实+偏印主精神，财破印则内心矛盾",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("劫财", "正财"),
+        "trait": "对金钱的矛盾态度",
+        "description": "时而精打细算，时而冲动花钱，财务上自己跟自己打架",
+        "source": "劫财夺财+正财守财，财来财去",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("正印", "食神"),
+        "trait": "温和的创造力输出",
+        "description": "有学问底蕴的创作表达，不咄咄逼人但言之有物",
+        "source": "正印主学养+食神主创作，印食相济",
+        "min_each_score": 2.5,
+    },
+    {
+        "combo": ("偏印", "比肩"),
+        "trait": "独立思考不合群",
+        "description": "有自己的思维体系，不容易被群体意见裹挟",
+        "source": "偏印主独立思辨+比肩主自我意识",
+        "min_each_score": 2.0,
+    },
+    {
+        "combo": ("伤官", "正印"),
+        "trait": "有学养的锋芒",
+        "description": "有才华有表达欲，但有学问的约束不会乱说话，输出质量高",
+        "source": "伤官配印，伤官主锋芒+正印主收敛，锋芒有度",
+        "min_each_score": 2.5,
+    },
+]
+
+# 地支关系→性格倾向
+# 地支的冲合刑害不仅影响事件，也塑造行为模式
+DIZHI_RELATION_PERSONALITY: dict[str, dict] = {
+    "辰戌_冲": {
+        "trait": "社交与独处的拉扯",
+        "description": "辰为水库主内敛，戌为火库主外放。辰戌相冲→时而渴望人群，时而极度需要独处。社交模式在两极间摆动",
+        "source": "《滴天髓》辰戌冲则库开，开合之间心性不定",
+    },
+    "丑未_冲": {
+        "trait": "内敛与外放的矛盾",
+        "description": "同为土库，一阴一阳相冲→内在积蓄与外在表现不同步，容易给人表里不一的感觉",
+        "source": "丑未皆土，阴冲阳则内外不一",
+    },
+    "子午_冲": {
+        "trait": "理性与感性的拉锯",
+        "description": "子水主冷静理性，午火主热情冲动。子午冲→理性与感性不停打架，决策时容易左右为难",
+        "source": "《滴天髓》子午冲则水火相激，心性难定",
+    },
+    "卯酉_冲": {
+        "trait": "原则与变通的冲突",
+        "description": "卯木主仁爱柔和，酉金主义气刚决。卯酉冲→在坚持原则和随机应变之间反复横跳",
+        "source": "卯酉为门户冲，仁义相冲",
+    },
+    "寅申_冲": {
+        "trait": "驿马好动",
+        "description": "寅申皆为驿马且相冲，天然不安于室，喜欢到处跑，安静不下来",
+        "source": "《渊海子平》寅申冲为驿马冲，心性奔波",
+    },
+    "巳亥_冲": {
+        "trait": "思想与行动的拉扯",
+        "description": "巳火主行动力，亥水主思虑。巳亥冲→想很多但行动跟不上，或者做很多但来不及想",
+        "source": "巳亥皆驿马，火水相激则思行不一",
+    },
+    "辰_自刑": {
+        "trait": "自我要求过高",
+        "description": "辰自刑→对自己有高标准，达不到时容易自责内耗",
+        "source": "辰辰自刑，土重则自我压抑",
+    },
+    "午_自刑": {
+        "trait": "情绪内耗",
+        "description": "午火自刑→热情无处释放时转向攻击自己，情绪消耗大",
+        "source": "午午自刑，火旺则焦灼自伤",
+    },
+    "酉_自刑": {
+        "trait": "完美主义自我折磨",
+        "description": "酉金自刑→对细节的偏执达到自我折磨的地步，不满意就不放过自己",
+        "source": "酉酉自刑，金锐则自伤",
+    },
+    "亥_自刑": {
+        "trait": "思虑过多精神内耗",
+        "description": "亥水自刑→脑子停不下来，反复琢磨同一件事，晚上容易失眠",
+        "source": "亥亥自刑，水旺则思虑泛滥",
+    },
+    "寅巳申_刑": {
+        "trait": "人际关系中的恩仇意识",
+        "description": "寅巳申三刑→恩怨分明，别人对你好记得住，对你不好的更记得住。人际容易走极端",
+        "source": "《渊海子平》寅巳申为无恩之刑",
+    },
+    "子卯_刑": {
+        "trait": "礼节与真性情的矛盾",
+        "description": "子卯相刑→在应该礼貌还是应该真诚之间纠结，容易给人忽冷忽热的感觉",
+        "source": "《渊海子平》子卯为无礼之刑",
+    },
+    "丑戌未_刑": {
+        "trait": "恃势而行的倾向",
+        "description": "丑戌未三刑→有靠山时表现强势，容易因为依靠势力而做出过激行为",
+        "source": "《渊海子平》丑戌未为恃势之刑",
+    },
+    "辰_午_酉_亥_自刑": {
+        "trait": "自我反刍",
+        "description": "命局自刑较多→倾向于反复琢磨自己的行为和选择，容易陷入自我怀疑",
+        "source": "自刑多则内省过度",
+    },
 }
 
 
@@ -1227,6 +1559,186 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     return combos
 
 
+# ── v0.15.0: 粒度性格特质计算函数 ──
+
+def _compute_shishen_sub_traits(weighted_scores: dict[str, float],
+                                min_score: float = 2.0) -> list[dict]:
+    """十神分数达标时激活对应子特质"""
+    results: list[dict] = []
+    for shishen, score in sorted(weighted_scores.items(), key=lambda x: x[1], reverse=True):
+        if score < min_score:
+            continue
+        sub_traits_list = SHISHEN_SUB_TRAITS.get(shishen, [])
+        for st in sub_traits_list:
+            if score >= st["trigger_score"]:
+                results.append({
+                    "shishen": shishen,
+                    "score": round(score, 1),
+                    "trait_name": st["name"],
+                    "description": st["description"],
+                    "source": st["source"],
+                })
+    return results
+
+
+def _compute_shishen_combo_traits(weighted_scores: dict[str, float]) -> list[dict]:
+    """十神配对均达标时激活组合特质"""
+    results: list[dict] = []
+    for entry in SHISHEN_COMBINATION_TRAITS:
+        combo = entry["combo"]
+        threshold = entry["min_each_score"]
+        all_met = True
+        combo_scores = {}
+        for shishen in combo:
+            s = weighted_scores.get(shishen, 0)
+            combo_scores[shishen] = round(s, 1)
+            if s < threshold:
+                all_met = False
+                break
+        if all_met:
+            results.append({
+                "combo": " + ".join(combo),
+                "trait": entry["trait"],
+                "description": entry["description"],
+                "source": entry["source"],
+                "scores": combo_scores,
+            })
+    return results
+
+
+def _compute_dizhi_traits(interactions: dict,
+                          pillars_data: list[dict] | None = None) -> list[dict]:
+    """从地支关系提取性格倾向"""
+    results: list[dict] = []
+    dizhi_list = interactions.get("dizhi", []) if interactions else []
+
+    # 收集命局所有地支
+    all_branches = set()
+    if pillars_data:
+        for p in pillars_data:
+            b = p.get("branch", "")
+            if b:
+                all_branches.add(b)
+
+    for item in dizhi_list:
+        rel_type = item.get("type", "")
+        branches = item.get("branches", [])
+        if isinstance(branches, list):
+            branch_str = "".join(branches)
+        else:
+            branch_str = str(branches)
+
+        # 六冲
+        if rel_type == "六冲":
+            key = f"{branch_str}_冲"
+            d = DIZHI_RELATION_PERSONALITY.get(key)
+            if not d:
+                # try checking specific combos
+                for k in ["辰戌_冲", "丑未_冲", "子午_冲", "卯酉_冲", "寅申_冲", "巳亥_冲"]:
+                    if all(b in branch_str for b in k.split("_")[0]):
+                        d = DIZHI_RELATION_PERSONALITY.get(k)
+                        break
+            if d:
+                results.append({
+                    "relation": f"{branch_str}六冲",
+                    "trait": d["trait"],
+                    "description": d["description"],
+                    "source": d["source"],
+                    "involved_pillars": item.get("pillars", []),
+                })
+
+        # 自刑
+        if rel_type == "自刑":
+            branches_list = item.get("branches", [])
+            if isinstance(branches_list, list) and branches_list:
+                b = branches_list[0]
+                key = f"{b}_自刑"
+                d = DIZHI_RELATION_PERSONALITY.get(key)
+                if d:
+                    results.append({
+                        "relation": f"{b}自刑",
+                        "trait": d["trait"],
+                        "description": d["description"],
+                        "source": d["source"],
+                        "involved_pillars": item.get("pillars", []),
+                    })
+
+        # 三刑
+        if rel_type in ("三刑", "相刑"):
+            branches_sorted = sorted(item.get("branches", []))
+            key = "_".join(branches_sorted) + "_刑"
+            d = DIZHI_RELATION_PERSONALITY.get(key)
+            if d:
+                results.append({
+                    "relation": f"{''.join(branches_sorted)}相刑",
+                    "trait": d["trait"],
+                    "description": d["description"],
+                    "source": d["source"],
+                    "involved_pillars": item.get("pillars", []),
+                })
+
+    # 命局自刑统计（>1个自刑时触发）
+    total_self_punish = sum(1 for b in all_branches if b in ("辰", "午", "酉", "亥"))
+    if total_self_punish >= 2:
+        d = DIZHI_RELATION_PERSONALITY.get("辰_午_酉_亥_自刑")
+        if d:
+            already = any(r["trait"] == d["trait"] for r in results)
+            if not already:
+                results.append({
+                    "relation": "多自刑",
+                    "trait": d["trait"],
+                    "description": d["description"],
+                    "source": d["source"],
+                    "involved_pillars": [],
+                })
+
+    return results
+
+
+def _compute_hidden_stem_personality(pillars_data: list[dict]) -> list[dict]:
+    """四柱藏干十神→性格特质
+
+    每个地支的藏干都是性格拼图的一部分：
+    - 年支藏干 → 家族底色、童年形成的性格倾向
+    - 月支藏干 → 父母影响、青年期形成的思维模式
+    - 日支藏干 → 核心自我、婚姻观（内在性格的底层驱动力）
+    - 时支藏干 → 晚年倾向、对子女的态度、深层追求
+
+    阈值比十神加权低 0.5——藏干是隐性力量，不需要全局強勢就能影响性格。"""
+    pillar_labels = {"年柱": "年支", "月柱": "月支", "日柱": "日支", "时柱": "时支"}
+    results: list[dict] = []
+
+    for p in pillars_data:
+        pillar_type = p.get("pillar_type", "")
+        branch = p.get("branch", "")
+        pillar_tag = pillar_labels.get(pillar_type, pillar_type)
+        hidden_ten_gods = p.get("hidden_ten_gods", [])
+        hidden_stems = p.get("hidden_stems", [])
+
+        for i, tg_name in enumerate(hidden_ten_gods):
+            hs_entry = hidden_stems[i] if i < len(hidden_stems) else {}
+            hs_stem = hs_entry.get("stem", "") if isinstance(hs_entry, dict) else str(hs_entry)
+            depth = "本气" if i == 0 else ("中气" if i == 1 else "余气")
+            sub_traits_list = SHISHEN_SUB_TRAITS.get(tg_name, [])
+
+            depth_score = 2.5 if depth == "本气" else (2.0 if depth == "中气" else 1.5)
+
+            for st in sub_traits_list:
+                adjusted_trigger = max(1.0, st["trigger_score"] - 0.5)
+                if depth_score >= adjusted_trigger:
+                    results.append({
+                        "source_type": f"{pillar_tag}{branch}藏{hs_stem}{tg_name}({depth})",
+                        "pillar_type": pillar_type,
+                        "shishen": tg_name,
+                        "trait_name": st["name"],
+                        "description": st["description"],
+                        "source": st["source"],
+                        "depth": depth,
+                    })
+
+    return results
+
+
 def analyze_personality(
     day_master_stem: str,
     day_master_wuxing: str,
@@ -1302,6 +1814,16 @@ def analyze_personality(
         pillars_data, interactions, gender,
         harmful_shishen, pattern,
     )
+
+    # ── Step 5b: 粒度性格特质 (v0.15.0) ──
+    result.sub_traits = _compute_shishen_sub_traits(w_report["scores"])
+    result.combo_traits = _compute_shishen_combo_traits(w_report["scores"])
+    result.dizhi_traits = _compute_dizhi_traits(interactions, pillars_data)
+
+    # 四柱藏干→人格特质
+    hidden_all = _compute_hidden_stem_personality(pillars_data)
+    if hidden_all:
+        result.sub_traits.extend(hidden_all)
 
     # ── Step 6: 分领域性格（加权分数驱动，6维度）──
 

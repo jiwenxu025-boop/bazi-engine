@@ -51,6 +51,50 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
         strength = chart._yongshen_result.get("strength", "中和") if chart._yongshen_result else "中和"
         p(f"  ● 命主：{chart.day_master.value}（{yy}{day_wx}），体质偏{strength}")
         p(f"  ● 性格底色：{_plain_day_master(chart.day_master)}")
+
+        # v0.15.0: 粒度性格特质
+        pr = chart.personality_result or {}
+        sub_traits = pr.get("sub_traits", [])
+        combo_traits = pr.get("combo_traits", [])
+        dizhi_traits = pr.get("dizhi_traits", [])
+        all_personality = sub_traits + combo_traits + dizhi_traits
+        if all_personality:
+            p("  ● 性格细节：")
+            shown = 0
+            shown_names = set()
+            # 日支藏干特质优先（底层性格驱动力）
+            for st in sub_traits:
+                if shown >= 12:
+                    break
+                if st.get("source_type") and st.get("trait_name", "") not in shown_names:
+                    src_tag = f" ({st.get('source_type', '')})"
+                    p(f"    ·{st.get('trait_name', '')}：{st.get('description', '')}{src_tag}")
+                    shown_names.add(st.get("trait_name", ""))
+                    shown += 1
+            # 然后十神加权子特质（去重）
+            for st in sub_traits:
+                if shown >= 12:
+                    break
+                if not st.get("source_type") and st.get("trait_name", "") not in shown_names:
+                    p(f"    ·{st.get('trait_name', '')}：{st.get('description', '')}")
+                    shown_names.add(st.get("trait_name", ""))
+                    shown += 1
+            # 组合特质
+            for ct in combo_traits[:4]:
+                if shown >= 12:
+                    break
+                if ct.get("trait", "") not in shown_names:
+                    p(f"    ·{ct.get('trait', '')}：{ct.get('description', '')}")
+                    shown_names.add(ct.get("trait", ""))
+                    shown += 1
+            # 地支特质
+            for dt in dizhi_traits[:4]:
+                if shown >= 12:
+                    break
+                if dt.get("trait", "") not in shown_names:
+                    p(f"    ·{dt.get('trait', '')}：{dt.get('description', '')}")
+                    shown_names.add(dt.get("trait", ""))
+                    shown += 1
         p("")
 
         # 格局白话
@@ -295,6 +339,38 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
                 for cs in jue_states:
                     p(f"      ⚡ {cs.pillar_label}{cs.branch.value} 绝处逢生 —— {cs.interpretation}")
             p("")
+
+    # v0.15.0: 粒度性格特质（技术模式完整输出）
+    pr_full = chart.personality_result or {}
+    sub_traits_full = pr_full.get("sub_traits", [])
+    combo_traits_full = pr_full.get("combo_traits", [])
+    dizhi_traits_full = pr_full.get("dizhi_traits", [])
+    if sub_traits_full or combo_traits_full or dizhi_traits_full:
+        p("  ──────────────────────────────────────────────────")
+        p("  粒度性格特质：")
+        if sub_traits_full:
+            p("    [十神子特质]")
+            for st in sub_traits_full:
+                src_type = st.get("source_type", "")
+                if src_type:
+                    # 日支藏干源：显示来源
+                    p(f"      ·{st.get('trait_name', '')}：{st.get('description', '')}  ← {src_type}")
+                elif st.get("score"):
+                    # 十神加权源：显示分数
+                    p(f"      ·{st.get('trait_name', '')}：{st.get('description', '')}  ({st.get('score', '')}分)")
+                else:
+                    p(f"      ·{st.get('trait_name', '')}：{st.get('description', '')}")
+        if combo_traits_full:
+            p("    [十神组合特质]")
+            for ct in combo_traits_full:
+                p(f"      ·{ct.get('trait', '')}：{ct.get('description', '')}  [{ct.get('combo', '')}]")
+        if dizhi_traits_full:
+            p("    [地支关系→性格]")
+            for dt in dizhi_traits_full:
+                pillars = dt.get("involved_pillars", [])
+                pillar_tag = f" ({', '.join(pillars)})" if pillars else ""
+                p(f"      ·{dt.get('trait', '')}：{dt.get('description', '')}  ← {dt.get('relation', '')}{pillar_tag}")
+        p("")
 
     # 警告（两种模式都显示）
     if chart.warnings:
