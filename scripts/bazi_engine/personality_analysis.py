@@ -22,7 +22,8 @@ class PersonalityResult:
     dominant_ten_god: str = ""          # 最旺十神及其影响
     pattern_influence: str = ""         # 格局对性格的影响
     special_combos: list[str] = field(default_factory=list)  # 特殊组合
-    traits: dict = field(default_factory=dict)  # {领域: 描述}
+    traits: dict = field(default_factory=dict)  # {领域: 简短描述}（前端回退用）
+    trait_signals: dict = field(default_factory=dict)  # {领域: {信号名: 数值}}（LLM融合用）
     profile: str = ""                   # 综合性格画像
     stress_profile: dict | None = None  # 抗压画像 (v0.10.0: 三引擎)
     bingyao_combos: list[dict] = field(default_factory=list)  # 病药组合 (v0.11.0)
@@ -36,6 +37,7 @@ class PersonalityResult:
             "pattern_influence": self.pattern_influence,
             "special_combos": self.special_combos,
             "traits": self.traits,
+            "trait_signals": self.trait_signals,
             "profile": self.profile,
             "stress_profile": self.stress_profile,
             "bingyao_combos": self.bingyao_combos,
@@ -1349,151 +1351,80 @@ def analyze_personality(
     # 检查是否存在官杀混杂标签（病药检测已判断）
     has_guansha_hunza = any("官杀混杂" == c["combo"] for c in result.bingyao_combos)
 
-    # ── 社交 ──
-    # 信号: 食伤(表达欲) + 比劫(群体融入) - 印星(内敛) - 官杀(拘谨)
+    # ═══════════════════════════════════════════════════════════
+    # 六维度信号：生成结构化数据供 LLM 融合，同时保留简短摘要供前端回退
+    # ═══════════════════════════════════════════════════════════
+
+    # ── 社交：食伤(表达欲) + 比劫(群体融入) - 印星(内敛) - 官杀(拘谨) ──
     social_extra = shishang_s * 0.6 + bijie_s * 0.4 - yin_s * 0.5 - guan_s * 0.2
     if is_strong:
         social_extra += 1.0
     elif is_weak:
         social_extra -= 1.0
+    social_label = "外向" if social_extra >= 1 else ("平衡" if social_extra >= -2 else "内敛")
+    result.trait_signals["社交"] = {
+        "表达欲": round(shishang_s, 1),
+        "群体融入": round(bijie_s, 1),
+        "内敛度": round(yin_s, 1),
+        "拘谨度": round(guan_s, 1),
+        "身强弱修正": "身强+1" if is_strong else ("身弱-1" if is_weak else "中和±0"),
+        "综合倾向": social_label,
+        "综合分数": round(social_extra, 1),
+    }
+    result.traits["社交"] = f"表达欲{shishang_s:.0f}/融入{bijie_s:.0f}/内敛{yin_s:.0f}/拘谨{guan_s:.0f}→{social_label}"
 
-    if social_extra >= 4:
-        result.traits["社交"] = (
-            f"外向主动。食伤(表达欲{shishang_s:.0f})驱动，在人群中如鱼得水，"
-            f"善于活跃气氛，社交是充电而非消耗。"
-        )
-    elif social_extra >= 1:
-        result.traits["社交"] = (
-            f"选择性社交。大场合能应付但不享受，熟人圈子里放得开。"
-            f"食伤{shishang_s:.0f}+印星{yin_s:.0f}→ 表达欲有但需要安全感才释放。"
-        )
-    elif social_extra >= -2:
-        result.traits["社交"] = (
-            f"慢热型。不擅长跟谁都能聊，但在信任的小圈子里真诚放松。"
-            f"印星{yin_s:.0f}主导→ 需要先观察再参与，不是不合群，是慢热。"
-        )
-    else:
-        result.traits["社交"] = (
-            f"内敛独立。印星(内敛{yin_s:.0f})压倒食伤(表达{shishang_s:.0f})，"
-            f"社交消耗能量，独处才能恢复。深交少但持久，不追求交际广度。"
-        )
+    # ── 感情：官杀(责任) + 财星(欲望) + 日支状态 + 桃花 ──
+    day_hidden = pillars_data[2].get("hidden_ten_gods", []) if len(pillars_data) > 2 else []
+    fq_state = "冲" if day_branch_chong else ("合" if day_branch_he else "平稳")
+    result.trait_signals["感情"] = {
+        "责任感_官杀": round(guan_s, 1),
+        "欲望_财星": round(cai_s, 1),
+        "夫妻宫状态": fq_state,
+        "桃花坐日支": has_taohua_rizhi,
+        "日支藏干": day_hidden[:3],
+        "身强弱": "强" if is_strong else ("弱" if is_weak else "中和"),
+    }
+    result.traits["感情"] = f"责任{guan_s:.0f}/欲望{cai_s:.0f} 夫妻宫{fq_state}{' 桃花日支' if has_taohua_rizhi else ''}"
 
-    # ── 感情 ──
-    # 信号: 官杀(责任感/压力) + 财星(欲望/依附) + 日支状态 + 桃花
-    if day_branch_chong:
-        result.traits["感情"] = (
-            f"夫妻宫被冲+官杀{guan_s:.0f}→ 感情波动大，容易在关系中感到不安。"
-            f"需经历磨合才能稳定，晚婚倾向明显——不是找不到，是没准备好。"
-        )
-    elif day_branch_he:
-        result.traits["感情"] = (
-            f"夫妻宫被合+官杀{guan_s:.0f}→ 配偶缘好，但也容易受外界/第三人影响。"
-            f"感情中需要清晰的边界感，否则容易出现复杂的三角关系。"
-        )
-    elif cai_s >= 6.0 and guan_s >= 4.0:
-        result.traits["感情"] = (
-            f"财星(欲望{cai_s:.0f})+官杀(责任{guan_s:.0f})双旺→ 感情需求强烈且认真，"
-            f"一旦投入就全力以赴。但也容易因期待过高而失望，需学会降低对伴侣的完美主义标准。"
-        )
-    elif guan_s >= 5.0:
-        result.traits["感情"] = (
-            f"官杀旺({guan_s:.0f})→ 在感情中偏传统，重责任和承诺。"
-            f"{'身强，敢主动追求' if is_strong else '身偏弱，容易在关系中感到压力，需要对方给足安全感'}"
-        )
-    elif cai_s >= 5.0:
-        result.traits["感情"] = (
-            f"财星旺({cai_s:.0f})→ 感情中重视实际付出和物质基础，浪漫体现在行动而非言语。"
-            f"对伴侣大方，但也要注意关系不是交易。"
-        )
-    elif has_taohua_rizhi:
-        result.traits["感情"] = (
-            f"桃花坐日支→ 异性缘好，容易吸引关注，感情经历可能较丰富。"
-            f"需学会分辨一时心动和长期合适。"
-        )
-    else:
-        day_hidden = pillars_data[2].get("hidden_ten_gods", []) if len(pillars_data) > 2 else []
-        hidden_str = "、".join(day_hidden[:2]) if day_hidden else "清纯"
-        result.traits["感情"] = (
-            f"夫妻宫藏{hidden_str}→ 感情模式平稳，不极端的类型。"
-            f"需流年桃花引动才出现明显感情事件，平常比较随缘。"
-        )
-
-    # ── 决策 ──
-    # 信号: 七杀(果断/冲动) + 印星(分析/拖延) - 食伤(直觉/跳脱)
+    # ── 决策：七杀(果断) + 印星(分析) + 食伤(直觉) ──
     decide_risk = qi_sha_s * 0.7 + (shishang_s if shang_guan_s > shi_shen_s else shi_shen_s * 0.3) - yin_s * 0.6
     if is_strong:
         decide_risk += 0.5
     elif is_weak:
         decide_risk -= 0.5
+    decide_label = "果断激进" if decide_risk >= 4 else ("分析后决策" if decide_risk >= 1 else ("审慎" if decide_risk >= -2 else "过度分析"))
+    result.trait_signals["决策"] = {
+        "果断度_七杀": round(qi_sha_s, 1),
+        "分析度_印星": round(yin_s, 1),
+        "直觉度_食伤": round(shishang_s, 1),
+        "伤官倾向": round(shang_guan_s, 1),
+        "食神倾向": round(shi_shen_s, 1),
+        "综合倾向": decide_label,
+        "综合分数": round(decide_risk, 1),
+    }
+    result.traits["决策"] = f"果断{qi_sha_s:.0f}/分析{yin_s:.0f}/直觉{shishang_s:.0f}→{decide_label}"
 
-    if decide_risk >= 4:
-        result.traits["决策"] = (
-            f"果断激进型。七杀(敢冲{qi_sha_s:.0f})压制印星(犹豫{yin_s:.0f})，"
-            f"大事不拖，但偶尔冲动——做了再说的类型。"
-        )
-    elif decide_risk >= 1:
-        result.traits["决策"] = (
-            f"分析后决策型。印星(思考{yin_s:.0f})和七杀(果断{qi_sha_s:.0f})平衡，"
-            f"收集足够信息后能快速拍板。不是犹豫，是不打无准备之仗。"
-        )
-    elif decide_risk >= -2:
-        result.traits["决策"] = (
-            f"审慎型。印星(反复确认{yin_s:.0f})偏重，决策前需要反复权衡。"
-            f"但一旦决定了就不会轻易改——慢决策，稳执行。"
-        )
-    else:
-        result.traits["决策"] = (
-            f"分析型拖延。印星(过度思考{yin_s:.0f})碾压行动力，"
-            f"每个细节都想通了才敢动。不是犹豫——是确定性的阈值太高了。"
-        )
-
-    # ── 内心 ──
-    # 信号: 偏印(疏离/精神世界) + 食神(自洽/快乐) + 华盖 + 比劫(自我意识)
+    # ── 内心：偏印(精神世界) + 食神(自洽) + 华盖 + 比劫(自我意识) ──
     inner_complex = pian_yin_s * 0.8 + (1 if has_huagai else 0) * 2.0 - shi_shen_s * 0.4
     inner_self = bijie_s * 0.5
-
-    if inner_complex >= 5:
-        result.traits["内心"] = (
-            f"精神世界丰富但疏离。偏印(内省{ pian_yin_s:.0f})过旺{' + 华盖' if has_huagai else ''}→ "
-            f"外表自如合群，内心有一套完整的独立体系。思维深度远超同龄人，"
-            f"但也容易感到'没人真正理解我'。"
-        )
-    elif has_huagai:
-        result.traits["内心"] = (
-            f"华盖入命→ 有独立的精神追求，喜欢钻研感兴趣的事，不介意独处。"
-            f"对玄学/哲学/深度思考有天然亲近感。"
-        )
-    elif inner_complex >= 2:
-        result.traits["内心"] = (
-            f"偏好深度思考，内心世界有自己的逻辑体系。"
-            f"偏印{ pian_yin_s:.0f}+食神{shi_shen_s:.0f}→ 既能享受独处，也能在创造中找到快乐。"
-        )
-    elif cai_po_yin_flag:
-        result.traits["内心"] = (
-            f"财破印→ 内心在'想要'和'该要'之间不断拉扯。"
-            f"明知该深耕耘，但短期反馈太诱人——不是没定力，是内部分裂。"
-        )
-    elif inner_self >= 4:
-        result.traits["内心"] = (
-            f"自我意识强(比劫{ bijie_s:.0f})，内心不易被他人动摇。"
-            f"知道自己要什么，不轻易被带节奏。"
-        )
-    elif "印" in pattern:
-        result.traits["内心"] = (
-            f"印星为格→ 内心安稳，重视精神积累，有自己的底层价值观做支撑。"
-        )
-    else:
-        is_yang = day_master_yinyang == "阳"
-        result.traits["内心"] = (
-            f"日干{day_master_stem}（{'阳' if is_yang else '阴'}干）→ "
-            + ("内心与外表较一致，偏直率。" if is_yang
-               else "外表温和内有主见，不轻易表达真实想法。")
-        )
+    inner_flags = []
+    if has_huagai:
+        inner_flags.append("华盖")
+    if cai_po_yin_flag:
+        inner_flags.append("财破印")
+    inner_style = "印格安稳" if "印" in pattern else (f"{'阳' if day_master_yinyang == '阳' else '阴'}干{'直率' if day_master_yinyang == '阳' else '内敛'}")
+    result.trait_signals["内心"] = {
+        "精神世界_偏印": round(pian_yin_s, 1),
+        "自洽度_食神": round(shi_shen_s, 1),
+        "自我意识_比劫": round(bijie_s, 1),
+        "特殊标记": inner_flags,
+        "内在复杂度": round(inner_complex, 1),
+        "自我强度": round(inner_self, 1),
+        "基础风格": inner_style,
+    }
+    result.traits["内心"] = f"精神{pian_yin_s:.0f}/自洽{shi_shen_s:.0f}/自我{bijie_s:.0f} {'+'.join(inner_flags) if inner_flags else inner_style}"
 
     # ── 事业 ──
-    # 信号: 格局 + 加权十神分布，输出最适配的赛道描述
-    career_parts = []
-    # 按十神强度给事业方向打分
     career_scores = {
         "体制/管理": guan_s * 0.8 + yin_s * 0.4,
         "商业/经营": cai_s * 0.8 + shishang_s * 0.3,
@@ -1503,56 +1434,38 @@ def analyze_personality(
     }
     top_career = sorted(career_scores.items(), key=lambda x: x[1], reverse=True)
     primary, secondary = top_career[0], top_career[1]
-
-    if primary[1] - secondary[1] > 2.0:
-        result.traits["事业"] = (
-            f"方向明确：{primary[0]}型。{primary[0]}驱动力({primary[1]:.1f})远超次位{secondary[0]}({secondary[1]:.1f})，"
-            f"不推荐{secondary[0]}路线。格局{pattern}也指向同一方向。"
-        )
+    career_gap = primary[1] - secondary[1]
+    result.trait_signals["事业"] = {
+        "体制_管理": round(career_scores["体制/管理"], 1),
+        "商业_经营": round(career_scores["商业/经营"], 1),
+        "技术_创意": round(career_scores["技术/创意"], 1),
+        "学术_专业": round(career_scores["学术/专业"], 1),
+        "创业_独立": round(career_scores["创业/独立"], 1),
+        "主导方向": primary[0],
+        "次要方向": secondary[0],
+        "方向差距": round(career_gap, 1),
+        "格局": pattern,
+    }
+    if career_gap > 2.0:
+        result.traits["事业"] = f"{primary[0]}型({primary[1]:.1f}) 远超{secondary[0]}({secondary[1]:.1f})"
     else:
-        result.traits["事业"] = (
-            f"混合型：{primary[0]}({primary[1]:.1f})+{secondary[0]}({secondary[1]:.1f})双驱。"
-            f"适合{primary[0]}为主、{secondary[0]}为辅的交叉赛道，而非纯单一方向。"
-        )
+        result.traits["事业"] = f"{primary[0]}({primary[1]:.1f})+{secondary[0]}({secondary[1]:.1f}) 混合型"
 
-    # ── 财富观 ──
-    # 信号: 财星(欲望/获取) + 比劫(散财/分享) + 印星(保守/储蓄) + 食伤(创造力变现)
-    if cai_s >= 6.0 and is_strong:
-        result.traits["财富观"] = (
-            f"财星旺({cai_s:.0f})+身强→ 有赚钱头脑，钱能生钱，不守死工资。"
-            f"对机会敏感，但也需注意{'比劫散财' if bijie_s >= 4 else '分散投资风险'}。"
-        )
-    elif cai_s >= 6.0 and not is_strong:
-        result.traits["财富观"] = (
-            f"财星旺({cai_s:.0f})+身弱→ 想赚钱但精力撑不起野心。"
-            f"机会多但抓不住，容易陷入'看着钱从眼前飘过'的焦虑。"
-            f"先补身——增加印星护体(专业壁垒/团队)，再求财。"
-        )
-    elif bijie_s >= 6.0 and cai_s < 3.0:
-        result.traits["财富观"] = (
-            f"比劫旺({ bijie_s:.0f})+财弱→ 钱财易散，不适合合伙或借钱给朋友。"
-            f"赚钱方式应走差异化路线——做别人做不了的事，而不是跟人抢同一块蛋糕。"
-        )
-    elif cai_po_yin_flag:
-        result.traits["财富观"] = (
-            f"财破印→ 容易为了短期利益放弃长期积累。"
-            f"不是贪财，是等不了长期回报——需把大目标拆成短期可交付的里程碑。"
-        )
-    elif shishang_s >= 6.0 and cai_s < 3.0:
-        result.traits["财富观"] = (
-            f"食伤旺({shishang_s:.0f})+财弱→ 才华是最大的资产，变现靠创造力而非资本。"
-            f"适合靠技术/内容/创意赚钱，而不是靠投资或经营。"
-        )
-    elif cai_s < 2.0:
-        result.traits["财富观"] = (
-            f"财星不显→ 对钱不执着，够用就行。更看重工作意义和人生体验，"
-            f"物质欲望不高，但也要注意基本的财务规划。"
-        )
-    else:
-        result.traits["财富观"] = (
-            f"财星适中({cai_s:.0f})→ 对钱有正常欲望但不极端。"
-            f"{'身强，能守能赚' if is_strong else '需优先增强自身实力，钱自然跟来'}。"
-        )
+    # ── 财富观：财星(欲望) + 比劫(散财) + 食伤(创造力变现) ──
+    wealth_flags = []
+    if cai_po_yin_flag:
+        wealth_flags.append("财破印→短期诱惑冲击长期积累")
+    if cai_s >= 6.0 and not is_strong:
+        wealth_flags.append("财旺身弱→机会多但精力撑不起野心")
+    result.trait_signals["财富观"] = {
+        "欲望_财星": round(cai_s, 1),
+        "散财_比劫": round(bijie_s, 1),
+        "创造力变现_食伤": round(shishang_s, 1),
+        "储蓄保守_印星": round(yin_s, 1),
+        "身强弱": "强" if is_strong else ("弱" if is_weak else "中和"),
+        "特殊标记": wealth_flags,
+    }
+    result.traits["财富观"] = f"欲望{cai_s:.0f}/散财{bijie_s:.0f}/创造力{shishang_s:.0f}/储蓄{yin_s:.0f} {'⚠'+' '.join(wealth_flags) if wealth_flags else ''}"
 
     # ── 综合画像 ──
     parts = [f"日主{day_master_stem}（{day_master_wuxing}·{day_master_yinyang}），身{strength}，{pattern}。"]

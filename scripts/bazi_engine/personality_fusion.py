@@ -58,9 +58,11 @@ FUSION_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的
 # 数据使用
 - [全局主要矛盾]是全盘最高指令，所有板块要跟它一致
 - [当前人生阶段]决定建议范围：中学生说学业，大学生说专业/实习，职场人说职业
+- [六维度信号] 是结构化数值，不是描述文字。你需要自己解读这些数字之间的关系和矛盾，写出具体的性格表现。数值含义：0=极弱 3=偏弱 5=中等 7=偏强 10=极强。注意矛盾组合（如表达欲高+内敛度高=需要安全感才释放的表达者）
 - 表面矛盾要融合（如又爱学术又想搞钱→"知识付费赛道比纯学术更适合你"）
 - 古代概念做现代翻译：参考[古今差异提示]
 - 禁止古代职业建议、古代婚恋观、古代健康判词"""
+<｜｜DSML｜｜parameter name="replace_all" string="false">false
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -188,16 +190,28 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         if heju:
             package["合局化神"] = heju
 
-    # ── 六维度原始信号（只传结构性数据，LLM从零写描述）──
-    area_traits = pr_dict.get("traits", {})
-    package["六维度信号"] = {
-        "社交": _clean_ancient_refs(area_traits.get("社交", "")),
-        "感情": _clean_ancient_refs(area_traits.get("感情", "")),
-        "内心": _clean_ancient_refs(area_traits.get("内心", "")),
-        "决策": _clean_ancient_refs(area_traits.get("决策", "")),
-        "事业": _clean_ancient_refs(area_traits.get("事业", "")),
-        "财富观": _clean_ancient_refs(area_traits.get("财富观", "")),
-    }
+    # ── 六维度结构化信号（LLM从零写描述，自由解释数值）──
+    trait_signals = pr_dict.get("trait_signals", {})
+    if trait_signals:
+        package["六维度信号"] = {
+            "社交": trait_signals.get("社交", {}),
+            "感情": trait_signals.get("感情", {}),
+            "内心": trait_signals.get("内心", {}),
+            "决策": trait_signals.get("决策", {}),
+            "事业": trait_signals.get("事业", {}),
+            "财富观": trait_signals.get("财富观", {}),
+        }
+    else:
+        # 回退：旧版 traits 文本（向后兼容）
+        area_traits = pr_dict.get("traits", {})
+        package["六维度信号"] = {
+            "社交": _clean_ancient_refs(area_traits.get("社交", "")),
+            "感情": _clean_ancient_refs(area_traits.get("感情", "")),
+            "内心": _clean_ancient_refs(area_traits.get("内心", "")),
+            "决策": _clean_ancient_refs(area_traits.get("决策", "")),
+            "事业": _clean_ancient_refs(area_traits.get("事业", "")),
+            "财富观": _clean_ancient_refs(area_traits.get("财富观", "")),
+        }
 
     # ── 家境信息（如有）──
     if family_dict:
