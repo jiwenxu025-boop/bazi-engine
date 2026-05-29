@@ -167,6 +167,11 @@ async function go(){
             if (personalityEl && msg.full){
               personalityEl.innerHTML = md2html(msg.full);
             }
+          } else if (msg.phase === 'personality_error'){
+            // 4b. 性格融合失败——显示原因
+            if (personalityEl){
+              personalityEl.innerHTML = '<div class=dayun-error>⚠ 性格分析融合失败：' + (msg.message || '未知错误') + '</div>';
+            }
           } else if (msg.phase === 'dayun_done'){
             // 5. 大运解读完成——更新DOM
             if (msg.interpretations && msg.interpretations.length){

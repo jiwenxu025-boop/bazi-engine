@@ -21,7 +21,7 @@ import httpx
 # ── API 配置 ──
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 FUSION_ENABLED = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
 
 # ═══════════════════════════════════════════════════════════════

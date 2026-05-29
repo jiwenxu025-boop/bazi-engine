@@ -253,9 +253,9 @@ async def chart_stream(
                                 full = generate_fusion_report(pkg, on_chunk=on_token)
                                 loop.call_soon_threadsafe(
                                     fusion_queue.put_nowait, ("fusion_done", full or ""))
-                            except Exception:
+                            except Exception as e:
                                 loop.call_soon_threadsafe(
-                                    fusion_queue.put_nowait, ("fusion_done", ""))
+                                    fusion_queue.put_nowait, ("fusion_error", str(e)))
 
                         fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                         loop.run_in_executor(fusion_ex, run_fusion)
@@ -269,8 +269,12 @@ async def chart_stream(
                                     yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd})}\n\n"
                                 fusion_ex.shutdown(wait=False)
                                 break
-                    except Exception:
-                        pass
+                            elif ft == "fusion_error":
+                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
+                                fusion_ex.shutdown(wait=False)
+                                break
+                    except Exception as e:
+                        yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合引擎异常: {e}'})}\n\n"
 
                 # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
                 chart = chart_obj_ref[0] if chart_obj_ref else None
