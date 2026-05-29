@@ -162,6 +162,9 @@ async function go(){
               // 流式期间用textContent（快），完成后才转HTML
               personalityEl.textContent = personalityText + '|';
             }
+          } else if (msg.phase === 'fusion_status'){
+            // 诊断：融合引擎状态
+            console.log('[bazi] fusion_status:', msg.message);
           } else if (msg.phase === 'personality_done'){
             // 4. 性格报告完成——一次性转markdown
             if (personalityEl && msg.full){

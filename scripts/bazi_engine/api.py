@@ -217,6 +217,7 @@ async def chart_stream(
                 # 3. 性格融合报告逐token流式输出
                 fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
                 fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
+                yield f"data: {json.dumps({'phase': 'fusion_status', 'message': f'开关={fusion_enabled} key={bool(fusion_key)} 数据={bool(chart_data.get(\"personality\"))} 模型={os.getenv(\"DEEPSEEK_MODEL\", \"deepseek-v4-flash\")}'})}\n\n"
                 if fusion_enabled and fusion_key and chart_data.get("personality"):
                     try:
                         from .personality_fusion import (
@@ -279,6 +280,12 @@ async def chart_stream(
                                 break
                     except Exception as e:
                         yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合引擎异常: {e}'})}\n\n"
+                else:
+                    detail = []
+                    if not fusion_enabled: detail.append("BAZI_FUSION_ENGINE未设为1")
+                    if not fusion_key: detail.append("DEEPSEEK_API_KEY未设置")
+                    if not chart_data.get("personality"): detail.append("性格数据为空")
+                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合跳过: ' + '; '.join(detail)})}\n\n"
 
                 # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
                 chart = chart_obj_ref[0] if chart_obj_ref else None
