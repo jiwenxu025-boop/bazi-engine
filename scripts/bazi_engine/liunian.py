@@ -2140,57 +2140,35 @@ def apply_shishen_year_notes(events: list[EventSignal],
 
 def apply_personality_notes(events: list[EventSignal],
                             ctx: dict) -> None:
-    """为事件追加性格联动备注"""
+    """为事件追加性格联动备注。只保留有具体行为指引的，删掉空洞安慰和性格吹捧。"""
     for e in events:
         note = ""
 
         if e.category == "桃花":
-            if e.direction == "负面" and ctx.get("resilient"):
-                note = "以你的性格，虽有不顺但能较快走出来，不必过度担心"
-            elif e.direction == "负面" and ctx.get("introspective"):
+            if e.direction == "负面" and ctx.get("introspective"):
                 note = "你偏内省，感情波动后建议给自己多一些时间消化，不必急于做决定"
             elif e.direction == "负面":
                 note = "感情波动期，注意沟通方式"
             elif e.direction == "正面" and ctx.get("passive_romance"):
                 note = "机会出现，但你偏被动——对方可能会先迈出第一步，注意接收信号"
-            elif e.direction == "正面" and ctx.get("resilient"):
-                note = "你的主动性足够，抓住机会"
-            elif e.direction == "正面" and ctx.get("is_strong"):
-                note = "自信是最好的吸引力——这个阶段你状态在线，桃花质量也高"
             elif e.direction == "中性" and ctx.get("passive_romance"):
                 note = "感情节点期，你倾向于等对方推进——但有时主动一步效果更好"
 
         elif e.category == "事业":
-            if e.direction == "负面" and ctx.get("resilient"):
-                note = "你有抗压能力，事业波动期反而可能激发你的潜能"
-            elif e.direction == "负面" and ctx.get("is_weak"):
+            if e.direction == "负面" and ctx.get("is_weak"):
                 note = "身弱时期事业压力较大，建议优先保稳，不要在这个阶段做冒险决策"
-            elif e.direction == "负面" and ctx.get("is_strong"):
-                note = "身强底子好，事业波折反而磨砺你，扛过去就是跃升"
-            elif e.direction == "正面" and ctx.get("expressive"):
-                note = "以你的才华和表达能力，事业机会能把握得比较好"
-            elif e.direction == "正面" and ctx.get("is_strong"):
-                note = "身强能担——这个阶段的事业机会你有能力接住，放手去做"
 
         elif e.category == "财运":
-            if e.direction == "负面" and ctx.get("resilient"):
-                note = "财务有波动，但你的果断风格有助于及时止损"
-            elif e.direction == "负面":
+            if e.direction == "负面":
                 note = "注意控制消费冲动，这个阶段宜守不宜攻"
-            elif e.direction == "正面" and ctx.get("expressive"):
-                note = "靠才华和技能赚钱的机会多，发挥你的强项"
 
         elif e.category == "健康":
-            if e.direction == "负面" and ctx.get("resilient"):
-                note = "你体质底子好，但仍需注意劳逸结合，不要仗着年轻透支"
-            elif e.direction == "负面":
+            if e.direction == "负面":
                 note = "健康信号值得重视，建议规律作息和定期体检"
 
         elif e.category == "状态":
             if e.direction == "负面" and ctx.get("inner_withdrawn"):
                 note = "你容易在低谷时封闭自己——记得找信任的人聊聊，独处太久反而加重"
-            elif e.direction == "负面" and ctx.get("resilient"):
-                note = "状态波动是正常的，以你的恢复力，低迷期不会持续太久"
 
         elif e.category == "人际":
             if e.direction == "负面" and ctx.get("inner_withdrawn"):
