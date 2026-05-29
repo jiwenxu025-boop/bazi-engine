@@ -174,6 +174,10 @@ async function go(){
               var dyEl = document.querySelector('.dayun-interpretations');
               if (dyEl) dyEl.innerHTML = _buildDayunInterpretations(d);
             }
+          } else if (msg.phase === 'dayun_error'){
+            // 5b. 大运解读失败——显示原因
+            var dyEl2 = document.querySelector('.dayun-interpretations');
+            if (dyEl2) dyEl2.innerHTML = '<div class=dayun-error>⚠ 大运解读暂不可用：' + (msg.message || '未知错误') + '</div>';
           } else if (msg.phase === 'done'){
             // 6. 全流程结束——清理LLM推理实时显示区
             var liveEl = document.querySelector('.llm-live-section');
@@ -282,7 +286,7 @@ function render(d){
   h += '</div></div>';
   // 大运 LLM 解读（v0.14.0: SSE 异步填充）
   h += '<div class=dayun-interpretations>';
-  h += _buildDayunInterpretations(d);
+  h += _buildDayunInterpretations(d) || '<div class=dayun-loading>⏳ 大运解读生成中...</div>';
   h += '</div>';
   h += '</div></div>'; // /info-panel + /info-grid
 

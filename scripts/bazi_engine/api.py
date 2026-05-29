@@ -155,6 +155,9 @@ async def chart_stream(
                 ("llm_token", {"phase": "llm_token", "year": year_val, "token": token})
             )
 
+        # 用可变容器把 BaziChart 对象从线程传出来，供大运解读等后续步骤使用
+        chart_obj_ref: list = []
+
         def run_build():
             """在线程中执行完整的 build_chart（含LLM审查）"""
             try:
@@ -169,6 +172,7 @@ async def chart_stream(
                     on_llm_result=on_llm,
                     on_llm_token=on_llm_tok,
                 )
+                chart_obj_ref.append(c)
                 result = c.to_dict()
                 if practical:
                     _strip_technical(result)
@@ -254,16 +258,19 @@ async def chart_stream(
                         pass
 
                 # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
+                chart = chart_obj_ref[0] if chart_obj_ref else None
                 try:
-                    from .llm_review import enrich_dayun_interpretations
+                    from .llm_review import enrich_dayun_interpretations, DEEPSEEK_KEY, LLM_REVIEW_ENABLED
                     loop_dy = asyncio.get_running_loop()
                     dy_queue: asyncio.Queue = asyncio.Queue()
+                    dy_error: list = []
 
                     def _run_dayun():
                         try:
-                            result = enrich_dayun_interpretations(chart)
+                            result = enrich_dayun_interpretations(chart) if chart else []
                             loop_dy.call_soon_threadsafe(dy_queue.put_nowait, result)
-                        except Exception:
+                        except Exception as e:
+                            dy_error.append(str(e))
                             loop_dy.call_soon_threadsafe(dy_queue.put_nowait, [])
 
                     executor.submit(_run_dayun)
@@ -271,8 +278,15 @@ async def chart_stream(
                     if dayun_result:
                         chart.dayun_interpretations = dayun_result
                         yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': dayun_result})}\n\n"
-                except Exception:
-                    pass
+                    elif dy_error:
+                        yield f"data: {json.dumps({'phase': 'dayun_error', 'message': dy_error[0]})}\n\n"
+                    else:
+                        detail = "dayun_modulations为空" if (chart and not getattr(chart, 'dayun_modulations', None)) else (
+                            "LLM开关未启用" if not LLM_REVIEW_ENABLED else (
+                            "DEEPSEEK_API_KEY未设置" if not DEEPSEEK_KEY else "LLM返回空"))
+                        yield f"data: {json.dumps({'phase': 'dayun_error', 'message': detail})}\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'phase': 'dayun_error', 'message': f'大运解读模块异常: {e}'})}\n\n"
 
                 # 5. 结束
                 yield f"data: {json.dumps({'phase': 'done'})}\n\n"
