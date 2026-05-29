@@ -167,8 +167,11 @@ async function go(){
             if (personalityEl && msg.full){
               personalityEl.innerHTML = md2html(msg.full);
             }
+          } else if (msg.phase === 'done'){
+            // 5. 全流程结束——清理LLM推理实时显示区
+            var liveEl = document.querySelector('.llm-live-section');
+            if (liveEl) liveEl.remove();
           }
-          // phase===done → 流结束，循环自然退出
         } catch(e){}
       }
     }
@@ -662,9 +665,8 @@ function refreshFlowSection(d){
     h += '</div></div>';
   }
   if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
-  // 保留筛选栏，只替换事件列表
-  var filterBar = el.querySelector('.filter-bar');
-  el.innerHTML = (filterBar ? filterBar.outerHTML : '') + h;
+  // 只替换事件卡片列表（筛选栏是.events-section的兄弟节点，不受影响）
+  el.innerHTML = h;
   // 恢复筛选状态
   var activeFilter = document.querySelector('.filter-pill.active');
   if (activeFilter){
