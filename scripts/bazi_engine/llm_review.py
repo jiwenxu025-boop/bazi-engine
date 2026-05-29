@@ -103,6 +103,7 @@ def build_review_context(
     rule_events: list,
     dayun_mod: dict | None = None,
     tansheng_wangke: list[dict] | None = None,
+    false_generations: list[dict] | None = None,
     year_features: dict | None = None,
     personality_text: str = "",
 ) -> dict:
@@ -157,6 +158,14 @@ def build_review_context(
     if tansheng_wangke:
         ctx["natal"]["tansheng_wangke"] = [
             {"path": gg["path"], "note": gg["note"]} for gg in tansheng_wangke
+        ]
+
+    # 假生陷阱（v0.13.0）
+    if false_generations:
+        ctx["natal"]["false_generations"] = [
+            {"subject": fg["subject"], "condition": fg["condition"],
+             "effect": fg["effect"], "severity": fg["severity"]}
+            for fg in false_generations
         ]
 
     # ── 3. 当前大运 ──
@@ -247,6 +256,11 @@ def build_review_prompt(ctx: dict) -> str:
         for ts in natal["tansheng_wangke"]:
             prompt_parts.append(f"[贪生忘克] {'→'.join(ts['path'])} → {ts.get('note','')[:120]}")
 
+    # 假生陷阱（v0.13.0）
+    if natal.get("false_generations"):
+        for fg in natal["false_generations"]:
+            prompt_parts.append(f"[假生陷阱] {fg['subject']}: {fg['condition']} → {fg['effect']}")
+
     # 性格画像（v0.11.1: 命主是什么样的人——影响所有事件的解读）
     personality_text = ctx.get("personality", "")
     if personality_text:
@@ -328,7 +342,7 @@ def build_review_prompt(ctx: dict) -> str:
   ]
 }}
 
-约束: strength≤2★, 无事件返回{{"events":[]}}, 严格根据数据推理不编造"""
+约束: strength≤2★, 无事件返回{{"events":[]}}, 严格根据数据推理不编造, 陈述事实不渲染不吓人"""
 
     return prompt
 
@@ -486,6 +500,7 @@ def review_year_if_needed(
     rule_events: list,
     dayun_mod: dict | None = None,
     tansheng_wangke: list[dict] | None = None,
+    false_generations: list[dict] | None = None,
     year_features: dict | None = None,
     personality_text: str = "",
 ) -> list[LLMReviewResult]:
@@ -506,7 +521,195 @@ def review_year_if_needed(
         liunian_stem, liunian_branch,
         dayun_stem, dayun_branch,
         rule_events, dayun_mod, tansheng_wangke,
+        false_generations=false_generations,
         year_features=year_features,
         personality_text=personality_text,
     )
     return call_llm_review(ctx)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 大运解读（v0.14.0）
+# ═══════════════════════════════════════════════════════════════
+
+def interpret_dayun(natal: dict, dayun_modulations: list[dict],
+                    personality_text: str = "",
+                    false_generations: list[dict] | None = None,
+                    tansheng_wangke: list[dict] | None = None) -> list[dict]:
+    """批量解读大运：将 8 步大运 + 原局数据一次发给 LLM，返回每步解读。
+
+    Returns:
+        [{"index": 0, "interpretation": "...", "key_age": "..."}, ...]
+    """
+    if not DEEPSEEK_KEY or not LLM_REVIEW_ENABLED:
+        return []
+
+    prompt = _build_dayun_prompt(
+        natal, dayun_modulations, personality_text,
+        false_generations, tansheng_wangke,
+    )
+
+    messages = [
+        {"role": "system", "content": "你是八字命理大运分析专家。分析每步大运对命主的影响，输出简洁直接的解读。只输出 JSON，不输出其他内容。"},
+        {"role": "user", "content": prompt},
+    ]
+
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "stream": False,
+        "temperature": 0.3,
+        "max_tokens": 2048,
+    }
+
+    try:
+        import httpx
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not content:
+                return []
+            return _parse_dayun_response(content, len(dayun_modulations))
+    except Exception:
+        return []
+
+
+def _build_dayun_prompt(natal: dict, modulations: list[dict],
+                        personality_text: str,
+                        false_generations: list[dict] | None,
+                        tansheng_wangke: list[dict] | None) -> str:
+    """构建大运解读 prompt"""
+    parts = []
+
+    # 原局概要
+    parts.append(f"八字: {natal.get('pillars', '')}")
+    parts.append(f"日主: {natal.get('day_master', '')} | 格局: {natal.get('pattern', '')} | 强弱: {natal.get('strength', '')}")
+    fav_wx = natal.get('favorable_wuxing', [])
+    harm_wx = natal.get('harmful_wuxing', [])
+    parts.append(f"喜用五行: {fav_wx} | 忌神五行: {harm_wx}")
+    parts.append(f"喜用十神: {natal.get('favorable', [])} | 忌十神: {natal.get('harmful', [])}")
+
+    # 调候
+    th = natal.get("tiaohou", {})
+    if th:
+        parts.append(f"调候: 气候{th.get('climate','中和')} | {'废局' if th.get('is_fei_ju') else '非废局'}")
+
+    # 假生陷阱
+    if false_generations:
+        for fg in false_generations:
+            parts.append(f"[假生] {fg['subject']}: {fg['condition']} → {fg['effect']}")
+
+    # 贪生忘克
+    if tansheng_wangke:
+        for ts in tansheng_wangke:
+            parts.append(f"[贪生忘克] {'→'.join(ts['path'])} → {ts.get('note','')[:120]}")
+
+    # 性格
+    if personality_text:
+        parts.append(f"命主性格: {personality_text}")
+
+    # 大运列表
+    parts.append(f"\n共{len(modulations)}步大运，请逐一解读:")
+    for m in modulations:
+        stem = m.get("dayun_stem", "")
+        branch = m.get("dayun_branch", "")
+        age = m.get("age_range", "")
+        theme = m.get("theme", "")
+        offset = m.get("baseline_offset", 0)
+        direction = "吉" if offset > 0 else ("凶" if offset < 0 else "平")
+        si = m.get("stem_interactions", [])
+        bi = m.get("branch_interactions", [])
+        inters = "; ".join(si + bi) if (si or bi) else "无特殊冲合"
+        sfav = m.get("stem_is_favorable")
+        bfav = m.get("branch_is_favorable")
+        fav_note = ""
+        if sfav is True: fav_note += "天干为喜"
+        elif sfav is False: fav_note += "天干为忌"
+        if bfav is True: fav_note += " 地支为喜"
+        elif bfav is False: fav_note += " 地支为忌"
+        if not fav_note: fav_note = "喜忌中性"
+
+        parts.append(
+            f"  [{m['period_index']}] {stem}{branch}运 {age} | "
+            f"主题:{theme} | 十年基调:{direction} | {fav_note} | 与原局: {inters}"
+        )
+
+    parts.append(f"""
+## 任务
+为每步大运写一句60字以内的解读，要点：
+1. 十神主题对命主的具体影响（结合性格）
+2. 与原局合冲刑害的关键含义
+3. 陈述事实，不渲染不吓人
+4. 忌神运说"需注意XX"，不说"有灾/要命/难逃"等恐吓词
+5. 假生陷阱和贪生忘克在相关大运中如何演变
+6. 用白话，不堆术语
+
+## 输出JSON
+{{"periods": [
+  {{"index": 0, "interpretation": "甲子正财运（25-34岁）: ..."}},
+  ...
+]}}
+""")
+    return "\n".join(parts)
+
+
+def _parse_dayun_response(content: str, expected_count: int) -> list[dict]:
+    """解析大运解读 JSON 响应"""
+    import json as _json, re as _re
+    match = _re.search(r'\{[\s\S]*"periods"[\s\S]*\}', content)
+    if not match:
+        return []
+    try:
+        data = _json.loads(match.group(0))
+        periods = data.get("periods", [])
+        result = []
+        for p in periods[:expected_count]:
+            result.append({
+                "index": p.get("index", 0),
+                "interpretation": p.get("interpretation", ""),
+            })
+        return result
+    except (_json.JSONDecodeError, KeyError):
+        return []
+
+
+def enrich_dayun_interpretations(chart) -> list[dict]:
+    """从 BaziChart 提取上下文，调用 LLM 解读大运（不阻塞 build_chart）。
+    调用方负责在合适的时机调用（如 CLI 渲染时）。
+    """
+    if not chart.dayun_modulations:
+        return []
+    try:
+        natal_ctx = {
+            "pillars": f"{chart.year.stem.value}{chart.year.branch.value} "
+                       f"{chart.month.stem.value}{chart.month.branch.value} "
+                       f"{chart.day.stem.value}{chart.day.branch.value} "
+                       f"{chart.hour.stem.value}{chart.hour.branch.value}",
+            "day_master": f"{chart.day_master.value}({chart.day_master.wuxing.value}·{chart.day_master.yinyang})",
+            "pattern": chart.pattern,
+            "strength": (chart._yongshen_result or {}).get("strength", "中和"),
+            "favorable_wuxing": (chart._yongshen_result or {}).get("favorable_wuxing", []),
+            "harmful_wuxing": (chart._yongshen_result or {}).get("harmful_wuxing", []),
+            "favorable": (chart._yongshen_result or {}).get("favorable", []),
+            "harmful": (chart._yongshen_result or {}).get("harmful", []),
+            "tiaohou": chart.tiaohou_result or {},
+        }
+        personality_text = ""
+        if chart.personality_result:
+            personality_text = chart.personality_result.get("raw_text", "")
+        return interpret_dayun(
+            natal=natal_ctx,
+            dayun_modulations=chart.dayun_modulations,
+            personality_text=personality_text,
+            false_generations=chart.false_generations,
+            tansheng_wangke=chart.tansheng_wangke,
+        )
+    except Exception:
+        return []

@@ -109,6 +109,8 @@ class BaziChart:
     tiaohou_result: dict | None = None                           # 调候独立分析
     dayun_modulations: list[dict] | None = None                  # 大运调制结果 (v0.8.0)
     tansheng_wangke: list[dict] | None = None                    # 贪生忘克结果 (v0.8.0)
+    false_generations: list[dict] | None = None                  # 假生陷阱结果 (v0.13.0)
+    dayun_interpretations: list[dict] | None = None              # 大运 LLM 解读 (v0.14.0)
     body_use_result: dict | None = None                          # 宾主体用 + 墓库应期
     health_profile: dict | None = None                           # 健康体质画像 (v0.10.0: 调候+五行脏腑)
 
@@ -162,6 +164,8 @@ class BaziChart:
                     {"stem": tg.value, "branch": dz.value, "age": lp["年龄"], "order": i + 1}
                     for i, ((tg, dz), lp) in enumerate(zip(self.luck_pillars, self.luck_periods))
                 ],
+                "modulations": self.dayun_modulations,
+                "interpretations": self.dayun_interpretations,
             },
             "interactions": {
                 "tiangan": [i.to_dict() for i in self.tiangan_interactions],
@@ -542,6 +546,24 @@ def build_chart(
         for gg in detect_tansheng_wangke(stem_labels, chart.day_master)
     ]
 
+    # ── 9c. 假生陷阱（v0.13.0: 火炎土焦/金多水浊/土重金埋+原3条）──
+    try:
+        from .tiaohou import detect_false_generation
+        false_gens = detect_false_generation(
+            chart.day_master,
+            [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem],
+            all_branches,
+        )
+        if false_gens:
+            chart.false_generations = [
+                {"subject": fg.subject, "source": fg.source,
+                 "condition": fg.condition, "effect": fg.effect,
+                 "severity": fg.severity, "fix_wuxing": fg.fix_wuxing}
+                for fg in false_gens
+            ]
+    except Exception:
+        pass
+
     # ── 10. 神煞 ──
     chart.spirits = find_all_spirits(
         chart.day_master, chart.year.stem,
@@ -591,6 +613,7 @@ def build_chart(
             tiaohou_climate=chart.tiaohou_result.get("climate", "中和") if chart.tiaohou_result else "中和",
             dayun_modulations=chart.dayun_modulations,
             tansheng_wangke=chart.tansheng_wangke,
+            false_generations=chart.false_generations,
             health_profile=chart.health_profile,
             chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
             on_llm_result=on_llm_result,

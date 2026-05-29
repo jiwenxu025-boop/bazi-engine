@@ -7,11 +7,20 @@ from .enums import Tiangan, Dizhi, Shishen
 
 def format_chart(chart) -> str:
     """格式化 BaziChart 为完整技术文本（本地保留用）"""
+    _ensure_dayun_interpretations(chart)
     return _format_chart_internal(chart, practical=False)
+
+
+def _ensure_dayun_interpretations(chart):
+    """懒加载大运LLM解读：首次访问时才调用API"""
+    if chart.dayun_interpretations is None and chart.dayun_modulations:
+        from .llm_review import enrich_dayun_interpretations
+        chart.dayun_interpretations = enrich_dayun_interpretations(chart)
 
 
 def format_chart_practical(chart) -> str:
     """格式化 BaziChart 为实用解读文本（对外发布用，无技术推导）"""
+    _ensure_dayun_interpretations(chart)
     return _format_chart_internal(chart, practical=True)
 
 
@@ -71,6 +80,15 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
         current_dayun_plain = _plain_current_dayun(chart)
         if current_dayun_plain:
             p(f"    → {current_dayun_plain}")
+        # LLM 大运解读（v0.14.0）
+        if chart.dayun_interpretations:
+            p("")
+            p("  ● 大运解读（AI）：")
+            for di in chart.dayun_interpretations:
+                # 找到对应的大运干支
+                lp = chart.luck_periods[di["index"]] if di["index"] < len(chart.luck_periods) else None
+                label = lp["大运"] if lp else f"第{di['index']+1}步"
+                p(f"    {label}（{lp['年龄'] if lp else ''}）：{di['interpretation']}")
         p("")
 
         # 神煞简化 → 白话
@@ -192,6 +210,14 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
         p(f"  大运: {chart.start_age}岁起运, {chart.dayun_direction_str}")
         for lp in chart.luck_periods:
             p(f"    {lp['大运']}  {lp['年龄']}")
+        if chart.dayun_interpretations:
+            p("")
+            p("  [大运 LLM 解读]")
+            for di in chart.dayun_interpretations:
+                lp = chart.luck_periods[di["index"]] if di["index"] < len(chart.luck_periods) else None
+                label = lp["大运"] if lp else f"第{di['index']+1}步"
+                p(f"    {label}  {lp['年龄'] if lp else ''}")
+                p(f"      → {di['interpretation']}")
         p("")
 
         # 神煞

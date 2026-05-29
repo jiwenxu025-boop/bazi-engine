@@ -234,8 +234,8 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
                 fix_wuxing=["水"],
             ))
 
-    # ── 规则3: 湿木不生火（扩展规则）──
-    # 丙/丁火日主 + 原局有亥子丑湿土 + 全局木多水多 → 木被水浸湿，生火力弱
+    # ── 规则3: 湿木不生火 ──
+    # 丙/丁火日主 + 原局有亥子水 + 木多 → 木被水浸湿，生火力弱
     if dm_wx == Wuxing.火 and wet_water:
         wood_count = sum(1 for b in all_branches if b.wuxing == Wuxing.木)
         if wood_count >= 2 and not has_fire_stem:
@@ -246,6 +246,67 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
                 effect="木不生火反晦火，印星生扶无效",
                 severity=1,
                 fix_wuxing=["火"],
+            ))
+
+    # ── 规则4: 火炎土焦 ──
+    # 戊/己土日主 + 原局巳午火多 + 全局无水润 → 火不生土反焦土
+    if dm_wx == Wuxing.土:
+        fire_branches = [b for b in all_branches if b in (Dizhi.巳, Dizhi.午)]
+        if len(fire_branches) >= 2 and not has_water_any:
+            results.append(FalseGeneration(
+                subject=f"{dm_val}土日主",
+                source="巳/午火（印星）",
+                condition="火炎土焦，全局无水润泽",
+                effect="火不生土反焦土，印星转化为忌神，土裂无用",
+                severity=2,
+                fix_wuxing=["水"],
+            ))
+        elif len(fire_branches) >= 2 and has_water_branch and not has_water_stem:
+            results.append(FalseGeneration(
+                subject=f"{dm_val}土日主",
+                source="巳/午火（印星）",
+                condition="火旺土燥，水藏不透",
+                effect="火生土但土质干燥，印星生扶打折",
+                severity=1,
+                fix_wuxing=["水"],
+            ))
+
+    # ── 规则5: 金多水浊 ──
+    # 壬/癸水日主 + 原局申酉金多 + 无木火疏通 → 金多反浊水
+    if dm_wx == Wuxing.水:
+        metal_branches = [b for b in all_branches if b in (Dizhi.申, Dizhi.酉)]
+        fire_wood = [b for b in all_branches if b.wuxing in (Wuxing.火, Wuxing.木)]
+        if len(metal_branches) >= 2 and not fire_wood:
+            results.append(FalseGeneration(
+                subject=f"{dm_val}水日主",
+                source="申/酉金（印星）",
+                condition="金多水浊，全局无木火疏通",
+                effect="金不生水反浊水，印星过重反成浑浊，水不清则智不明",
+                severity=2,
+                fix_wuxing=["木", "火"],
+            ))
+        elif len(metal_branches) >= 2 and not has_fire_stem:
+            results.append(FalseGeneration(
+                subject=f"{dm_val}水日主",
+                source="申/酉金（印星）",
+                condition="金多水微浊，火藏不透",
+                effect="金生水但水质受损，印星生扶打折",
+                severity=1,
+                fix_wuxing=["火"],
+            ))
+
+    # ── 规则6: 土重金埋 ──
+    # 庚/辛金日主 + 原局辰戌丑未土>=3 → 土多埋金，非生金
+    if dm_wx == Wuxing.金:
+        all_earth = [b for b in all_branches if b in (Dizhi.辰, Dizhi.戌, Dizhi.丑, Dizhi.未)]
+        if len(all_earth) >= 3:
+            results.append(FalseGeneration(
+                subject=f"{dm_val}金日主",
+                source="辰戌丑未土（印星）",
+                condition=f"全局{len(all_earth)}重土，土重金埋",
+                effect="土不生金反埋金，印星过重压抑日主，金被埋没难出头",
+                severity=2,
+                fix_wuxing=["木"],
             ))
 
     return results

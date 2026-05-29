@@ -2822,6 +2822,7 @@ def scan_years(
     tiaohou_climate: str = "中和",
     dayun_modulations: list[dict] | None = None,
     tansheng_wangke: list[dict] | None = None,
+    false_generations: list[dict] | None = None,
     health_profile: dict | None = None,
     chart_data: dict | None = None,
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, llm_events)
@@ -3125,6 +3126,7 @@ def scan_years(
                         dn_tg.value if dn_tg else None,
                         dn_dz.value if dn_dz else None,
                         events, current_dayun_mod, tansheng_wangke,
+                        false_generations=false_generations,
                         year_features=yr_features,
                         personality_text=personality_text,
                     )
