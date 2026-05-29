@@ -250,12 +250,16 @@ async def chart_stream(
 
                         def run_fusion():
                             try:
+                                if not fusion_key:
+                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
+                                    return
                                 full = generate_fusion_report(pkg, on_chunk=on_token)
-                                loop.call_soon_threadsafe(
-                                    fusion_queue.put_nowait, ("fusion_done", full or ""))
+                                if full:
+                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_done", full))
+                                else:
+                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "API返回空，可能是模型不可用或网络问题"))
                             except Exception as e:
-                                loop.call_soon_threadsafe(
-                                    fusion_queue.put_nowait, ("fusion_error", str(e)))
+                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", str(e)))
 
                         fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                         loop.run_in_executor(fusion_ex, run_fusion)

@@ -272,7 +272,7 @@ def generate_fusion_report(
         完整的 LLM 生成文本。API 失败时返回 None。
     """
     if not DEEPSEEK_KEY:
-        return None
+        raise RuntimeError("DEEPSEEK_API_KEY未设置")
 
     user_prompt = build_fusion_user_prompt(data_package)
     messages = [
@@ -295,11 +295,16 @@ def generate_fusion_report(
     full_text_parts: list[str] = []
 
     try:
-        _timeout = 120.0  # 流式响应最长等待 2 分钟
+        _timeout = 120.0
         with httpx.Client(timeout=_timeout) as client:
             with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
                 if resp.status_code != 200:
-                    return None
+                    body = ""
+                    try:
+                        body = resp.read().decode("utf-8", errors="replace")[:300]
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"API返回{resp.status_code}: {body}")
 
                 for line in resp.iter_lines():
                     line = line.strip()
@@ -321,14 +326,19 @@ def generate_fusion_report(
                     except json.JSONDecodeError:
                         continue
 
-        return "".join(full_text_parts) if full_text_parts else None
+        text = "".join(full_text_parts)
+        if not text:
+            raise RuntimeError("流式响应已完成但未收到任何内容")
+        return text
 
-    except Exception:
-        return None
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(f"API调用异常: {e}")
 
 
 def generate_fusion_report_sync(data_package: dict) -> str | None:
-    """同步（非流式）调用，返回完整文本。适合不需要实时展示的场景。"""
+    """同步（非流式）调用。API失败返回None（兼容旧调用方）。"""
     if not DEEPSEEK_KEY:
         return None
 
