@@ -217,7 +217,8 @@ async def chart_stream(
                 # 3. 性格融合报告逐token流式输出
                 fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
                 fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
-                yield f"data: {json.dumps({'phase': 'fusion_status', 'message': f'开关={fusion_enabled} key={bool(fusion_key)} 数据={bool(chart_data.get(\"personality\"))} 模型={os.getenv(\"DEEPSEEK_MODEL\", \"deepseek-v4-flash\")}'})}\n\n"
+                _status_msg = f"开关={fusion_enabled} key={bool(fusion_key)} 数据={bool(chart_data.get('personality'))} 模型={os.getenv('DEEPSEEK_MODEL', 'deepseek-v4-flash')}"
+                yield f"data: {json.dumps({'phase': 'fusion_status', 'message': _status_msg})}\n\n"
                 if fusion_enabled and fusion_key and chart_data.get("personality"):
                     try:
                         from .personality_fusion import (
