@@ -54,6 +54,7 @@ FUSION_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的
 ## 立刻能做的事（1-2条动作，匹配[当前人生阶段]）
 
 每节3-5句。有优点说优点，有毛病说毛病。
+**覆盖度要求：每个维度必须覆盖所有数值明显偏离中位的信号（≥7或≤3），不能只盯着最高分那一个写。** 比如社交维度同时收到"表达欲7"和"内敛度8"，两件事都要提到，并解释它们如何共存。
 
 # 数据使用
 - [全局主要矛盾]是全盘最高指令，所有板块要跟它一致
@@ -193,14 +194,26 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
     # ── 六维度结构化信号（LLM从零写描述，自由解释数值）──
     trait_signals = pr_dict.get("trait_signals", {})
     if trait_signals:
-        package["六维度信号"] = {
-            "社交": trait_signals.get("社交", {}),
-            "感情": trait_signals.get("感情", {}),
-            "内心": trait_signals.get("内心", {}),
-            "决策": trait_signals.get("决策", {}),
-            "事业": trait_signals.get("事业", {}),
-            "财富观": trait_signals.get("财富观", {}),
-        }
+        # 给每个维度标注"需覆盖的信号"（偏离中位≥2的都要提到）
+        _enriched = {}
+        for dim in ["社交", "感情", "内心", "决策", "事业", "财富观"]:
+            raw = trait_signals.get(dim, {})
+            if not raw:
+                _enriched[dim] = raw
+                continue
+            _hints = []
+            for k, v in raw.items():
+                if isinstance(v, (int, float)) and (v >= 7 or v <= 3):
+                    _hints.append(f"{k}={v}" + ("(偏高)" if v >= 7 else "(偏低)"))
+            for k, v in raw.items():
+                if isinstance(v, list) and v:
+                    _hints.append(f"{k}={v}")
+                elif isinstance(v, str) and v and v not in ("平稳", "中和", "强", "弱"):
+                    _hints.append(f"{k}={v}")
+            _enriched[dim] = dict(raw)
+            if _hints:
+                _enriched[dim]["_需覆盖信号"] = " | ".join(_hints)
+        package["六维度信号"] = _enriched
     else:
         # 回退：旧版 traits 文本（向后兼容）
         area_traits = pr_dict.get("traits", {})
