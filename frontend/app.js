@@ -152,23 +152,30 @@ async function go(){
               refreshFlowSection(d);
             }
           } else if (msg.phase === 'personality_token'){
-            // 3. 性格报告逐token——纯文本追加，不重复解析markdown
+            // 3. 性格报告逐token → 渐进markdown渲染
             if (!personalityEl){
               personalityEl = document.querySelector('.personality-text');
               if (personalityEl) personalityEl.innerHTML = '';
             }
             if (personalityEl){
               personalityText += msg.token;
-              // 流式期间用textContent（快），完成后才转HTML
-              personalityEl.textContent = personalityText + '|';
+              // 防抖：每80ms渲染一次，避免逐token刷DOM
+              clearTimeout(personalityEl._debounce);
+              personalityEl._debounce = setTimeout(function(){
+                personalityEl.innerHTML = md2html(personalityText) + '<span class=fusion-cursor>|</span>';
+                // 滚动到底部
+                personalityEl.scrollTop = personalityEl.scrollHeight;
+              }, 80);
             }
           } else if (msg.phase === 'fusion_status'){
             // 诊断：融合引擎状态
             console.log('[bazi] fusion_status:', msg.message);
           } else if (msg.phase === 'personality_done'){
-            // 4. 性格报告完成——一次性转markdown
-            if (personalityEl && msg.full){
-              personalityEl.innerHTML = md2html(msg.full);
+            // 4. 性格报告完成——最终渲染
+            if (personalityEl){
+              clearTimeout(personalityEl._debounce);
+              var finalText = msg.full || personalityText;
+              personalityEl.innerHTML = md2html(finalText);
             }
           } else if (msg.phase === 'personality_error'){
             // 4b. 性格融合失败——显示原因
