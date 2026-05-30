@@ -1,5 +1,6 @@
 """粒度性格特质计算"""
 from ..enums import Tiangan, Dizhi, Shishen
+from .constants import SHISHEN_SUB_TRAITS, SHISHEN_COMBINATION_TRAITS, DIZHI_RELATION_PERSONALITY
 
 
 def _compute_shishen_sub_traits(weighted_scores,

@@ -183,3 +183,229 @@ FAMILY_LEVELS = {
     "紧张": "家境紧张",
 }
 
+# ═══════════════════════════════════════════════════════════════
+# 十神子特质 — 加权分数达标时激活，来源《子平真诠》《三命通会》
+# ═══════════════════════════════════════════════════════════════
+
+SHISHEN_SUB_TRAITS: dict[str, list[dict]] = {
+    "正印": [
+        {"name": "好学深思", "description": "求知欲强，喜欢读书思考，有深厚的文化底蕴", "source": "子平真诠·印绶格", "trigger_score": 3.0},
+        {"name": "宅心仁厚", "description": "心地善良宽容，待人真诚，有慈悲心", "source": "三命通会·正印", "trigger_score": 4.0},
+        {"name": "为人师表", "description": "有教育天赋，善于引导和培养他人", "source": "渊海子平·印星", "trigger_score": 5.0},
+    ],
+    "偏印": [
+        {"name": "匠心独运", "description": "有独特的创造力，擅长偏门学问和技艺", "source": "子平真诠·枭神", "trigger_score": 3.0},
+        {"name": "洞见症结", "description": "洞察力敏锐，能看透问题本质", "source": "三命通会·偏印", "trigger_score": 4.0},
+        {"name": "孤芳自赏", "description": "思想独立但容易孤僻，不合群", "source": "渊海子平·枭神", "trigger_score": 5.0},
+    ],
+    "正官": [
+        {"name": "克己复礼", "description": "自律性强，遵守规则，行为端庄", "source": "子平真诠·正官格", "trigger_score": 3.0},
+        {"name": "正道直行", "description": "为人正直，光明磊落，不走歪门邪道", "source": "三命通会·正官", "trigger_score": 4.0},
+        {"name": "庙堂之器", "description": "有领导才能，适合在体制内发挥才干", "source": "渊海子平·官星", "trigger_score": 5.0},
+    ],
+    "偏官": [
+        {"name": "杀伐决断", "description": "果敢决断，遇事不犹豫，执行力强", "source": "子平真诠·七杀格", "trigger_score": 3.0},
+        {"name": "将帅之风", "description": "有魄力和胆识，能统领众人", "source": "三命通会·偏官", "trigger_score": 4.0},
+        {"name": "乱世枭雄", "description": "有在逆境中崛起的能力，不惧风险", "source": "滴天髓·七杀", "trigger_score": 5.0},
+    ],
+    "七杀": [
+        {"name": "杀伐决断", "description": "果敢决断，遇事不犹豫，执行力强", "source": "子平真诠·七杀格", "trigger_score": 3.0},
+        {"name": "将帅之风", "description": "有魄力和胆识，能统领众人", "source": "三命通会·七杀", "trigger_score": 4.0},
+        {"name": "乱世枭雄", "description": "有在逆境中崛起的能力，不惧风险", "source": "滴天髓·七杀", "trigger_score": 5.0},
+    ],
+    "食神": [
+        {"name": "知味品鉴", "description": "懂得享受生活，有美食和审美的天分", "source": "子平真诠·食神格", "trigger_score": 3.0},
+        {"name": "乐天知命", "description": "性格开朗乐观，随遇而安，人缘好", "source": "三命通会·食神", "trigger_score": 4.0},
+        {"name": "艺术天赋", "description": "有艺术细胞，擅长音乐/绘画/文学等创作", "source": "渊海子平·食神", "trigger_score": 5.0},
+    ],
+    "伤官": [
+        {"name": "锋芒毕露", "description": "才华外露，不喜遮掩，表达能力强", "source": "子平真诠·伤官格", "trigger_score": 3.0},
+        {"name": "妙笔生花", "description": "文笔出众，创意丰富，有创作天赋", "source": "三命通会·伤官", "trigger_score": 4.0},
+        {"name": "恃才傲物", "description": "才华盖世但容易目中无人，不服从权威", "source": "滴天髓·伤官", "trigger_score": 5.0},
+    ],
+    "正财": [
+        {"name": "勤俭持家", "description": "勤劳节俭，对家庭财务负责", "source": "子平真诠·正财格", "trigger_score": 3.0},
+        {"name": "精打细算", "description": "善于理财规划，量入为出", "source": "三命通会·正财", "trigger_score": 4.0},
+        {"name": "诚信经营", "description": "重视信誉，有企业家精神", "source": "渊海子平·财星", "trigger_score": 5.0},
+    ],
+    "偏财": [
+        {"name": "仗义疏财", "description": "慷慨大方，对朋友不吝啬", "source": "子平真诠·偏财格", "trigger_score": 3.0},
+        {"name": "商业嗅觉", "description": "有投资眼光和商业头脑", "source": "三命通会·偏财", "trigger_score": 4.0},
+        {"name": "风流浪子", "description": "人缘广泛，异性缘佳，但可能用情不专", "source": "渊海子平·偏财", "trigger_score": 5.0},
+    ],
+    "比肩": [
+        {"name": "独立自主", "description": "不依赖他人，有自己的主见和立场", "source": "子平真诠·比肩", "trigger_score": 3.0},
+        {"name": "坚韧不拔", "description": "意志力强，遇到困难不轻易放弃", "source": "三命通会·比肩", "trigger_score": 4.0},
+        {"name": "我行我素", "description": "过于自我，难以听取他人意见", "source": "滴天髓·比劫", "trigger_score": 5.0},
+    ],
+    "劫财": [
+        {"name": "义薄云天", "description": "重情重义，为朋友两肋插刀", "source": "子平真诠·劫财", "trigger_score": 3.0},
+        {"name": "拼搏进取", "description": "有奋斗精神，不甘人后", "source": "三命通会·劫财", "trigger_score": 4.0},
+        {"name": "霸道好斗", "description": "竞争意识过强，容易与人冲突", "source": "滴天髓·劫财", "trigger_score": 5.0},
+    ],
+}
+
+# ═══════════════════════════════════════════════════════════════
+# 十神组合特质 — 两个十神均达标时激活
+# ═══════════════════════════════════════════════════════════════
+
+SHISHEN_COMBINATION_TRAITS: list[dict] = [
+    {
+        "combo": ["正官", "正印"],
+        "min_each_score": 3.0,
+        "trait": "官印相生",
+        "description": "品行端正又学识深厚，是德才兼备的君子型人格",
+        "source": "子平真诠·官印相生",
+    },
+    {
+        "combo": ["正官", "偏印"],
+        "min_each_score": 3.0,
+        "trait": "官枭相济",
+        "description": "守规矩的同时又能灵活应变，善于在体制内创新",
+        "source": "三命通会·官印",
+    },
+    {
+        "combo": ["偏官", "偏印"],
+        "min_each_score": 3.0,
+        "trait": "杀印相生",
+        "description": "有胆略又有谋略，是智勇双全的将才型人格",
+        "source": "子平真诠·杀印相生",
+    },
+    {
+        "combo": ["食神", "正财"],
+        "min_each_score": 3.0,
+        "trait": "食神生财",
+        "description": "用才华和气度创造财富，是儒商型人格",
+        "source": "子平真诠·食神生财",
+    },
+    {
+        "combo": ["食神", "偏财"],
+        "min_each_score": 3.0,
+        "trait": "食神生偏财",
+        "description": "以技艺或口才赚取偏财，投资眼光独到",
+        "source": "三命通会·食神",
+    },
+    {
+        "combo": ["伤官", "偏印"],
+        "min_each_score": 3.0,
+        "trait": "伤官配印",
+        "description": "才华横溢而又有内涵，是天才型人格",
+        "source": "子平真诠·伤官配印",
+    },
+    {
+        "combo": ["伤官", "正印"],
+        "min_each_score": 3.0,
+        "trait": "伤官佩印",
+        "description": "才华与修养并存，狂而不妄",
+        "source": "滴天髓·伤官",
+    },
+    {
+        "combo": ["正财", "正官"],
+        "min_each_score": 3.0,
+        "trait": "财官双美",
+        "description": "既有经济实力又有社会地位，是事业型人格",
+        "source": "三命通会·财官",
+    },
+    {
+        "combo": ["偏财", "偏官"],
+        "min_each_score": 3.0,
+        "trait": "财资七杀",
+        "description": "以财力支撑野心，敢于冒险投资",
+        "source": "渊海子平·财杀",
+    },
+    {
+        "combo": ["比肩", "劫财"],
+        "min_each_score": 3.0,
+        "trait": "比劫帮身",
+        "description": "有强大的自我意识和行动力，适合创业",
+        "source": "子平真诠·比劫",
+    },
+    {
+        "combo": ["食神", "伤官"],
+        "min_each_score": 3.0,
+        "trait": "食伤泄秀",
+        "description": "才华外露，表达能力强，适合艺术或演艺",
+        "source": "滴天髓·食伤",
+    },
+]
+
+# ═══════════════════════════════════════════════════════════════
+# 地支关系 → 性格特质
+# ═══════════════════════════════════════════════════════════════
+
+DIZHI_RELATION_PERSONALITY: dict[str, dict] = {
+    # 六冲
+    "子午_冲": {
+        "trait": "水火相冲·心绪不宁",
+        "description": "内心常有矛盾冲突，情绪起伏较大，需修炼定力",
+        "source": "三命通会·六冲",
+    },
+    "卯酉_冲": {
+        "trait": "金木交战·是非纠缠",
+        "description": "容易卷入人际纠纷和口舌是非，需注意言辞",
+        "source": "三命通会·六冲",
+    },
+    "寅申_冲": {
+        "trait": "驿马相冲·奔波劳碌",
+        "description": "一生多奔波变动，适应力强但稳定性差",
+        "source": "三命通会·六冲",
+    },
+    "巳亥_冲": {
+        "trait": "水火相激·忽冷忽热",
+        "description": "对人对事态度容易极端转变，热情与冷漠交替",
+        "source": "三命通会·六冲",
+    },
+    "辰戌_冲": {
+        "trait": "天罗地网·内心挣扎",
+        "description": "内心经常自我博弈，对宗教/哲学有深刻兴趣",
+        "source": "三命通会·六冲",
+    },
+    "丑未_冲": {
+        "trait": "土库相冲·固执己见",
+        "description": "一旦形成观点很难改变，坚持己见但可能钻牛角尖",
+        "source": "三命通会·六冲",
+    },
+    # 自刑
+    "辰_自刑": {
+        "trait": "辰自刑·思虑过度",
+        "description": "心思缜密但容易过度思虑，自我内耗严重",
+        "source": "三命通会·自刑",
+    },
+    "午_自刑": {
+        "trait": "午自刑·急躁冒进",
+        "description": "性子急，做事追求快速见效，缺乏耐心",
+        "source": "三命通会·自刑",
+    },
+    "酉_自刑": {
+        "trait": "酉自刑·完美主义",
+        "description": "对细节要求极高，追求完美但容易纠结",
+        "source": "三命通会·自刑",
+    },
+    "亥_自刑": {
+        "trait": "亥自刑·多愁善感",
+        "description": "感情丰富细腻，容易陷入情绪漩涡",
+        "source": "三命通会·自刑",
+    },
+    "辰_午_酉_亥_自刑": {
+        "trait": "多自刑·敏感多思",
+        "description": "命局多自刑，内心世界极为丰富复杂，敏感多思",
+        "source": "三命通会·自刑",
+    },
+    # 三刑
+    "寅_巳_申_刑": {
+        "trait": "无恩之刑·冷漠疏离",
+        "description": "待人容易冷淡疏远，不擅表达情感，需注意人际关系",
+        "source": "三命通会·三刑",
+    },
+    "丑_戌_未_刑": {
+        "trait": "恃势之刑·仗势凌人",
+        "description": "得势时容易目中无人，须防过于强势伤及他人",
+        "source": "三命通会·三刑",
+    },
+    "子_卯_刑": {
+        "trait": "无礼之刑·不拘礼节",
+        "description": "性格洒脱不拘小节，但可能因失礼而得罪人",
+        "source": "三命通会·三刑",
+    },
+}
+
