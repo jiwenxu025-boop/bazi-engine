@@ -1,6 +1,6 @@
 """加权十神计算"""
 from ..enums import Tiangan, Dizhi, Wuxing, Shishen
-from .._constants import DIZHI_CANGGAN, DIZHI_LIUHE, DIZHI_SANHE
+from .._constants import DIZHI_CANGGAN, DIZHI_LIUHE, DIZHI_SANHE, STEM_TO_WUXING, BRANCH_TO_WUXING
 from .constants import (
     TOUGAN_WEIGHT, HIDDEN_WEIGHTS, MONTH_MULTIPLIER,
     SAME_PILLAR_BONUS, HEJU_WEIGHTS,
@@ -35,7 +35,7 @@ def _get_month_branch_wuxing(pillars_data: list[dict]) -> str | None:
     if hidden:
         first = hidden[0]  # 本气
         return STEM_TO_WUXING.get(first["stem"])
-    return STEM_TO_WUXING.get(month_pillar.get("branch", ""))
+    return BRANCH_TO_WUXING.get(month_pillar.get("branch", ""))
 
 def _compute_weighted_shishen(
     pillars_data: list[dict],
