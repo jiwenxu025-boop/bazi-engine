@@ -684,6 +684,7 @@ def build_chart(
                 chart.life_stage = "晚年"
 
     # ── 13. 性格与家境分析 ──
+    pd = None
     try:
         from .personality_analysis import analyze_family, analyze_personality, build_pillars_data_for_analysis
         pd = build_pillars_data_for_analysis(chart)
@@ -754,21 +755,23 @@ def build_chart(
         chart.warnings.append(f"性格家境分析失败: {e}\n{tb}")
 
     # ── 13b. 宫位叠象 ──
-    try:
-        from .palace_star import analyze_palace_stars
-        pd_ps = build_pillars_data_for_analysis(chart)
-        chart.palace_star_result = analyze_palace_stars(
-            pd_ps, chart.spirits, chart.day_master
-        ).to_dict()
-    except Exception as e:
-        chart.warnings.append(f"宫位叠象分析失败: {e}")
+    if pd is not None:
+        try:
+            from .palace_star import analyze_palace_stars
+            pd_ps = build_pillars_data_for_analysis(chart)
+            chart.palace_star_result = analyze_palace_stars(
+                pd_ps, chart.spirits, chart.day_master
+            ).to_dict()
+        except Exception as e:
+            chart.warnings.append(f"宫位叠象分析失败: {e}")
 
     # ── 13c. 宾主体用 + 墓库应期 ──
     try:
         from .body_use import analyze_body_use
-        chart.body_use_result = analyze_body_use(
-            pd, interactions_dict, chart.luck_pillars, chart.annual_scans
-        ).to_dict()
+        if pd is not None:
+            chart.body_use_result = analyze_body_use(
+                pd, interactions_dict, chart.luck_pillars, chart.annual_scans
+            ).to_dict()
     except Exception as e:
         chart.warnings.append(f"宾主体用分析失败: {e}")
 
