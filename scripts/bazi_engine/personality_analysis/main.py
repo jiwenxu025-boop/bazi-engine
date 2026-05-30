@@ -6,6 +6,7 @@ from .dataclasses import PersonalityResult
 from .constants import DAY_MASTER_PERSONALITY, PATTERN_PERSONALITY, SHISHEN_PERSONALITY
 from .weighting import (
     get_weighted_shishen_report, _compute_weighted_shishen,
+    _find_dominant_shishen, _count_ten_gods, _get_hidden_ten_gods_flat,
 )
 from .bingyao import detect_bingyao_combos
 from .special_combos import _check_special_combos
