@@ -2,13 +2,26 @@
 
 from dataclasses import dataclass, field
 from datetime import date
-from .enums import Tiangan, Dizhi, Shishen
+
 from ._constants import (
-    HONGLUAN, TIANXI, TAOHUA, YIMA, WENCHANG, chong_pair,
-    TIANGAN_WUHE, DIZHI_LIUHE, DIZHI_LIUCHONG, DIZHI_XIANGHAI, DIZHI_XIANGXING,
-    DIZHI_ZIXING, DIZHI_SANHE, DIZHI_CANGGAN, SHIER_CHANGSHENG, _TIANYI_FLAT,
+    _TIANYI_FLAT,
+    DIZHI_CANGGAN,
+    DIZHI_LIUCHONG,
+    DIZHI_LIUHE,
+    DIZHI_SANHE,
+    DIZHI_XIANGHAI,
+    DIZHI_XIANGXING,
+    DIZHI_ZIXING,
+    HONGLUAN,
+    SHIER_CHANGSHENG,
+    TAOHUA,
+    TIANGAN_WUHE,
+    TIANXI,
+    WENCHANG,
+    YIMA,
+    chong_pair,
 )
-from .enums import TIANGAN_YANGREN, TIANGAN_LU
+from .enums import TIANGAN_LU, TIANGAN_YANGREN, Dizhi, Shishen, Tiangan
 from .ten_gods import get_ten_god
 
 # 天干五合配对: 天干 → 其合配天干
@@ -157,7 +170,7 @@ class AnnualScan:
 
 def compute_liunian_pillar(year: int) -> tuple[Tiangan, Dizhi]:
     """流年干支: (year - 4) % 60"""
-    from .enums import tiangan_by_index, dizhi_by_index
+    from .enums import dizhi_by_index, tiangan_by_index
     idx = (year - 4) % 60
     return tiangan_by_index(idx), dizhi_by_index(idx)
 
@@ -175,7 +188,7 @@ def classify_sb_relation(stem: Tiangan, branch: Dizhi) -> tuple[str, float, floa
     Returns:
         (relation_name, stem_weight, branch_weight)
     """
-    from .enums import TIANGAN_WUXING, DIZHI_WUXING, Wuxing
+    from .enums import DIZHI_WUXING, TIANGAN_WUXING, Wuxing
 
     s_wx = TIANGAN_WUXING.get(stem)
     b_wx = DIZHI_WUXING.get(branch)
@@ -1014,7 +1027,7 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # 配偶星合入夫妻宫
     if ln_shishen in (spouse_star, second_star) and gong_he:
-        s.add(3, f"配偶星透干合入夫妻宫")
+        s.add(3, "配偶星透干合入夫妻宫")
 
     # 地支藏配偶星 + 合夫妻宫
     if has_spouse_in_branch and (gong_he or gong_sanhe):
@@ -1270,7 +1283,6 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # ── 正面: 得财 ──
     if _has_tiangan_wuhe(ln_stem, day_master):
         hua_wx = TIANGAN_WUHE.get((ln_stem, day_master)) or TIANGAN_WUHE.get((day_master, ln_stem))
-        from .enums import Wuxing
         if hua_wx and _is_ke_wx(day_master.wuxing, hua_wx):
             s.add(2 if is_weak else 4, "财来合我→化财", "身弱不担财→大额支出" if is_weak else "最直接的得财信号 (textbook)")
 
@@ -1527,7 +1539,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # ═══ ★★ 级别 ═══
 
-    # 岁运并临 (calibration: 2026 徐继文，喜用非凶)
+    # 岁运并临 (calibration: 2026 案例A，喜用非凶)
     if is_suiyun_binglin:
         strength = max(strength, 2)
         triggers.append("岁运并临")
@@ -1601,7 +1613,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # ═══ ★ 级别 ═══
 
     # 灾煞/丧门/吊客 — 流年逢之叠加健康风险（2026-05-23 WebSearch 验证）
-    from ._constants import ZAISHA, SANGMEN, DIAOKE
+    from ._constants import DIAOKE, SANGMEN, ZAISHA
     zaisha_target = ZAISHA.get(year_branch)
     sangmen_target = SANGMEN.get(year_branch)
     diaoke_target = DIAOKE.get(year_branch)
@@ -2453,7 +2465,7 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
     """
     signals: list[EventSignal] = []
 
-    from ._constants import DIZHI_LIUCHONG, DIZHI_XIANGXING, DIZHI_XIANGHAI, DIZHI_LIUHE
+    from ._constants import DIZHI_LIUCHONG, DIZHI_LIUHE, DIZHI_XIANGHAI, DIZHI_XIANGXING
 
     has_conflict = False
 
@@ -2679,7 +2691,7 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
 
         # 地支冲（地战）
         if _has_branch_interaction(ln_branch, dn_branch, "六冲"):
-            suiyun_parts.append(f"岁运相冲(地战)")
+            suiyun_parts.append("岁运相冲(地战)")
         elif _has_branch_interaction(ln_branch, dn_branch, "六合"):
             suiyun_parts.append("岁运相合")
 
@@ -2701,6 +2713,7 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
                                     on_llm_result, on_llm_token=None):
     """v0.11.2: 并行执行LLM审查，逐token回调+完成回调（供SSE逐字渲染）。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from .llm_review import call_llm_review
 
     def _do_review(idx, year, ctx):
@@ -2749,6 +2762,7 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
     使用 ThreadPoolExecutor 最多5个并发，将多年审查从串行N×3s压缩到~3s。
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from .llm_review import call_llm_review
 
     with ThreadPoolExecutor(max_workers=min(5, len(llm_tasks))) as executor:
@@ -3078,10 +3092,10 @@ def scan_years(
                 for e in events:
                     if baseline > 0 and e.direction == "正面" and e.strength >= 2:
                         e.strength = min(3, e.strength + 1)
-                        e.notes.append(f"大运吉调：十年基调偏吉，正面事件放大")
+                        e.notes.append("大运吉调：十年基调偏吉，正面事件放大")
                     elif baseline < 0 and e.direction == "负面" and e.strength >= 2:
                         e.strength = min(3, e.strength + 1)
-                        e.notes.append(f"大运凶调：十年基调偏凶，负面事件放大")
+                        e.notes.append("大运凶调：十年基调偏凶，负面事件放大")
                     elif baseline < 0 and e.direction == "正面" and e.strength >= 2:
                         if e.category in ("桃花", "婚嫁"):
                             e.notes.append("大运凶调：婚恋事件在凶运中需谨慎辨别，但机会本身仍存在")
@@ -3142,7 +3156,7 @@ def scan_years(
         # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
         if chart_data:
             try:
-                from .llm_review import should_invoke_llm, build_review_context
+                from .llm_review import build_review_context, should_invoke_llm
                 yr_features = _extract_year_features(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,

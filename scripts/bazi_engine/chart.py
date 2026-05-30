@@ -2,18 +2,22 @@
 
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, date
-from .enums import Tiangan, Dizhi, Shishen
-from ._constants import DIZHI_CANGGAN, HiddenStem as HStem, get_nayin
-from .pillars import compute_year_pillar, compute_month_pillar, compute_day_pillar, compute_hour_pillar
-from .ten_gods import get_ten_god
-from .pattern import determine_pattern
+from datetime import date, datetime
+
+from ._constants import DIZHI_CANGGAN, get_nayin
+from ._constants import HiddenStem as HStem
+from .dayun import compute_start_age, dayun_direction, format_luck_periods, generate_luck_pillars
+from .enums import Dizhi, Shishen, Tiangan
 from .interactions import (
-    find_tiangan_wuhe, find_all_dizhi_interactions, Interaction,
+    Interaction,
+    find_all_dizhi_interactions,
+    find_tiangan_wuhe,
 )
-from .spirits import find_all_spirits, SpiritAgent
-from .dayun import (dayun_direction, generate_luck_pillars, compute_start_age, format_luck_periods)
-from .liunian import scan_years, AnnualScan, compute_liunian_pillar
+from .liunian import AnnualScan, scan_years
+from .pattern import determine_pattern
+from .pillars import compute_day_pillar, compute_hour_pillar, compute_month_pillar, compute_year_pillar
+from .spirits import SpiritAgent, find_all_spirits
+from .ten_gods import get_ten_god
 
 
 @dataclass
@@ -196,7 +200,7 @@ def compute_minggong_full(year_stem: Tiangan, month_branch: Dizhi,
     结果: 1=子,...,12=亥
     """
     from ._constants import WUHU_DUNYUAN, get_nayin
-    from .enums import tiangan_by_index, dizhi_by_index
+    from .enums import dizhi_by_index, tiangan_by_index
 
     m_num = (month_branch.index - 2) % 12 + 1  # 寅=1,...,丑=12
     h_num = hour_branch.index + 1               # 子=1,...,亥=12
@@ -222,7 +226,7 @@ def compute_shengong_full(year_stem: Tiangan, month_branch: Dizhi,
     身宫干: 以年干用五虎遁推算至身宫支位
     """
     from ._constants import WUHU_DUNYUAN, get_nayin
-    from .enums import tiangan_by_index, dizhi_by_index
+    from .enums import dizhi_by_index, tiangan_by_index
 
     m_num = (month_branch.index - 2) % 12 + 1
     h_num = hour_branch.index + 1
@@ -247,7 +251,7 @@ def compute_taiyuan(month_stem: Tiangan, month_branch: Dizhi) -> tuple[Tiangan, 
     胎元支 = 月支前推三位
     """
     from ._constants import get_nayin
-    from .enums import tiangan_by_index, dizhi_by_index
+    from .enums import dizhi_by_index, tiangan_by_index
 
     ty_stem = tiangan_by_index((month_stem.index + 1) % 10)
     ty_branch = dizhi_by_index((month_branch.index + 3) % 12)
@@ -366,7 +370,7 @@ def build_chart(
     chart.year = PillarData("年柱", y_tg, y_dz)
 
     # ── 2. 月柱 ──
-    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour)
+    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour, gregorian_year=year)
     chart.warnings.extend(m_w)
     chart.month = PillarData("月柱", m_tg, m_dz)
 
@@ -681,9 +685,7 @@ def build_chart(
 
     # ── 13. 性格与家境分析 ──
     try:
-        from .personality_analysis import (
-            analyze_personality, analyze_family, build_pillars_data_for_analysis
-        )
+        from .personality_analysis import analyze_family, analyze_personality, build_pillars_data_for_analysis
         pd = build_pillars_data_for_analysis(chart)
 
         yongshen_data = chart._yongshen_result or {}

@@ -1,12 +1,12 @@
 """四柱计算: 年柱 月柱 日柱 时柱"""
 
-from datetime import date
-from .enums import Tiangan, Dizhi, tiangan_by_index, dizhi_by_index
 from ._constants import (
-    WUHU_DUNYUAN, WUSHU_DUNYUAN, MONTH_CONSTANTS,
-    MONTH_TO_DIZHI_APPROX, hour_to_dizhi,
+    MONTH_TO_DIZHI_APPROX,
+    WUHU_DUNYUAN,
+    WUSHU_DUNYUAN,
+    hour_to_dizhi,
 )
-from ._constants import HiddenStem, DIZHI_CANGGAN
+from .enums import Dizhi, Tiangan, dizhi_by_index, tiangan_by_index
 
 WARNING_DAY_PILLAR = ""  # JDN 公式精确，不再需要此警告
 WARNING_YEAR_BOUNDARY = "出生日期在立春前，年柱已自动使用上一年"
@@ -41,7 +41,8 @@ def compute_year_pillar(gregorian_year: int, gregorian_month: int, gregorian_day
 
 
 def compute_month_pillar(year_stem: Tiangan, gregorian_month: int, gregorian_day: int,
-                         birth_hour: int = 12) -> tuple[Tiangan, Dizhi, list[str]]:
+                         birth_hour: int = 12,
+                         gregorian_year: int | None = None) -> tuple[Tiangan, Dizhi, list[str]]:
     """返回 (月干, 月支, warnings)
 
     用精确节气区间确定月支，五虎遁确定月干。
@@ -50,11 +51,13 @@ def compute_month_pillar(year_stem: Tiangan, gregorian_month: int, gregorian_day
     warnings: list[str] = []
 
     # 尝试精确节气区间
-    try:
-        from .solar_terms import get_jie_datetime
-        birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour)
-        month_dz = _month_branch_from_jieqi(birth_dt, gregorian_year)
-    except Exception:
+    if gregorian_year is not None:
+        try:
+            birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour)
+            month_dz = _month_branch_from_jieqi(birth_dt, gregorian_year)
+        except Exception:
+            month_dz = MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
+    else:
         month_dz = MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
 
     yin_stem = WUHU_DUNYUAN[year_stem]

@@ -1,6 +1,6 @@
 """十神分配"""
 
-from .enums import Tiangan, Wuxing, Shishen
+from .enums import Shishen, Tiangan, Wuxing
 
 # 五行动态: 生克关系
 _WUXING_SHENG: dict[Wuxing, Wuxing] = {

@@ -7,3 +7,36 @@ requires-python = ">=3.10"
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
+    "I",      # isort (import ordering)
+    "N",      # pep8-naming (only errors)
+]
+
+ignore = [
+    "E501",   # line-too-long (project uses 120+ lines)
+    "N802",   # uppercase module-level names (e.g. TIANGAN_LU)
+    "N803",   # uppercase argument names
+    "N806",   # uppercase variable names
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py"   = ["F401"]         # re-exports are intentional
+"liunian/__init__.py"         = ["F401"]
+"liunian/events/__init__.py"  = ["F401"]
+"personality_analysis/__init__.py" = ["F401"]
+"test_*.py"          = ["F841", "F811"]  # test fixtures may have unused redefines
+"_calibration_utils.py" = ["F401"]
+
+[tool.mypy]
+strict = false
+ignore_missing_imports = true
+python_version = "3.13"

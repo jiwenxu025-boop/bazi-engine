@@ -1,13 +1,25 @@
 """神煞检测: 天乙贵人 文昌 红鸾 天喜 驿马 桃花 华盖 羊刃"""
 
 from dataclasses import dataclass, field
-from .enums import Tiangan, Dizhi
+
 from ._constants import (
-    _TIANYI_FLAT, WENCHANG, HONGLUAN, TIANXI, YIMA, TAOHUA, HUAGAI,
-    XUETANG, GUCHEN, GUASU, TAIJI_GUIREN, FUXING_GUIREN,
-    ZAISHA, SANGMEN, DIAOKE,
+    _TIANYI_FLAT,
+    DIAOKE,
+    FUXING_GUIREN,
+    GUASU,
+    GUCHEN,
+    HONGLUAN,
+    HUAGAI,
+    SANGMEN,
+    TAIJI_GUIREN,
+    TAOHUA,
+    TIANXI,
+    WENCHANG,
+    XUETANG,
+    YIMA,
+    ZAISHA,
 )
-from .enums import TIANGAN_YANGREN, TIANGAN_LU
+from .enums import TIANGAN_LU, TIANGAN_YANGREN, Dizhi, Tiangan
 
 
 @dataclass

@@ -4,9 +4,10 @@
 验证: WebSearch 2026-05-26
 """
 
-from dataclasses import dataclass, field
-from .enums import Tiangan, Dizhi
-from ._constants import SHIER_CHANGSHENG, DIZHI_SANHE, DIZHI_LIUHE
+from dataclasses import dataclass
+
+from ._constants import DIZHI_LIUHE, DIZHI_SANHE, SHIER_CHANGSHENG
+from .enums import Dizhi, Tiangan
 
 
 @dataclass

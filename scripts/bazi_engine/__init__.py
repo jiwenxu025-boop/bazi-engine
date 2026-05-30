@@ -3,9 +3,8 @@
 from bazi_engine import build_chart, BaziChart
 """
 
-from .chart import build_chart, BaziChart, PillarData
-from .enums import Tiangan, Dizhi, Wuxing, Shishen
-from .ten_gods import get_ten_god
+from ._version import __version__
+from .chart import BaziChart, PillarData, build_chart
+from .enums import Dizhi, Shishen, Tiangan, Wuxing
 from .interactions import Interaction
-
-__version__ = "0.1.0"
+from .ten_gods import get_ten_god

@@ -7,9 +7,9 @@
 v0.8.0: +假生陷阱检测（水冷木冻/燥土脆金）
 """
 
-from dataclasses import dataclass, field
-from .enums import Tiangan, Dizhi, Wuxing
-from .ten_gods import wuxing_sheng, wuxing_ke
+from dataclasses import dataclass
+
+from .enums import Dizhi, Tiangan, Wuxing
 
 
 @dataclass
@@ -195,7 +195,7 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
         if not has_fire_any:
             results.append(FalseGeneration(
                 subject=f"{dm_val}木日主",
-                source=f"亥/子水",
+                source="亥/子水",
                 condition="全局无火（丙火），水冷木冻",
                 effect="水不生木反冻木，印星（水）转化为忌神，木生机受阻",
                 severity=2,
@@ -205,7 +205,7 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
             # 地支有火但天干不透 → 部分缓解
             results.append(FalseGeneration(
                 subject=f"{dm_val}木日主",
-                source=f"亥/子水",
+                source="亥/子水",
                 condition="火藏地支不透，水冷木微冻",
                 effect="水生木但生机受限，印星生扶打折",
                 severity=1,
@@ -218,7 +218,7 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
         if not has_water_any:
             results.append(FalseGeneration(
                 subject=f"{dm_val}金日主",
-                source=f"戌/未燥土",
+                source="戌/未燥土",
                 condition="全局无水润燥，燥土脆金",
                 effect="土不生金反脆金，印星（土）转化为忌神，金被燥土所伤",
                 severity=2,
@@ -227,7 +227,7 @@ def detect_false_generation(day_master: Tiangan, all_stems: list[Tiangan],
         elif has_water_branch and not has_water_stem:
             results.append(FalseGeneration(
                 subject=f"{dm_val}金日主",
-                source=f"戌/未燥土",
+                source="戌/未燥土",
                 condition="水藏地支不透，燥土微脆金",
                 effect="土生金但力量打折，印星生扶受限",
                 severity=1,

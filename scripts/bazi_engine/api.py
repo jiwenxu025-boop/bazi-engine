@@ -13,18 +13,21 @@
 
 import json
 import os
-from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
+
+from fastapi import FastAPI, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
+from ._version import __version__
 from .chart import build_chart
 
 _IS_PUBLIC = os.getenv("BAZI_PUBLIC", "").lower() in ("1", "true", "yes")
 _AI_ENABLED = os.getenv("BAZI_AI_ENABLED", "").lower() in ("1", "true", "yes")
 _ADMIN_KEY = os.getenv("BAZI_ADMIN_KEY", "")
 
-app = FastAPI(title="八字排盘引擎", version="0.7.1")
+app = FastAPI(title="八字排盘引擎", version=__version__)
 
 # 前端页面
 _FRONTEND = Path(__file__).resolve().parent.parent.parent / "frontend"
@@ -42,7 +45,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "0.7.1", "public": _IS_PUBLIC, "ai_enabled": _AI_ENABLED}
+    return {"status": "ok", "version": __version__, "public": _IS_PUBLIC, "ai_enabled": _AI_ENABLED}
 
 
 @app.get("/api/chart")
@@ -222,10 +225,9 @@ async def chart_stream(
                 yield f"data: {json.dumps({'phase': 'fusion_status', 'message': _status_msg})}\n\n"
                 if fusion_enabled and fusion_key and chart_data.get("personality"):
                     try:
-                        from .personality_fusion import (
-                            build_fusion_data_package, generate_fusion_report
-                        )
                         from datetime import date
+
+                        from .personality_fusion import build_fusion_data_package, generate_fusion_report
                         age_info = None
                         if chart and hasattr(chart, 'birth_dt'):
                             today = date.today()
@@ -307,7 +309,7 @@ async def chart_stream(
 
                 # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
                 try:
-                    from .llm_review import enrich_dayun_interpretations, DEEPSEEK_KEY, LLM_REVIEW_ENABLED
+                    from .llm_review import DEEPSEEK_KEY, LLM_REVIEW_ENABLED, enrich_dayun_interpretations
                     loop_dy = asyncio.get_running_loop()
                     dy_queue: asyncio.Queue = asyncio.Queue()
                     dy_error: list = []
@@ -425,9 +427,14 @@ async def chat_api(request: Request):
     if not _AI_ENABLED:
         return JSONResponse({"error": "AI 功能未启用"}, status_code=503)
     from .chat import (
-        build_messages, filter_sensitive, call_deepseek_stream,
-        validate_code, consume_code, check_free_quota, consume_free_quota,
         FREE_DAILY_LIMIT,
+        build_messages,
+        call_deepseek_stream,
+        check_free_quota,
+        consume_code,
+        consume_free_quota,
+        filter_sensitive,
+        validate_code,
     )
 
     try:
@@ -504,8 +511,10 @@ async def fusion_stream(request: Request):
         // ... 逐行解析 SSE
     """
     from .personality_fusion import (
-        FUSION_ENABLED, build_fusion_data_package,
-        generate_fusion_report, DEEPSEEK_KEY,
+        DEEPSEEK_KEY,
+        FUSION_ENABLED,
+        build_fusion_data_package,
+        generate_fusion_report,
     )
 
     if not FUSION_ENABLED or not DEEPSEEK_KEY:
@@ -631,7 +640,8 @@ def admin_feedback(key: str = Query(""), days: int = Query(7, description="查�
         return JSONResponse({"error": "无权访问"}, status_code=403)
 
     # 日期筛选
-    from datetime import datetime as dt, timedelta
+    from datetime import datetime as dt
+    from datetime import timedelta
     cutoff = dt.now() - timedelta(days=days) if days > 0 else dt(2000, 1, 1)
 
     records = []

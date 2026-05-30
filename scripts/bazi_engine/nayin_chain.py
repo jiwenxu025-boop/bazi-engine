@@ -4,7 +4,8 @@
 验证: WebSearch 2026-05-26
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
 from .enums import Wuxing
 
 

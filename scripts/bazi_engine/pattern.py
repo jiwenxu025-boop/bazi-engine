@@ -7,9 +7,8 @@
 - 调候: 梁湘润+《穷通宝鉴》——废局下格局先天打折
 """
 
-from .enums import Tiangan, Dizhi
 from ._constants import DIZHI_CANGGAN
-from .enums import TIANGAN_LU, TIANGAN_YANGREN
+from .enums import TIANGAN_LU, TIANGAN_YANGREN, Dizhi, Tiangan
 from .ten_gods import get_ten_god
 
 

@@ -1,7 +1,8 @@
 """大运计算: 方向 序列 起运年龄"""
 
 from datetime import datetime
-from .enums import Tiangan, Dizhi, tiangan_by_index, dizhi_by_index
+
+from .enums import Dizhi, Tiangan, dizhi_by_index, tiangan_by_index
 from .solar_terms import distance_to_next_jie, distance_to_prev_jie
 
 
@@ -163,9 +164,16 @@ class DayunModulator:
         self._fav_ss = favorable_shishen
         self._harm_ss = harmful_shishen
 
+        from ._constants import (
+            DIZHI_LIUCHONG,
+            DIZHI_LIUHE,
+            DIZHI_SANHE,
+            DIZHI_SANHUI,
+            DIZHI_XIANGHAI,
+            DIZHI_XIANGXING,
+            DIZHI_ZIXING,
+        )
         from .ten_gods import get_ten_god
-        from ._constants import (DIZHI_LIUCHONG, DIZHI_LIUHE, DIZHI_XIANGHAI,
-                                 DIZHI_SANHE, DIZHI_SANHUI, DIZHI_XIANGXING, DIZHI_ZIXING)
         self._get_ten_god = get_ten_god
         self._liuchong = DIZHI_LIUCHONG
         self._liuhe = DIZHI_LIUHE

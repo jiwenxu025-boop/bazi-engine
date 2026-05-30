@@ -1,3 +1,10 @@
+---
+name: bazi
+description: 八字排盘与命理分析 — 输入出生信息，输出四柱/大运/流年/7类事件解读
+allowed_tools: [read_file, run_command, web_search, search_content]
+run_as: inline
+---
+
 # 八字排盘与分析
 
 引擎位置：`skills/bazi/scripts/bazi_engine/`（Python 包，12 模块 + CLI 入口）

@@ -6,7 +6,7 @@
 - 六十甲子取象: 《格物至言》(又名《日元确论》)
 """
 
-from .enums import Tiangan, Dizhi
+from .enums import Dizhi, Tiangan
 
 # ═══════════════════════════════════════════════════════════════
 # 十干体象

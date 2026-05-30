@@ -7,7 +7,7 @@
 回退：ephem 不可用时自动回退到近似查表
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from functools import lru_cache
 
 # ═══════════════════════════════════════════════════════════════

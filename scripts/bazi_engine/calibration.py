@@ -9,7 +9,6 @@ CalibrationStore 管理 JSON 格式的校准数据，支持：
 """
 
 import json
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -264,10 +263,10 @@ class CalibrationStore:
                 note = f"引擎判为负面，实际正面({actual})"
             elif ev.direction == "正面" and is_positive_actual:
                 match = True
-                note = f"方向一致"
+                note = "方向一致"
             elif ev.direction == "负面" and is_negative_actual:
                 match = True
-                note = f"方向一致"
+                note = "方向一致"
             else:
                 match = vs.get("match", True)
                 note = "方向中性或无法判定"

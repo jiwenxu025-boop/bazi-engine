@@ -5,8 +5,9 @@
 """
 
 from dataclasses import dataclass
-from .enums import Tiangan, Dizhi, Shishen
+
 from ._constants import DIZHI_CANGGAN
+from .enums import Dizhi, Shishen, Tiangan
 from .ten_gods import get_ten_god
 
 

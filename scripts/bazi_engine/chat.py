@@ -226,7 +226,7 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str, None
         yield "data: [DONE]\n\n"
 
     except httpx.TimeoutException:
-        yield f"data: [ERROR] 请求超时，请稍后重试\n\n"
+        yield "data: [ERROR] 请求超时，请稍后重试\n\n"
     except Exception as e:
         yield f"data: [ERROR] {str(e)[:200]}\n\n"
 

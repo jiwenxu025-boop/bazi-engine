@@ -281,7 +281,7 @@ def build_review_prompt(ctx: dict) -> str:
     yr_feat = ctx.get("year_features", {})
     if yr_feat:
         feat_lines = [f"  {k}: {v}" for k, v in yr_feat.items()]
-        prompt_parts.append(f"流年特征:\n" + "\n".join(feat_lines))
+        prompt_parts.append("流年特征:\n" + "\n".join(feat_lines))
 
     # 规则引擎结果
     if rule_signals:
@@ -290,7 +290,7 @@ def build_review_prompt(ctx: dict) -> str:
             sig_lines.append(
                 f"  {s['category']}/{s['direction']}/{s['strength']}★"
             )
-        prompt_parts.append(f"规则引擎信号:\n" + "\n".join(sig_lines))
+        prompt_parts.append("规则引擎信号:\n" + "\n".join(sig_lines))
     else:
         prompt_parts.append("规则引擎信号: 无")
 
@@ -641,7 +641,7 @@ def _build_dayun_prompt(natal: dict, modulations: list[dict],
             f"主题:{theme} | 十年基调:{direction} | {fav_note} | 与原局: {inters}"
         )
 
-    parts.append(f"""
+    parts.append("""
 ## 任务
 为每步大运写一句60字以内的解读，要点：
 1. 十神主题对命主的具体影响（结合性格）
@@ -652,17 +652,18 @@ def _build_dayun_prompt(natal: dict, modulations: list[dict],
 6. 用白话，不堆术语
 
 ## 输出JSON
-{{"periods": [
-  {{"index": 0, "interpretation": "甲子正财运（25-34岁）: ..."}},
+{"periods": [
+  {"index": 0, "interpretation": "甲子正财运（25-34岁）: ..."},
   ...
-]}}
+]}
 """)
     return "\n".join(parts)
 
 
 def _parse_dayun_response(content: str, expected_count: int) -> list[dict]:
     """解析大运解读 JSON 响应"""
-    import json as _json, re as _re
+    import json as _json
+    import re as _re
     match = _re.search(r'\{[\s\S]*"periods"[\s\S]*\}', content)
     if not match:
         return []

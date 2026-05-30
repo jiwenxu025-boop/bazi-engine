@@ -4,13 +4,19 @@ v0.8.0: +墓库相冲核爆检测（辰戌/丑未冲 → 土气激增 + 杂气�
 """
 
 from dataclasses import dataclass, field
-from .enums import Tiangan, Dizhi, Wuxing
+
 from ._constants import (
-    TIANGAN_WUHE, TIANGAN_WUHE_PAIRS,
-    DIZHI_LIUCHONG, DIZHI_SANHE, DIZHI_BANHE, DIZHI_SANHUI,
-    DIZHI_LIUHE, DIZHI_XIANGXING, DIZHI_XIANGHAI, DIZHI_ZIXING,
-    DIZHI_CANGGAN,
+    DIZHI_BANHE,
+    DIZHI_LIUCHONG,
+    DIZHI_LIUHE,
+    DIZHI_SANHE,
+    DIZHI_SANHUI,
+    DIZHI_XIANGHAI,
+    DIZHI_XIANGXING,
+    DIZHI_ZIXING,
+    TIANGAN_WUHE,
 )
+from .enums import Dizhi, Tiangan, Wuxing
 
 
 @dataclass

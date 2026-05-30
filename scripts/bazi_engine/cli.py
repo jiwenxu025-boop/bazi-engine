@@ -1,8 +1,8 @@
 """命令行入口 — 八字排盘快速输出"""
 
 import argparse
+
 from .chart import build_chart
-from .enums import Tiangan, Dizhi, Shishen
 
 
 def format_chart(chart) -> str:
@@ -29,9 +29,9 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
     lines = []
     p = lines.append
 
-    p(f"╔══════════════════════════════════╗")
+    p("╔══════════════════════════════════╗")
     p(f"║  八字分析: {chart.name}  ({chart.gender})" + " " * (20 - len(chart.name)) + "║")
-    p(f"╚══════════════════════════════════╝")
+    p("╚══════════════════════════════════╝")
     p("")
 
     if practical:
@@ -39,7 +39,7 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
 
         # 四柱简表（仅干支）
         p("┌────────┬────────┬────────┬────────┐")
-        p(f"│  年柱   │  月柱   │  日柱   │  时柱   │")
+        p("│  年柱   │  月柱   │  日柱   │  时柱   │")
         p("├────────┼────────┼────────┼────────┤")
         p(f"│{chart.year.stem.value}{chart.year.branch.value:3}    │{chart.month.stem.value}{chart.month.branch.value:3}    │{chart.day.stem.value}{chart.day.branch.value:3}    │{chart.hour.stem.value}{chart.hour.branch.value:3}    │")
         p("└────────┴────────┴────────┴────────┘")
@@ -184,7 +184,7 @@ def _format_chart_internal(chart, practical: bool = False) -> str:
         # ===== 完整技术模式 =====
         # 四柱
         p("┌────────┬────────┬────────┬────────┐")
-        p(f"│  年柱   │  月柱   │  日柱   │  时柱   │")
+        p("│  年柱   │  月柱   │  日柱   │  时柱   │")
         p("├────────┼────────┼────────┼────────┤")
         p(f"│{chart.year.stem.value}{chart.year.branch.value:3}    │{chart.month.stem.value}{chart.month.branch.value:3}    │{chart.day.stem.value}{chart.day.branch.value:3}    │{chart.hour.stem.value}{chart.hour.branch.value:3}    │")
         p(f"│{chart.year.nayin:^8}│{chart.month.nayin:^8}│{chart.day.nayin:^8}│{chart.hour.nayin:^8}│")

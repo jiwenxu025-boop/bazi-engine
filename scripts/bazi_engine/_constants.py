@@ -5,7 +5,7 @@
 修正记录: 丑藏干中余气互换(辛癸), 福星贵人重写, 孤辰寡宿改三会局, 太极贵人戊己扩四季
 """
 
-from .enums import Tiangan, Dizhi, Wuxing, Shishen
+from .enums import Dizhi, Tiangan, Wuxing
 
 # ═══════════════════════════════════════════════════════════════
 # 天干五合: (天干, 天干) → 化气五行

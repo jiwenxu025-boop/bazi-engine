@@ -7,8 +7,8 @@
 """
 
 from dataclasses import dataclass, field
-from .enums import Tiangan, Dizhi, Wuxing
 
+from .enums import Dizhi, Tiangan, Wuxing
 
 # ═══════════════════════════════════════════════════════════════
 # 数据类
@@ -1532,10 +1532,10 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
         combos.append("孤辰寡宿同现→ 内心孤独感较强，亲情缘薄，但独立性强。"
                       "《三命通会》：「孤辰寡宿，主孤独独立」")
     elif has_gc:
-        combos.append(f"孤辰入命→ 独立性较强，男性更明显，不喜依靠他人。"
+        combos.append("孤辰入命→ 独立性较强，男性更明显，不喜依靠他人。"
                       "《三命通会》：「孤辰者，独立自主，不喜羁绊」")
     elif has_gs:
-        combos.append(f"寡宿入命→ 喜独处，女性更明显，有自己的小世界。"
+        combos.append("寡宿入命→ 喜独处，女性更明显，有自己的小世界。"
                       "《三命通会》：「寡宿者，好静恶喧，独善其身」")
 
     # ── 48. 阴阳差错 ──
@@ -2046,7 +2046,7 @@ def analyze_personality(
     elif cai_s < 2.0:
         _wealth_parts.append("财星不显，对钱不执着，更看重工作意义和人生体验")
     else:
-        _wealth_parts.append(f"财星适中，对钱有正常欲望但不极端。" + ("能守能赚" if is_strong else "优先增强自身实力，钱自然跟来"))
+        _wealth_parts.append("财星适中，对钱有正常欲望但不极端。" + ("能守能赚" if is_strong else "优先增强自身实力，钱自然跟来"))
     result.traits["财富观"] = "。".join(_wealth_parts)
 
     # ── 综合画像 ──
@@ -2566,11 +2566,11 @@ def analyze_family(
         pills = inter["pillars"]
         if "年柱" in pills and "月柱" in pills:
             if inter["type"] == "相害":
-                relation_notes.append(f"年支月支相害→ 父亲与祖辈关系不和")
+                relation_notes.append("年支月支相害→ 父亲与祖辈关系不和")
             elif inter["type"] == "六冲":
-                relation_notes.append(f"年柱月柱相冲→ 离祖成家，祖辈与父母辈关系紧张")
+                relation_notes.append("年柱月柱相冲→ 离祖成家，祖辈与父母辈关系紧张")
             elif inter["type"] == "相刑":
-                relation_notes.append(f"年柱月柱相刑→ 祖辈与父母辈有矛盾摩擦")
+                relation_notes.append("年柱月柱相刑→ 祖辈与父母辈有矛盾摩擦")
 
     # 财破印 → 父母感情（需验证五行克制：财的五行克印的五行才算）
     # 财克印五行对: 木克土, 火克金, 土克水, 金克木, 水克火
@@ -2654,7 +2654,7 @@ def analyze_family(
     yr = _yangren_branch(day_master_stem)
     for p in pillars_data:
         if p.get("ten_god") == father_star and p.get("branch") == yr:
-            health_notes.append(f"父星坐羊刃—《渊海子平》：财坐刃，父有损伤")
+            health_notes.append("父星坐羊刃—《渊海子平》：财坐刃，父有损伤")
             break
     # 比劫重重克父
     bijie_total = sum(1 for p in pillars_data if p.get("ten_god") in ("比肩", "劫财"))
@@ -2795,7 +2795,7 @@ def analyze_family(
                 if kw in year_nayin: ny_wx = v
                 if kw in month_nayin: mn_wx = v
             if ny_wx and mn_wx:
-                from .ten_gods import wuxing_sheng, wuxing_ke
+                from .ten_gods import wuxing_ke, wuxing_sheng
                 try:
                     if wuxing_sheng(Wuxing(ny_wx)) == Wuxing(mn_wx):
                         ancestral_notes.append(f"年纳音{ny_wx}生月纳音{mn_wx}—《三命通会》：祖荫绵长，代际传承好")
