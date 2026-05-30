@@ -13,9 +13,7 @@ import httpx
 # 配置
 # ═══════════════════════════════════════════════════════════════
 
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL, get_timeout
 
 _ACTIVATION_FILE = Path(__file__).resolve().parent / "activation_codes.json"
 
@@ -57,41 +55,38 @@ SYSTEM_PROMPT_BASE = """你是八字命理文化解说助手，基于《渊海�
 
 def build_chat_context(chart_data: dict) -> str:
     """从完整命盘 JSON 提取关键数据，生成 system prompt 上下文"""
-    dm = chart_data.get("day_master", {})
-    yongshen = chart_data.get("yongshen", {})
+    from ._chart_context import extract_base_context
+    base = extract_base_context(chart_data)
+
     personality = chart_data.get("personality", {})
     family = chart_data.get("family", {})
-    pattern = chart_data.get("pattern", "")
-    interactions = chart_data.get("interactions", {})
-    annual_scans = chart_data.get("annual_scans", [])
 
     parts = []
 
     # 基本信息
     parts.append(f"【命主】{chart_data.get('name', '')}，{chart_data.get('gender', '')}")
-    parts.append(f"【日主】{dm.get('stem', '')}（{dm.get('wuxing', '')}·{dm.get('yinyang', '')}）")
-    parts.append(f"【格局】{pattern}")
-    parts.append(f"【身强弱】{yongshen.get('strength', '中和')}（{yongshen.get('score', 0)}分）")
+    parts.append(f"【日主】{base['day_master']}")
+    parts.append(f"【格局】{base['pattern']}")
+    parts.append(f"【身强弱】{base['strength']}（{base['score']}分）")
 
     # 喜用
-    if yongshen.get("favorable"):
-        parts.append(f"【喜用十神】{'、'.join(yongshen['favorable'])}")
-    if yongshen.get("harmful"):
-        parts.append(f"【忌神】{'、'.join(yongshen['harmful'])}")
+    if base["favorable"]:
+        parts.append(f"【喜用十神】{'、'.join(base['favorable'])}")
+    if base["harmful"]:
+        parts.append(f"【忌神】{'、'.join(base['harmful'])}")
 
     # 大运
-    dayun = chart_data.get("dayun", {})
-    parts.append(f"【大运方向】{dayun.get('direction', '')}，起运 {dayun.get('start_age', '')} 岁")
-    if dayun.get("periods"):
+    parts.append(f"【大运方向】{base['dayun_direction']}，起运 {base['dayun_start_age']} 岁")
+    if base["dayun_periods"]:
         parts.append("【大运列表】")
-        for dp in dayun["periods"][:6]:
-            parts.append(f"  {dp.get('order','?')}→{dp.get('age','?')}岁: {dp.get('stem','')}{dp.get('branch','')}")
+        for dp in base["dayun_periods"][:6]:
+            parts.append(f"  {dp['order']}→{dp['age']}岁: {dp['stem']}{dp['branch']}")
 
     # 性格
-    if personality.get("profile"):
-        parts.append(f"【性格画像】{personality['profile']}")
-    if personality.get("traits"):
-        for k, v in personality["traits"].items():
+    if base["personality_profile"]:
+        parts.append(f"【性格画像】{base['personality_profile']}")
+    if base["personality_traits"]:
+        for k, v in base["personality_traits"].items():
             parts.append(f"  {k}: {v}")
 
     # 特殊组合
@@ -100,22 +95,16 @@ def build_chat_context(chart_data: dict) -> str:
         parts.append(f"【关键组合】{'；'.join(combos_short)}")
 
     # 家境
-    if family.get("profile"):
-        parts.append(f"【家境】等级{family.get('level_label', '')}，{family.get('father', '')}，{family.get('mother', '')}")
+    if base.get("family"):
+        parts.append(f"【家境】等级{base['family']['level']}，{base['family']['father']}，{base['family']['mother']}")
 
     # 神煞
-    spirits = chart_data.get("spirits", [])
-    if spirits:
-        spirit_names = [s.get("name", "") for s in spirits[:10] if s.get("name")]
-        if spirit_names:
-            parts.append(f"【神煞】{'、'.join(spirit_names)}")
+    if base["spirit_names"]:
+        parts.append(f"【神煞】{'、'.join(base['spirit_names'])}")
 
     # 干支关系
-    if interactions:
-        dz_list = interactions.get("dizhi", [])
-        if dz_list:
-            dz_strs = [f"{d.get('type','')}({'&'.join(d.get('pillars',[]))})" for d in dz_list[:5]]
-            parts.append(f"【地支关系】{'；'.join(dz_strs)}")
+    if base["key_interactions"]:
+        parts.append(f"【地支关系】{'；'.join(base['key_interactions'][:5])}")
 
     return "\n".join(parts)
 
@@ -185,6 +174,11 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str, None
     if not DEEPSEEK_KEY:
         yield "data: [ERROR] DeepSeek API Key 未配置\n\n"
         return
+
+    # Token 预算检查
+    from ._token_budget import check_token_budget, truncate_messages
+    if not check_token_budget(messages, DEEPSEEK_MODEL, 2048)[0]:
+        messages = truncate_messages(messages, DEEPSEEK_MODEL, 2048)
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",

@@ -17,13 +17,10 @@ from typing import Any
 
 import httpx
 
-# ── API 配置（复用 chat.py 的环境变量）──
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-
-# ── LLM Review 开关 ──
-LLM_REVIEW_ENABLED = os.getenv("BAZI_LLM_REVIEW", "0") == "1"
+from ._deepseek_config import (
+    DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL,
+    LLM_REVIEW_ENABLED, get_timeout, is_available,
+)
 
 
 @dataclass
@@ -112,47 +109,25 @@ def build_review_context(
     year_features: 流年级特征（十神/神煞/冲合关系等），由 scan_years 传入。
                    这些是信号检测函数内部计算但未触发规则的"近失"特征。
     """
+    from ._chart_context import extract_base_context
+    base = extract_base_context(chart_data)
+
     ctx: dict[str, Any] = {}
 
     # ── 1. 原局概要 ──
-    dm = chart_data.get("day_master", {})
-    yongshen = chart_data.get("yongshen", {})
-    tiaohou = chart_data.get("tiaohou", {})
-    pattern = chart_data.get("pattern", "")
-
-    pillars = chart_data.get("pillars", {})
-    pillar_strs = []
-    for key in ["year", "month", "day", "hour"]:
-        p = pillars.get(key, {})
-        if p:
-            pillar_strs.append(f"{p.get('stem','')}{p.get('branch','')}")
-    natal_str = " ".join(pillar_strs)
-    day_branch = pillars.get("day", {}).get("branch", "")
-
     ctx["natal"] = {
-        "pillars": natal_str,
-        "day_master": f"{dm.get('stem','')}({dm.get('wuxing','')}·{dm.get('yinyang','')})",
-        "pattern": pattern,
-        "strength": yongshen.get("strength", "中和"),
-        "favorable": yongshen.get("favorable", []),
-        "harmful": yongshen.get("harmful", []),
-        "favorable_wuxing": yongshen.get("favorable_wuxing", []),
-        "harmful_wuxing": yongshen.get("harmful_wuxing", []),
-        "day_branch": day_branch,
-        "tiaohou": {
-            "climate": tiaohou.get("climate", "中和"),
-            "is_fei_ju": tiaohou.get("is_fei_ju", False),
-            "tiaohou_wuxing": tiaohou.get("tiaohou_wuxing", []),
-        },
+        "pillars": base["pillars_str"],
+        "day_master": base["day_master"],
+        "pattern": base["pattern"],
+        "strength": base["strength"],
+        "favorable": base["favorable"],
+        "harmful": base["harmful"],
+        "favorable_wuxing": base["favorable_wuxing"],
+        "harmful_wuxing": base["harmful_wuxing"],
+        "day_branch": base["day_branch"],
+        "tiaohou": base.get("tiaohou", {}),
+        "key_interactions": base["key_interactions"][:10],
     }
-
-    # ── 2. 原局关键关系 ──
-    interactions = chart_data.get("interactions", {})
-    natal_interactions = []
-    for inter_type in ["天干五合", "地支六合", "三合", "六冲", "相刑", "相害"]:
-        for it in interactions.get(inter_type, []):
-            natal_interactions.append(f"{inter_type}: {it}")
-    ctx["natal"]["key_interactions"] = natal_interactions[:10]
 
     # 贪生忘克
     if tansheng_wangke:
@@ -221,6 +196,36 @@ def build_review_context(
 # ═══════════════════════════════════════════════════════════════
 # Prompt 构建
 # ═══════════════════════════════════════════════════════════════
+
+_SUIYUN_KNOWLEDGE = """
+## 岁运交战知识（关键参考）
+
+岁运交战=大运与流年天克地冲(天干相克+地支相冲同时出现)，是流年层面最剧烈的冲突形态。
+
+- 岁=流年(太岁为君)，运=大运(为臣)。臣冲克君→主动荡是非破财变动
+- 运伐岁(大运天干克流年天干)：下犯上，凶性重
+- 岁伐运(流年天干克大运天干)：上制下，凶性稍减
+- 天战(天干冲)：表层影响，事业/人际/口舌
+- 地战(地支冲)：底层动摇，环境/健康/家庭，比天战严重1.5-2倍
+- 冲克喜用神→破财伤病官非分手离职
+- 冲克忌神→转机换运去旧迎新
+- 原局有合/生/制→减凶；无救→波动加剧
+- 古诀：反吟伏吟泪淋淋，不伤自己损他人
+- 现实中：稳守、少投资、不冒险、低调行事
+"""
+
+
+def _suiyun_knowledge(ctx: dict) -> str:
+    """仅当流年特征中检测到岁运交战才附加知识库。"""
+    yr_feat = ctx.get("year_features", {})
+    if not yr_feat:
+        return ""
+    # 检查流年特征中是否有岁运交战相关信号
+    suiyun_str = str(yr_feat)
+    if "天战" in suiyun_str or "地战" in suiyun_str or "岁运相冲" in suiyun_str or "岁运交战" in suiyun_str:
+        return _SUIYUN_KNOWLEDGE
+    return ""
+
 
 def build_review_prompt(ctx: dict) -> str:
     """从结构化上下文构建 LLM 审查 prompt。
@@ -298,22 +303,7 @@ def build_review_prompt(ctx: dict) -> str:
 
     prompt = f"""你是八字命理多因子综合推理器。以下是某命主在特定流年的结构化特征数据。
 
-{context_text}
-
-## 岁运交战知识（关键参考）
-
-岁运交战=大运与流年天克地冲(天干相克+地支相冲同时出现)，是流年层面最剧烈的冲突形态。
-
-- 岁=流年(太岁为君)，运=大运(为臣)。臣冲克君→主动荡是非破财变动
-- 运伐岁(大运天干克流年天干)：下犯上，凶性重
-- 岁伐运(流年天干克大运天干)：上制下，凶性稍减
-- 天战(天干冲)：表层影响，事业/人际/口舌
-- 地战(地支冲)：底层动摇，环境/健康/家庭，比天战严重1.5-2倍
-- 冲克喜用神→破财伤病官非分手离职
-- 冲克忌神→转机换运去旧迎新
-- 原局有合/生/制→减凶；无救→波动加剧
-- 古诀：反吟伏吟泪淋淋，不伤自己损他人
-- 现实中：稳守、少投资、不冒险、低调行事
+{context_text}{_suiyun_knowledge(ctx)}
 
 ## 任务
 
@@ -382,8 +372,13 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
         "max_tokens": 4096,
     }
 
+    # Token 预算检查
+    from ._token_budget import check_token_budget, truncate_messages
+    if not check_token_budget(messages, DEEPSEEK_MODEL, payload["max_tokens"])[0]:
+        messages = truncate_messages(messages, DEEPSEEK_MODEL, payload["max_tokens"])
+
     try:
-        _timeout = 90.0 if "v4" in DEEPSEEK_MODEL.lower() or "reasoner" in DEEPSEEK_MODEL.lower() else 30.0
+        _timeout = get_timeout()
         full_text_parts: list[str] = []
         with httpx.Client(timeout=_timeout) as client:
             with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
@@ -679,6 +674,220 @@ def _parse_dayun_response(content: str, expected_count: int) -> list[dict]:
         return result
     except (_json.JSONDecodeError, KeyError):
         return []
+
+
+# ═══════════════════════════════════════════════════════════════
+# 批量多年审查（v0.15.1: 节省 60% 重复 boilerplate）
+# ═══════════════════════════════════════════════════════════════
+
+def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMReviewResult]]:
+    """多年合并为一次 API 调用，共享原局/大运上下文。
+
+    8 次独立调用 → 1 次合并调用，省去每份中重复的原局描述。
+
+    Args:
+        ctxs: 多个年份的 review context（来自 build_review_context）
+        on_token: 可选 token 回调
+
+    Returns:
+        [[results for year_1], [results for year_2], ...]
+    """
+    if not ctxs or not is_available():
+        return [[] for _ in ctxs]
+
+    # 共享上下文从第一份 ctx 里提取原局/大运
+    first = ctxs[0]
+    natal = first["natal"]
+
+    # 构建共享 + 各年特有的 prompt
+    shared_parts = [
+        f"八字: {natal['pillars']}",
+        f"日主: {natal['day_master']} | 格局: {natal['pattern']} | 强弱: {natal['strength']}",
+        f"喜用五行: {natal['favorable_wuxing']} | 忌神五行: {natal['harmful_wuxing']}",
+        f"喜用十神: {natal['favorable']} | 忌十神: {natal['harmful']}",
+    ]
+    th = natal.get("tiaohou", {})
+    shared_parts.append(f"调候: 气候{th.get('climate','中和')} | {'废局' if th.get('is_fei_ju') else '非废局'}")
+
+    # 贪生忘克 / 假生陷阱
+    for ts in natal.get("tansheng_wangke", []):
+        shared_parts.append(f"[贪生忘克] {'→'.join(ts['path'])}")
+    for fg in natal.get("false_generations", []):
+        shared_parts.append(f"[假生陷阱] {fg['subject']}: {fg['condition']} → {fg['effect']}")
+
+    shared_text = "\n".join(shared_parts)
+
+    # 构建各年特有的信息
+    year_sections = []
+    for i, ctx in enumerate(ctxs):
+        liunian = ctx["liunian"]
+        dayun = ctx.get("dayun", {})
+        signals = ctx.get("rule_signals", [])
+        yr_feat = ctx.get("year_features", {})
+
+        section = [f"## 年份{i+1}: {liunian['year']}年 {liunian['stem']}{liunian['branch']} | {liunian['age']}岁"]
+        section.append(f"大运: {dayun.get('stem','')}{dayun.get('branch','')} | 主题'{dayun.get('theme','')}' | 十年基调偏{'吉' if dayun.get('baseline_offset',0) > 0 else '凶' if dayun.get('baseline_offset',0) < 0 else '平'}")
+
+        if signals:
+            sigs = "; ".join(f"{s['category']}/{s['direction']}/{s['strength']}★" for s in signals)
+            section.append(f"规则信号: {sigs}")
+        else:
+            section.append("规则信号: 无")
+
+        if yr_feat:
+            section.append("流年特征:")
+            for k, v in yr_feat.items():
+                section.append(f"  {k}: {v}")
+
+        # 岁运交战检测
+        suiyun_str = str(yr_feat)
+        if "天战" in suiyun_str or "地战" in suiyun_str:
+            section.append("⚠ 本年存在岁运交战")
+
+        year_sections.append("\n".join(section))
+
+    prompt = f"""你是八字命理多因子综合推理器。以下是命主原局信息 + {len(ctxs)}个年份的流年数据。
+
+## 原局（所有年份共享）
+{shared_text}
+
+{chr(10).join(year_sections)}
+
+## 任务
+为每个年份做综合推理。规则引擎已跑但可能遗漏"多弱信号叠加"型事件。
+
+### 输出JSON格式
+{{"years": [
+  {{"year": {ctxs[0]['liunian']['year']}, "events": [
+    {{"category": "...", "direction": "...", "strength": 1或2, "prediction": "...", "reasoning": "...", "confidence": 0.5-1.0}}
+  ]}},
+  ...
+]}}
+
+约束: strength≤2★, 无事件返回空events数组, 严格根据数据推理不编造"""
+
+    messages = [
+        {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
+        {"role": "user", "content": prompt},
+    ]
+
+    # Token 预算
+    from ._token_budget import check_token_budget, truncate_messages
+    if not check_token_budget(messages, DEEPSEEK_MODEL, 4096)[0]:
+        messages = truncate_messages(messages, DEEPSEEK_MODEL, 4096)
+
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "stream": False,
+        "temperature": 0.3,
+        "max_tokens": 4096,
+    }
+
+    try:
+        _timeout = get_timeout() * 2  # 多年批量调用给更多时间
+        full_text_parts: list[str] = []
+        with httpx.Client(timeout=_timeout) as client:
+            with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
+                if resp.status_code != 200:
+                    return [[] for _ in ctxs]
+                for line in resp.iter_lines():
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_text_parts.append(content)
+                                if on_token:
+                                    on_token(content)
+                    except json.JSONDecodeError:
+                        continue
+
+        content = "".join(full_text_parts)
+        if not content:
+            return [[] for _ in ctxs]
+
+        return _parse_batch_response(content, ctxs)
+
+    except Exception:
+        return [[] for _ in ctxs]
+
+
+def _parse_batch_response(content: str, ctxs: list[dict]) -> list[list[LLMReviewResult]]:
+    """解析批量审查的 JSON 响应，按年份分发结果。"""
+    import re as _re
+    import json as _json
+
+    results_per_year: list[list[LLMReviewResult]] = [[] for _ in ctxs]
+
+    match = _re.search(r'\{[\s\S]*"years"[\s\S]*\}', content)
+    if not match:
+        return results_per_year
+
+    try:
+        data = _json.loads(match.group(0))
+        years_data = data.get("years", [])
+    except _json.JSONDecodeError:
+        return results_per_year
+
+    valid_categories = {"婚嫁", "事业", "财运", "健康", "搬迁", "桃花", "人际", "状态"}
+    valid_directions = {"正面", "负面", "中性"}
+
+    for yr_data in years_data:
+        yr = yr_data.get("year")
+        # 按 year 匹配 ctx
+        yr_idx = None
+        for i, ctx in enumerate(ctxs):
+            if ctx["liunian"]["year"] == yr:
+                yr_idx = i
+                break
+
+        if yr_idx is None or yr_idx >= len(results_per_year):
+            continue
+
+        for evt in yr_data.get("events", []):
+            cat = evt.get("category", "")
+            if cat not in valid_categories:
+                continue
+            direction = evt.get("direction", "中性")
+            if direction not in valid_directions:
+                direction = "中性"
+            strength = evt.get("strength", 1)
+            if not isinstance(strength, (int, float)):
+                strength = 1
+            strength = max(1, min(2, int(strength)))
+            confidence = evt.get("confidence", 0.6)
+            if not isinstance(confidence, (int, float)):
+                confidence = 0.6
+            confidence = max(0.0, min(1.0, float(confidence)))
+            if confidence < 0.5:
+                continue
+
+            results_per_year[yr_idx].append(LLMReviewResult(
+                year=yr,
+                category=cat,
+                direction=direction,
+                strength=strength,
+                prediction=evt.get("prediction", "")[:60],
+                reasoning=evt.get("reasoning", "")[:120],
+                triggers=[f"[LLM推理] {evt.get('reasoning', '')[:60]}"],
+                confidence=confidence,
+                source="llm",
+            ))
+
+    return results_per_year
 
 
 def enrich_dayun_interpretations(chart) -> list[dict]:

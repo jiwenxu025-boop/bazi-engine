@@ -8,3 +8,4 @@ activation_codes.json
 scripts/data/free_usage.json
 scripts/data/feedback/
 .idea/
+_anonymize.py

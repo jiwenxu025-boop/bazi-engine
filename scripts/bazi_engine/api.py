@@ -29,8 +29,9 @@ _ADMIN_KEY = os.getenv("BAZI_ADMIN_KEY", "")
 
 app = FastAPI(title="八字排盘引擎", version=__version__)
 
-# 前端页面
-_FRONTEND = Path(__file__).resolve().parent.parent.parent / "frontend"
+# 前端页面路径（支持环境变量覆盖，打包部署时可指定）
+_frontend_env = os.getenv("FRONTEND_DIR", "")
+_FRONTEND = Path(_frontend_env) if _frontend_env else Path(__file__).resolve().parent.parent.parent / "frontend"
 
 # 静态文件挂载（末尾，让 API 路由优先匹配）
 
