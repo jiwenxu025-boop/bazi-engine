@@ -108,7 +108,7 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         s.add(-1, "财星落空亡→得财虚浮")
 
     if s.is_significant():
-        magnitude = _wealth_magnitude(s.total)
+        magnitude = _wealth_magnitude(s.total, s.triggers())
         signals.append(EventSignal(
             category="财运",
             direction=s.direction,
@@ -118,7 +118,5 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             notes=s.notes(),
             magnitude=magnitude,
         ))
-    return signals
-
     return signals
 

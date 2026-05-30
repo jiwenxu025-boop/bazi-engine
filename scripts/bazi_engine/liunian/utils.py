@@ -428,20 +428,50 @@ def _is_ke_wx(a, b) -> bool:
     }
     return ke_map.get(a) == b
 
-def _wealth_magnitude(total: int) -> str:
-    """v0.13.0: 根据 ScoreAccumulator 原始总分判定财运量级"""
-    t = abs(total)
+def _wealth_magnitude(total: int, triggers: list[str] | None = None,
+                     dayun_theme: str = "", is_cong_ge: bool = False) -> str:
+    """v0.13.0: 根据 ScoreAccumulator 总分 + 触发类型 + 格局判定财运量级。
+
+    升级规则：
+    - 财库冲开 → +2 级（墓库核爆，资金放大器）
+    - 财来合我 → +1 级（最直接的得财信号）
+    - 大运主题=财运 → +1 级（十年财运共振）
+    - 从格 → +1 级（格局指向财富上限更高）
+    """
+    trigger_str = str(triggers or [])
+    has_caiku = "财库" in trigger_str or "冲开" in trigger_str
+    has_cailai = "财来合我" in trigger_str
+    is_wealth_dayun = "财运" in dayun_theme
+
+    base_level = 0
     if total >= 7:
-        return "大额"
+        base_level = 3  # 大额
     elif total >= 4:
-        return "中额"
+        base_level = 2  # 中额
     elif total >= 2:
-        return "小额"
+        base_level = 1  # 小额
     elif total <= -7:
-        return "大破财"
+        base_level = -3  # 大破财
     elif total <= -4:
-        return "破财"
+        base_level = -2  # 破财
     elif total <= -2:
-        return "小额破财"
-    return "小额" if total > 0 else "小额破财"
+        base_level = -1  # 小额破财
+
+    # 正财：升级
+    if base_level > 0:
+        if has_caiku:
+            base_level += 2  # 财库冲开跳 2 级
+        if has_cailai:
+            base_level += 1
+        if is_wealth_dayun:
+            base_level += 1
+        if is_cong_ge:
+            base_level += 1
+
+    # 负财（破财）：降级不加重
+    magnitude_map = {
+        1: "小额", 2: "中额", 3: "大额", 4: "大额", 5: "大额",
+        -1: "小额破财", -2: "破财", -3: "大破财",
+    }
+    return magnitude_map.get(base_level, "小额" if total > 0 else "小额破财")
 

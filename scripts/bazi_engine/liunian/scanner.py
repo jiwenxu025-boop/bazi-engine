@@ -561,8 +561,50 @@ def scan_years(
         else:
             _execute_llm_reviews_parallel(results, llm_tasks)
 
+    # ── v0.15.2: 婚嫁回溯—强信号前一年检测前奏 ──
+    results = _backtrack_hunjia_prelude(results)
+
     # ── v0.11.1: 扫描后聚类处理—标注连续桃花年的"首发年" ──
     results = _annotate_taohua_clusters(results)
+
+    return results
+
+
+def _backtrack_hunjia_prelude(results: list[AnnualScan]) -> list[AnnualScan]:
+    """婚嫁 ±1 年回溯：强婚嫁信号（≥3★）出现时，检查前一年是否有前奏信号。
+
+    如果有但不触发婚嫁，将前一年标注为"婚嫁前奏年"。
+    校准数据中 4/22 婚嫁案例偏差 ±1 年，此逻辑可覆盖。
+    """
+    for i in range(1, len(results)):
+        prev_scan = results[i - 1]
+        curr_scan = results[i]
+
+        # 当前年有强婚嫁信号
+        has_strong_hunjia = any(
+            e.category == "婚嫁" and e.strength >= 3
+            for e in curr_scan.events
+        )
+        if not has_strong_hunjia:
+            continue
+
+        # 前一年检查前奏信号
+        prelude_triggers = []
+        for e in prev_scan.events:
+            if e.category == "桃花" and e.strength >= 2:
+                prelude_triggers.append(f"桃花★{e.strength}")
+            elif e.category == "婚嫁" and e.strength == 1:
+                prelude_triggers.append("婚嫁弱信号")
+
+        if prelude_triggers:
+            prev_scan.events.append(EventSignal(
+                category="婚嫁",
+                direction="正面",
+                strength=1,
+                prediction="婚嫁前奏年——强信号出现在次年，本年已开始酝酿",
+                triggers=prelude_triggers,
+                notes=[f"次年{curr_scan.year}年有≥3★婚嫁信号，本年出现前奏: {'; '.join(prelude_triggers)}"],
+            ))
 
     return results
 

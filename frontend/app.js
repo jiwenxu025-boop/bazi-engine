@@ -162,10 +162,14 @@ async function go(){
               // 防抖：每80ms渲染一次，避免逐token刷DOM
               clearTimeout(personalityEl._debounce);
               personalityEl._debounce = setTimeout(function(){
-                personalityEl.innerHTML = md2html(personalityText) + '<span class=fusion-cursor>|</span>';
-                // 滚动到底部
+                var html = md2html(personalityText);
+                // 增量：只更新最后一段，避免全量 re-parse
+                var cursor = document.querySelector('.fusion-cursor');
+                if (cursor) cursor.remove();
+                personalityEl.innerHTML = html;
+                personalityEl.insertAdjacentHTML('beforeend', '<span class=fusion-cursor>|</span>');
                 personalityEl.scrollTop = personalityEl.scrollHeight;
-              }, 80);
+              }, 16);  // 16ms ≈ 60fps，而非 80ms
             }
           } else if (msg.phase === 'fusion_status'){
             // 诊断：融合引擎状态
@@ -224,6 +228,60 @@ var TERMS = {
   '身宫': '表征命主安身立命之所',
   '胎元': '母体受胎之月，表征先天禀赋',
 };
+
+/* ==========================================
+   Personality helpers
+   ========================================== */
+function _buildBingyaoCard(combos){
+  var top = combos[0];
+  var h = '<div class=bingyao-card>';
+  h += '<div class=bingyao-badge>全局矛盾</div>';
+  h += '<div class=bingyao-title>' + esc(top.combo) + '</div>';
+  h += '<div class=bingyao-directive>' + esc(top.directive) + '</div>';
+  if (combos.length > 1){
+    h += '<div class=bingyao-secondary>';
+    for (var i = 1; i < Math.min(combos.length, 3); i++){
+      h += '<span>' + esc(combos[i].combo) + '</span>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function _buildShishenRank(scores){
+  var entries = [];
+  for (var k in scores) entries.push({name: k, val: scores[k]});
+  entries.sort(function(a,b){return b.val - a.val;});
+  var top5 = entries.slice(0, 5);
+  var maxVal = top5[0] ? top5[0].val : 10;
+  var h = '<div class=shishen-rank>';
+  h += '<div class=shishen-rank-title>十神强度</div>';
+  for (var i = 0; i < top5.length; i++){
+    var pct = Math.round(top5[i].val / maxVal * 100);
+    h += '<div class=shishen-bar><span class=shishen-name>' + top5[i].name + '</span>';
+    h += '<span class=shishen-val>' + top5[i].val.toFixed(1) + '</span>';
+    h += '<span class=shishen-fill style=width:' + pct + '%></span></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function togglePersonalityMode(){
+  var body = document.getElementById('personalityBody');
+  var raw = document.getElementById('personalityRaw');
+  var btn = document.querySelector('.toggle-btn');
+  if (!body || !raw) return;
+  if (raw.style.display === 'none'){
+    raw.style.display = 'block';
+    body.style.display = 'none';
+    btn.textContent = '返回融合报告';
+  } else {
+    raw.style.display = 'none';
+    body.style.display = 'block';
+    btn.textContent = '查看原始数据';
+  }
+}
 
 /* ==========================================
    Render
@@ -362,22 +420,62 @@ function render(d){
   var fusionReady = d.personality && d.personality._fusion_ready;
   if (d.personality){
     h += '<div class=section-title>' + (fusionReady ? '性格与家境' : '性格') + ' <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'性格\')">问AI</span></div>';
-    h += '<div class=info-panel><div class=personality-text>';
+    h += '<div class=info-panel>';
+
+    // ── 病药高亮卡片 ──
+    if (!fusionReady && d.personality.bingyao_combos && d.personality.bingyao_combos.length){
+      h += _buildBingyaoCard(d.personality.bingyao_combos);
+    }
+
+    // ── 十神排行 ──
+    if (!fusionReady && d.personality.weighted_shishen && d.personality.weighted_shishen.scores){
+      h += _buildShishenRank(d.personality.weighted_shishen.scores);
+    }
+
+    // ── 性格内容区 ──
+    h += '<div class=personality-body id=personalityBody>';
+    h += '<div class=personality-text>';
     if (!fusionReady){
       h += d.personality.profile;
     }
     h += '</div>';
+
     // 六维度网格：仅非融合模式显示
     if (!fusionReady){
-      h += '<div class=traits-grid style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px">';
+      h += '<div class=traits-grid>';
       var traitLabels = {社交:'社交',感情:'感情',决策:'决策',内心:'内心',事业:'事业',财富观:'财富观'};
       for (var tk in traitLabels){
         if (d.personality.traits && d.personality.traits[tk]){
-          h += '<div><span style="font-size:11px;color:var(--text-tertiary)">' + tk + '</span><br><span style="font-size:13px;color:var(--text)">' + d.personality.traits[tk] + '</span></div>';
+          h += '<div class=trait-tile><span class=trait-label>' + tk + '</span><span class=trait-text>' + d.personality.traits[tk] + '</span></div>';
         }
       }
       h += '</div>';
     }
+    h += '</div>';
+
+    // ── 融合/原始切换 ──
+    if (fusionReady){
+      h += '<div class=personality-toggle><button class=toggle-btn onclick="togglePersonalityMode()" title="查看规则引擎原始数据">查看原始数据</button></div>';
+      h += '<div class=personality-raw id=personalityRaw style="display:none">';
+      // 病药
+      if (d.personality.bingyao_combos && d.personality.bingyao_combos.length){
+        h += _buildBingyaoCard(d.personality.bingyao_combos);
+      }
+      // 十神排行
+      if (d.personality.weighted_shishen && d.personality.weighted_shishen.scores){
+        h += _buildShishenRank(d.personality.weighted_shishen.scores);
+      }
+      // profile + 六维度
+      h += '<div class=personality-profile-raw>' + (d.personality.profile || '') + '</div>';
+      h += '<div class=traits-grid>';
+      for (var tk2 in {社交:'社交',感情:'感情',决策:'决策',内心:'内心',事业:'事业',财富观:'财富观'}){
+        if (d.personality.traits && d.personality.traits[tk2]){
+          h += '<div class=trait-tile><span class=trait-label>' + tk2 + '</span><span class=trait-text>' + d.personality.traits[tk2] + '</span></div>';
+        }
+      }
+      h += '</div></div>';
+    }
+
     h += '</div></div>';
   }
 
@@ -838,7 +936,31 @@ function strSim(a, b){
 }
 
 /* ── 简易 Markdown → HTML ── */
+function _stripScores(t){
+  // 引擎数字评分 → 人类可读标签
+  // "表达欲 7.2" → "表达欲偏高"  "拘谨度 2.5" → "拘谨度偏低"
+  // "群体融入 5.1" → "群体融入"（4-6中等不标）
+  t = t.replace(/([\u4e00-\u9fff\w]{2,8})\s+(\d+\.?\d*)/g, function(_, label, num){
+    var v = parseFloat(num);
+    if (v >= 7) return label + '偏高';
+    if (v <= 3) return label + '偏低';
+    return label;
+  });
+  // "综合分数 7.2" → ""
+  t = t.replace(/综合分数\s*\d+\.?\d*/g, '');
+  // "_需覆盖信号: ..." → 删除整行
+  t = t.replace(/[「「]_需覆盖信号[：:][^」\n]*[」」]?/g, '');
+  t = t.replace(/_需覆盖信号[：:][^\n]*/g, '');
+  // 孤立的逗号分隔数字序列
+  t = t.replace(/([，,]\s*\d+\.?\d*\s*)+/g, '');
+  // 清理多余空格
+  t = t.replace(/\s{2,}/g, ' ');
+  return t;
+}
+
 function md2html(t){
+  // 过滤引擎数字泄露
+  t = _stripScores(t);
   // 先跑 Markdown → HTML，再统一保护标签后转义纯文本
   t = t.replace(/^### (.+)/gm, '<h3>$1</h3>');
   t = t.replace(/^## (.+)/gm, '<h2>$1</h2>');
