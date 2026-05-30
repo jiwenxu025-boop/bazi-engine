@@ -1,8 +1,9 @@
 """家境分析"""
-from ..enums import Tiangan, Dizhi, Shishen
+from ..enums import Tiangan, Dizhi, Shishen, Wuxing
 from .._constants import DIZHI_CANGGAN, SHIER_CHANGSHENG
 from .dataclasses import FamilyResult
 from .constants import FAMILY_LEVELS
+from .special_combos import _yangren_branch
 
 
 def _find_parent_star(stars: list[str], pillars_data: list[dict]) -> dict:
@@ -285,7 +286,7 @@ def analyze_family(
         pos_str = "；".join(pos_details) if pos_details else "父亲有一定影响力"
         result.father = f"父星（{father_star}）见于{'、'.join(father_positions)}→ {pos_str}"
 
-    # 年支藏比肩 + 偏财不显 → 父亲财务问题（校准: 案例A）
+    # 年支藏比肩 + 偏财不显 → 父亲财务问题（校准: 徐继文）
     year_branch_hidden = year_p.get("hidden_ten_gods", [])
     if "比肩" in year_branch_hidden and not father_found:
         result.father += ("。年支藏比肩夺财+父星不显→ "
@@ -370,7 +371,7 @@ def analyze_family(
     if day_chong_year:
         result.inheritance += " 日年相冲→ 成年后离家发展，自力更生。"
 
-    # 正财合日主 → 家庭资源倾斜（校准: 案例A）
+    # 正财合日主 → 家庭资源倾斜（校准: 徐继文）
     for inter in interactions.get("tiangan", []):
         if inter["type"] == "天干五合" and day_master_stem in inter["participants"]:
             for p in pillars_data:

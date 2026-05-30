@@ -9,7 +9,10 @@ from .weighting import (
     _find_dominant_shishen, _count_ten_gods, _get_hidden_ten_gods_flat,
 )
 from .bingyao import detect_bingyao_combos
-from .special_combos import _check_special_combos
+from .special_combos import (
+    _check_special_combos, _huagai_branch, _has_branch_in_pillars, _taohua_branch,
+)
+from .stress import analyze_stress_profile
 from .traits import (
     _compute_shishen_sub_traits, _compute_shishen_combo_traits,
     _compute_dizhi_traits, _compute_hidden_stem_personality,
