@@ -3,7 +3,7 @@ from ..enums import Tiangan, Dizhi, Wuxing, Shishen
 from .._constants import DIZHI_CANGGAN, DIZHI_LIUHE, DIZHI_SANHE, STEM_TO_WUXING, BRANCH_TO_WUXING
 from .constants import (
     TOUGAN_WEIGHT, HIDDEN_WEIGHTS, MONTH_MULTIPLIER,
-    SAME_PILLAR_BONUS, HEJU_WEIGHTS,
+    SAME_PILLAR_BONUS, HEJU_WEIGHTS, SHISHEN_PERSONALITY,
 )
 
 
