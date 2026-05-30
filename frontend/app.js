@@ -977,8 +977,8 @@ function _stripScores(t){
   t = t.replace(/_需覆盖信号[：:][^\n]*/g, '');
   // 孤立的逗号分隔数字序列
   t = t.replace(/([，,]\s*\d+\.?\d*\s*)+/g, '');
-  // 清理多余空格
-  t = t.replace(/\s{2,}/g, ' ');
+  // 清理多余空格（保留换行，否则会吞掉 \n\n 导致 ##/### 失配）
+  t = t.replace(/[^\S\n]{2,}/g, ' ');
   return t;
 }
 
