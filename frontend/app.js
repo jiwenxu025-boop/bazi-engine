@@ -182,7 +182,8 @@ async function go(){
               personalityEl.innerHTML = md2html(finalText);
             }
           } else if (msg.phase === 'personality_error'){
-            // 4b. 性格融合失败——显示原因
+            // 4b. 性格融合失败——仅融合模式才覆盖文本
+            if (!(d && d.personality && d.personality._fusion_ready)) continue;
             if (!personalityEl){
               personalityEl = document.querySelector('.personality-text');
             }
@@ -435,7 +436,9 @@ function render(d){
     // ── 性格内容区 ──
     h += '<div class=personality-body id=personalityBody>';
     h += '<div class=personality-text>';
-    if (!fusionReady){
+    if (fusionReady){
+      h += '<span class=fusion-placeholder>⏳ AI 融合报告生成中...</span>';
+    } else {
       h += d.personality.profile;
     }
     h += '</div>';
@@ -476,7 +479,7 @@ function render(d){
       h += '</div></div>';
     }
 
-    h += '</div></div>';
+    h += '</div>';
   }
 
   if (d.family && !fusionReady){
