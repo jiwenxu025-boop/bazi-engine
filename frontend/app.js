@@ -949,6 +949,27 @@ function _stripScores(t){
     if (v <= 3) return label + '偏低';
     return label;
   });
+  // LLM 输出变体: "表达欲低（3.0）" / "表达欲低(3.0)" / "表达欲:3.0"
+  t = t.replace(/([\u4e00-\u9fff\w]{2,12})[：:]\s*(\d+\.?\d*)/g, function(_, label, num){
+    var v = parseFloat(num);
+    if (v >= 7) return label + '偏高';
+    if (v <= 3) return label + '偏低';
+    return label;
+  });
+  // 中文括号包裹的数字: "表达欲低（3.0）" → "表达欲偏低"
+  t = t.replace(/（\s*(\d+\.?\d*)\s*）/g, function(_, num){
+    var v = parseFloat(num);
+    if (v >= 7) return '（偏高）';
+    if (v <= 3) return '（偏低）';
+    return '';
+  });
+  // 英文括号包裹的数字: "表达欲低(3.0)" → "表达欲偏低"
+  t = t.replace(/\(\s*(\d+\.?\d*)\s*\)/g, function(_, num){
+    var v = parseFloat(num);
+    if (v >= 7) return '（偏高）';
+    if (v <= 3) return '（偏低）';
+    return '';
+  });
   // "综合分数 7.2" → ""
   t = t.replace(/综合分数\s*\d+\.?\d*/g, '');
   // "_需覆盖信号: ..." → 删除整行
@@ -965,9 +986,10 @@ function md2html(t){
   // 过滤引擎数字泄露
   t = _stripScores(t);
   // 先跑 Markdown → HTML，再统一保护标签后转义纯文本
-  t = t.replace(/^### (.+)/gm, '<h3>$1</h3>');
-  t = t.replace(/^## (.+)/gm, '<h2>$1</h2>');
-  t = t.replace(/^# (.+)/gm, '<h1>$1</h1>');
+  // 宽松匹配：空格可选，兼容 LLM 输出 "##社交" 或 "## 社交"
+  t = t.replace(/^###\s*(.+)/gm, '<h3>$1</h3>');
+  t = t.replace(/^##\s*(.+)/gm, '<h2>$1</h2>');
+  t = t.replace(/^#\s*(.+)/gm, '<h1>$1</h1>');
   t = t.replace(/^> (.+)/gm, '<blockquote>$1</blockquote>');
   t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
