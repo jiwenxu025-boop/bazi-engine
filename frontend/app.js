@@ -139,21 +139,17 @@ async function go(){
             }, 80);
           } else if (msg.phase === 'llm_result'){
             // 2. LLM审查某年完成，合并信号到对应年份
-            console.log('[bazi] llm_result:', msg.year, msg.signals?.length || 0, 'signals', 'd:', !!d, 'scans:', d?.annual_scans?.length);
+            console.log('[bazi] llm_result received:', msg.year, msg.signals?.length || 0, 'signals');
             if (d && d.annual_scans){
               for (var si = 0; si < d.annual_scans.length; si++){
                 if (d.annual_scans[si].year === msg.year){
-                  var before = d.annual_scans[si].events.length;
                   for (var sj = 0; sj < msg.signals.length; sj++){
                     d.annual_scans[si].events.push(msg.signals[sj]);
                   }
-                  console.log('[bazi] llm_result merged:', msg.year, before, '→', d.annual_scans[si].events.length, 'events');
                   break;
                 }
               }
               // 局部刷新流年区域
-              var secEl = document.querySelector('.events-section');
-              console.log('[bazi] refreshFlowSection: events-section found:', !!secEl);
               refreshFlowSection(d);
             }
           } else if (msg.phase === 'personality_token'){

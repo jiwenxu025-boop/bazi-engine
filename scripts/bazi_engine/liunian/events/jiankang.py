@@ -156,11 +156,11 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # ═══ ★★ 级别 ═══
 
-    # 岁运并临 (calibration: 2026 徐继文，喜用非凶)
+    # 岁运并临 (calibration: 2026 案例A，喜用非凶)
     if is_suiyun_binglin:
         strength = max(strength, 2)
         triggers.append("岁运并临")
-        notes.append("岁运并临≠必然凶；喜用则凶性大减 (校准: 徐继文2026)")
+        notes.append("岁运并临≠必然凶；喜用则凶性大减 (校准: 案例A2026)")
 
     # 日柱天克地冲（降级: 2★改为1★基础，有额外凶星才2★）
     if _has_branch_interaction(day_branch, ln_branch, "六冲"):

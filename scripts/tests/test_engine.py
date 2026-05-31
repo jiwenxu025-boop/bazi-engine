@@ -7,9 +7,9 @@ from bazi_engine.enums import Tiangan, Dizhi
 
 
 def test_xujiwen():
-    """徐继文: 丁亥 戊申 壬辰 庚戌  偏印格  逆排"""
+    """案例A: 丁亥 戊申 壬辰 庚戌  偏印格  逆排"""
     chart = build_chart(
-        name="徐继文", gender="男",
+        name="案例A", gender="男",
         year=2007, month=8, day=26, hour=20,
     )
 
@@ -39,16 +39,16 @@ def test_xujiwen():
     assert chart.month.ten_god.value == "偏官", f"月柱十神: {chart.month.ten_god}"
     assert chart.hour.ten_god.value == "偏印", f"时柱十神: {chart.hour.ten_god}"
 
-    print("[PASS] 徐继文 — 四柱/格局/大运/十神 全部正确 (JDN 日柱)")
+    print("[PASS] 案例A — 四柱/格局/大运/十神 全部正确 (JDN 日柱)")
 
 
 def test_fangfeixiang():
-    """轩潇雅: 丙戌 丙申 庚寅 庚辰  建禄格  顺排
+    """案例B: 丙戌 丙申 庚寅 庚辰  建禄格  顺排
     出生日期经用户确认为 2006-08-29（非 2006-08-16）。
     JDN + WebSearch 确认: 2006-08-29 → 庚寅 ✓
     """
     chart = build_chart(
-        name="轩潇雅", gender="男",
+        name="案例B", gender="男",
         year=2006, month=8, day=29, hour=7,
     )
 
@@ -78,16 +78,16 @@ def test_fangfeixiang():
     assert chart.month.ten_god.value == "偏官", f"月柱十神: {chart.month.ten_god}"
     assert chart.hour.ten_god.value == "比肩", f"时柱十神: {chart.hour.ten_god}"
 
-    print("[PASS] 轩潇雅 — 四柱/格局/大运/十神 全部正确 (JDN 日柱)")
+    print("[PASS] 案例B — 四柱/格局/大运/十神 全部正确 (JDN 日柱)")
 
 
 def test_xuanxiaoya():
-    """李宗泽: 丁亥 辛亥 丁未 甲辰  正印格  顺排
+    """案例C: 丁亥 辛亥 丁未 甲辰  正印格  顺排
     出生日期经用户确认为 2007-11-09（非 2007-11-14）。
     JDN + WebSearch 确认: 2007-11-09 → 丁未 ✓
     """
     chart = build_chart(
-        name="李宗泽", gender="女",
+        name="案例C", gender="女",
         year=2007, month=11, day=9, hour=7,
     )
 
@@ -117,7 +117,7 @@ def test_xuanxiaoya():
     assert chart.month.ten_god.value == "偏财", f"月柱十神: {chart.month.ten_god}"
     assert chart.hour.ten_god.value == "正印", f"时柱十神: {chart.hour.ten_god}"
 
-    print("[PASS] 李宗泽 — 四柱/格局/大运/十神 全部正确 (JDN 日柱)")
+    print("[PASS] 案例C — 四柱/格局/大运/十神 全部正确 (JDN 日柱)")
 
 
 if __name__ == "__main__":

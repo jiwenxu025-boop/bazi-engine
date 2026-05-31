@@ -179,9 +179,9 @@ def test_has_branch_interaction_zixing():
 
 def test_hunjia_known_cases_no_signal_for_students():
     """已知案例(学生): 不应有≥2★婚嫁信号"""
-    # 徐继文: 2007年生男，2025年18岁
+    # 案例A: 2007年生男，2025年18岁
     chart = build_chart(
-        name="徐继文", gender="男",
+        name="案例A", gender="男",
         year=2007, month=8, day=26, hour=20,
         liunian_range=(2025, 2025),
     )
@@ -195,7 +195,7 @@ def test_hunjia_known_cases_no_signal_for_students():
 
 
 def test_hunjia_xujiwen_2025():
-    """徐继文 2025年(18岁): 用底层函数验证婚嫁信号为桃花(降级)"""
+    """案例A 2025年(18岁): 用底层函数验证婚嫁信号为桃花(降级)"""
     signals = detect_hunjia_signals(
         ln_stem=Tiangan.乙, ln_branch=Dizhi.巳,
         day_branch=Dizhi.辰, day_master=Tiangan.壬,
@@ -254,7 +254,7 @@ def test_hunjia_chuanhai_non_day_branch():
 # ═══════════════════════════════════════════════════════════════
 
 def test_taohua_xujiwen():
-    """徐继文: 桃花信号基准测试"""
+    """案例A: 桃花信号基准测试"""
     signals = detect_taohua_signals(
         ln_stem=Tiangan.乙, ln_branch=Dizhi.巳,
         year_branch=Dizhi.亥, day_branch=Dizhi.辰,
@@ -408,10 +408,10 @@ if __name__ == "__main__":
         ("相刑检测", test_has_branch_interaction_xiangxing),
         ("自刑检测", test_has_branch_interaction_zixing),
         ("婚嫁-学生无信号", test_hunjia_known_cases_no_signal_for_students),
-        ("婚嫁-徐继文2025", test_hunjia_xujiwen_2025),
+        ("婚嫁-案例A2025", test_hunjia_xujiwen_2025),
         ("婚嫁-穿害日支", test_hunjia_chuanhai_day_branch),
         ("婚嫁-穿害非日支", test_hunjia_chuanhai_non_day_branch),
-        ("桃花-徐继文", test_taohua_xujiwen),
+        ("桃花-案例A", test_taohua_xujiwen),
         ("桃花-女命伤官", test_taohua_female_shangguan),
         ("岁运-天战喜神", test_suiyun_tian_zhan),
         ("岁运-天战忌神", test_suiyun_tian_zhan_ji_shen),

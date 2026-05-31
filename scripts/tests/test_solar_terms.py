@@ -34,7 +34,7 @@ def test_known_lichun():
 
 
 def test_xujiwen_start_age():
-    """徐继文: 2007-08-26 20:00, 逆排, 应距立秋约18.5天 → 起运6岁"""
+    """案例A: 2007-08-26 20:00, 逆排, 应距立秋约18.5天 → 起运6岁"""
     birth = datetime(2007, 8, 26, 20, 0, 0)
     days, warns = distance_to_prev_jie(birth)
     assert len(warns) == 0, f"ephem 路径不应有警告: {warns}"
@@ -45,7 +45,7 @@ def test_xujiwen_start_age():
 
 
 def test_fangfeixiang_start_age():
-    """轩潇雅: 2006-08-16 07:00, 顺排, 应距白露约23天 → 起运7岁"""
+    """案例B: 2006-08-16 07:00, 顺排, 应距白露约23天 → 起运7岁"""
     birth = datetime(2006, 8, 16, 7, 0, 0)
     days, warns = distance_to_next_jie(birth)
     assert len(warns) == 0, f"ephem 路径不应有警告: {warns}"
