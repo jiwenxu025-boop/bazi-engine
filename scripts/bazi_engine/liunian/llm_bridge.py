@@ -40,6 +40,7 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
                         strength=llm_evt.strength, prediction=llm_evt.prediction,
                         triggers=llm_evt.triggers,
                         notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                        source="llm",
                     ))
                 if on_llm_result:
                     sig_dicts = _signals_to_dicts(llm_results)
@@ -74,6 +75,7 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
                         prediction=llm_evt.prediction,
                         triggers=llm_evt.triggers,
                         notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                        source="llm",
                     ))
             except Exception as e:
                 print(f"[llm_review] 年份{results[idx].year if idx < len(results) else '?'} LLM并行调用失败: {e}", file=sys.stderr)
@@ -98,6 +100,7 @@ def _execute_batch_streaming(results, llm_tasks, on_llm_result, on_llm_token):
                 prediction=llm_evt.prediction,
                 triggers=llm_evt.triggers,
                 notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                source="llm",
             ))
         if yr_results and on_llm_result:
             year = results[idx].year if idx < len(results) else 0
@@ -123,6 +126,7 @@ def _execute_batch_parallel(results, llm_tasks):
                 prediction=llm_evt.prediction,
                 triggers=llm_evt.triggers,
                 notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                source="llm",
             ))
 
 
@@ -137,10 +141,11 @@ def _signals_to_dicts(llm_results) -> list[dict]:
             prediction=llm_evt.prediction,
             triggers=llm_evt.triggers,
             notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+            source="llm",
         )
         signals.append(sig)
     return [{
         "category": s.category, "direction": s.direction,
         "strength": s.strength, "prediction": s.prediction,
-        "triggers": s.triggers, "notes": s.notes,
+        "triggers": s.triggers, "notes": s.notes, "source": s.source,
     } for s in signals]

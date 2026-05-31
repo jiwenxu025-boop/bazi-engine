@@ -86,6 +86,7 @@ class EventSignal:
     calibration_refs: list[str] = field(default_factory=list)
     personality_note: str = ""  # 性格联动备注
     magnitude: str = ""         # v0.13.0: 财运量级 "大额"/"中额"/"小额"/"大破财"/"破财"
+    source: str = "rule"        # v0.16.0: 信号来源 "rule"|"llm"
 
     def to_dict(self) -> dict:
         d = {
@@ -97,6 +98,7 @@ class EventSignal:
             "notes": self.notes,
             "calibration_refs": self.calibration_refs,
             "personality_note": self.personality_note,
+            "source": self.source,
         }
         if self.magnitude:
             d["magnitude"] = self.magnitude
