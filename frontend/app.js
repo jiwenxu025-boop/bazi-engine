@@ -798,6 +798,7 @@ function refreshFlowSection(d){
       h += '<span class=stars>' + '★'.repeat(ev2.strength) + '</span>';
       h += '<span class=tag>' + ev2.category + '</span>';
       h += '<span class="' + cls2 + '">' + ev2.direction + '</span>';
+      if (ev2.source === 'llm') h += '<span class=llm-badge>🤖</span>';
       if (ev2.prediction) h += '<span class=prediction-text>' + ev2.prediction + '</span>';
       h += '</div>';
       if (ev2.triggers[0]){
