@@ -447,7 +447,7 @@ def scan_years(
         # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
         if chart_data:
             try:
-                from ..llm_review import build_review_context, should_invoke_llm
+                from .llm_review import build_review_context, should_invoke_llm
                 yr_features = _extract_year_features(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,
