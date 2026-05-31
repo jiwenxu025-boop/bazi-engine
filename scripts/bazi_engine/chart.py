@@ -117,6 +117,7 @@ class BaziChart:
     dayun_interpretations: list[dict] | None = None              # 大运 LLM 解读 (v0.14.0)
     body_use_result: dict | None = None                          # 宾主体用 + 墓库应期
     health_profile: dict | None = None                           # 健康体质画像 (v0.10.0: 调候+五行脏腑)
+    validation_questions: list[dict] | None = None               # 输入校验3问 (v0.16)
 
     # 用神推荐（内部缓存，由 build_chart() 填充）
     _yongshen_result: dict | None = field(default=None, repr=False)
@@ -187,6 +188,7 @@ class BaziChart:
             "palace_star": self.palace_star_result,
             "tiaohou": self.tiaohou_result,
             "health_profile": self.health_profile,
+            "validation_questions": self.validation_questions,
             "body_use": self.body_use_result,
         }
 
@@ -459,6 +461,11 @@ def build_chart(
         }
     except Exception as e:
         chart.warnings.append(f"健康画像生成失败: {e}")
+
+    # ── 5f. 输入校验问题（v0.16: 3问验证，防时辰/日期错误导致全盘误判）──
+    chart.validation_questions = _build_validation_questions(
+        chart.tiaohou_result, chart.health_profile, chart.day_master
+    )
 
     # ── 6. 十神 ──
     for pillar in [chart.year, chart.month, chart.day, chart.hour]:
@@ -776,3 +783,97 @@ def build_chart(
         chart.warnings.append(f"宾主体用分析失败: {e}")
 
     return chart
+
+
+def _build_validation_questions(tiaohou: dict | None, health: dict | None,
+                                 day_master) -> list[dict]:
+    """生成3道输入校验题（v0.16）
+
+    每道题3个选项，其中1个正确答案。用户答对≥2题才视为八字大概率正确。
+    题目基于调候寒热、阴阳平衡、五行脏腑三个不可伪造的体质特征。
+    """
+    questions = []
+
+    # Q1: 寒热体感 (基于调候 climate)
+    climate = tiaohou.get("climate", "中和") if tiaohou else "中和"
+    q1 = {
+        "id": "q1",
+        "question": "你的体质更接近以下哪种描述？",
+        "options": ["偏怕冷，手脚容易凉", "偏怕热，容易出汗上火", "冷热都比较均衡"],
+        "answer": 0,  # 默认
+        "hint": "基于命局寒暖燥湿分析。如果你明显不符合，可能时辰有误。",
+    }
+    if "寒" in climate:
+        q1["answer"] = 0
+    elif "燥" in climate or "热" in climate:
+        q1["answer"] = 1
+    else:
+        q1["answer"] = 2
+    questions.append(q1)
+
+    # Q2: 睡眠精力 (基于阴阳平衡 — 水多阴盛→嗜睡, 火多阳亢→失眠)
+    # 从 health_profile 的 wuxing_risks 推断
+    yin_heavy = False
+    yang_heavy = False
+    if health:
+        for r in health.get("wuxing_risks", []):
+            if r.get("wuxing") == "水" and r.get("type") == "excess":
+                yin_heavy = True
+            if r.get("wuxing") == "火" and r.get("type") == "excess":
+                yang_heavy = True
+
+    q2 = {
+        "id": "q2",
+        "question": "你的睡眠和精力状态更接近？",
+        "options": ["容易失眠/多梦/入睡困难", "睡得多但醒来仍累/嗜睡", "睡眠质量较好，精力恢复正常"],
+        "answer": 2,  # 默认
+        "hint": "基于命局阴阳平衡分析。差异大可能时辰不准。",
+    }
+    if yang_heavy:
+        q2["answer"] = 0
+    elif yin_heavy:
+        q2["answer"] = 1
+    else:
+        q2["answer"] = 2
+    questions.append(q2)
+
+    # Q3: 易病脏腑 (基于五行偏枯的top风险)
+    top_risk = None
+    if health:
+        risks = health.get("wuxing_risks", [])
+        if risks:
+            # 取严重度最高的
+            risks_sorted = sorted(risks, key=lambda r: (
+                0 if r.get("severity") == "高" else 1 if r.get("severity") == "中" else 2,
+                -r.get("count", 0)
+            ))
+            top_risk = risks_sorted[0]
+
+    organ_options = [
+        "消化系统（胃/脾）",
+        "呼吸系统（肺/气管）",
+        "心脑血管（心/血压）",
+        "肝肾泌尿（肾/肝）",
+        "骨骼关节（腰/膝）",
+    ]
+
+    q3 = {
+        "id": "q3",
+        "question": "以下哪个系统你更容易出问题？",
+        "options": organ_options,
+        "answer": 2,  # 默认
+        "hint": "基于命局五行偏枯分析。如果你明确知道不符，可能出生日期有误。",
+    }
+    if top_risk:
+        w = top_risk.get("wuxing", "")
+        if w == "土":
+            q3["answer"] = 0
+        elif w == "金":
+            q3["answer"] = 1
+        elif w == "火":
+            q3["answer"] = 2
+        elif w in ("水", "木"):
+            q3["answer"] = 3
+    questions.append(q3)
+
+    return questions

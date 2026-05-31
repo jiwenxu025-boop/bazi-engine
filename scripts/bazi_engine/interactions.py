@@ -427,3 +427,38 @@ def detect_tansheng_wangke(stems_and_labels: list[tuple[Tiangan, str]],
         ))
 
     return results
+
+
+def detect_jiagong(gans: list[Tiangan], zhis: list[Dizhi]) -> list[dict]:
+    """检测夹/拱（v0.16: 盲派暗拱关系）
+
+    夹: 天干相同时，地支间隔2位的两柱 → 中间地支为"拱"
+    如: 甲寅 甲辰 → 拱卯（寅辰之间为卯）
+    Returns: [{type, pillars, gan, zhi, note}]
+    """
+    results = []
+    labels = ["年柱", "月柱", "日柱", "时柱"]
+    dz_list = list(Dizhi)
+
+    for i in range(3):
+        for j in range(i + 1, 4):
+            if gans[i] != gans[j]:
+                continue
+            idx1 = dz_list.index(zhis[i])
+            idx2 = dz_list.index(zhis[j])
+            diff = abs(idx2 - idx1)
+            if diff == 2 or diff == 10:
+                if diff == 2:
+                    mid_idx = (idx1 + idx2) // 2
+                else:
+                    mid_idx = (idx1 + idx2 + 12) // 2 % 12
+                mid_dz = dz_list[mid_idx % 12]
+                if mid_dz not in zhis:
+                    results.append({
+                        "type": "拱",
+                        "pillars": [labels[i], labels[j]],
+                        "gan": gans[i].value,
+                        "zhi": mid_dz.value,
+                        "note": f"{labels[i]}{gans[i].value}{zhis[i].value}与{labels[j]}{gans[j].value}{zhis[j].value}暗拱{mid_dz.value}"
+                    })
+    return results

@@ -501,6 +501,9 @@ def scan_years(
         # 合并同类别信号（同类多触发源→汇总为一条）
         events = _merge_same_category_events(events)
 
+        # ── v0.16: 年神煞检测 ──
+        spirit_tags = _detect_year_spirits(ln_tg, ln_dz, day_master, day_branch)
+
         results.append(AnnualScan(
             year=year,
             liunian_stem=ln_tg,
@@ -513,6 +516,7 @@ def scan_years(
             stem_weight=sb_sw,
             branch_weight=sb_bw,
             dayun_weight_note=dn_weight_note,
+            spirit_tags=spirit_tags,
         ))
 
         # ── v0.11.1: 跨年关系状态机更新 ──
@@ -607,4 +611,48 @@ def _backtrack_hunjia_prelude(results: list[AnnualScan]) -> list[AnnualScan]:
             ))
 
     return results
+
+
+def _detect_year_spirits(ln_tg, ln_dz, day_master, day_branch) -> list[str]:
+    """检测流年神煞（v0.16）"""
+    try:
+        from .._constants import (
+            TIANYI_GUIREN, tianyi_guiren_by_stem,
+            WENCHANG, YIMA, HONGLUAN, TAOHUA, HUAGAI,
+        )
+    except ImportError:
+        return []
+    tags = []
+
+    # 天乙贵人 — 按日干查流年地支
+    guiren = tianyi_guiren_by_stem(day_master)
+    if guiren and ln_dz in guiren:
+        tags.append("天乙贵人年")
+
+    # 文昌 — 按日干查
+    wc = WENCHANG.get(day_master)
+    if wc and ln_dz == wc:
+        tags.append("文昌年")
+
+    # 驿马 — 按日支查
+    ym = YIMA.get(day_branch)
+    if ym and ln_dz == ym:
+        tags.append("驿马年")
+
+    # 桃花 — 按日支查
+    th = TAOHUA.get(day_branch)
+    if th and ln_dz == th:
+        tags.append("桃花年")
+
+    # 红鸾
+    hl = HONGLUAN.get(day_branch)
+    if hl and ln_dz == hl:
+        tags.append("红鸾年")
+
+    # 华盖
+    hg = HUAGAI.get(day_branch)
+    if hg and ln_dz == hg:
+        tags.append("华盖年")
+
+    return tags
 

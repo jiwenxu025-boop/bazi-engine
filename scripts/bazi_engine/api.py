@@ -508,6 +508,41 @@ def date_pick_api(body: dict):
 
 
 # ═══════════════════════════════════════════════════════════════
+# 合婚 API
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/api/match-making")
+def match_making_api(body: dict):
+    """合婚：双人八字配对评分"""
+    from .enums import Dizhi, Tiangan
+    from .match_making import match_score
+
+    def _build(data: dict):
+        pillars = data.get("four_pillars", {})
+        class P: pass
+        class C: pass
+        c = C()
+        for key in ("year", "month", "day", "hour"):
+            p = pillars.get(key, {})
+            try:
+                tg = Tiangan(p.get("stem", "甲"))
+                dz = Dizhi(p.get("branch", "子"))
+            except ValueError:
+                tg, dz = Tiangan.甲, Dizhi.子
+            setattr(c, key, type('P',(),{'stem':tg,'branch':dz})())
+        return c
+
+    try:
+        c1 = _build(body.get("chart1", {}))
+        c2 = _build(body.get("chart2", {}))
+    except Exception as e:
+        return JSONResponse({"error": f"解析失败: {e}"}, status_code=400)
+
+    score, report = match_score(c1, c2)
+    return {"score": score, "report": report}
+
+
+# ═══════════════════════════════════════════════════════════════
 # AI 追问 Chat 端点
 # ═══════════════════════════════════════════════════════════════
 
