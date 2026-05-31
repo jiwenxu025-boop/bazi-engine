@@ -422,19 +422,21 @@ def batch_api(records: list[dict]):
 
 @app.post("/api/date-pick")
 def date_pick_api(body: dict):
-    """择日：根据命盘筛选吉日/凶日
+    """择日：根据命盘筛选吉日/凶日（v2 完整评分）
 
     POST body:
-        chart: { four_pillars: { day: { branch: "午" }, year: { branch: "子" } } }
+        chart: { four_pillars: {...}, yongshen: { favorable_wuxing: [...], harmful_wuxing: [...] },
+                 minggong: { branch: "申" }, ... }
         year: int  目标年份
         month: int 目标月份 (1-12)
     Returns:
-        { year, month, good_dates: ["2025-06-03",...], avoid_dates: ["2025-06-07",...] }
+        { year, month, results: [{date, score, good_tags, bad_tags, day_ganzhi}] }
     """
     import calendar
     from datetime import date
 
     from .date_picker import pick_good_dates
+    from .enums import Dizhi, Tiangan
 
     chart_data = body.get("chart", {})
     yr = body.get("year")
@@ -443,44 +445,65 @@ def date_pick_api(body: dict):
     if not yr or not mo:
         return JSONResponse({"error": "缺少 year 或 month 参数"}, status_code=400)
 
-    # 从 chart_data 提取必要字段，重建最小 chart 对象供 date_picker 使用
     pillars = chart_data.get("four_pillars", {})
-    day_pillar = pillars.get("day", {})
-    year_pillar = pillars.get("year", {})
 
-    from .enums import Dizhi
+    def _parse_dz(s: str) -> Dizhi | None:
+        try: return Dizhi(s)
+        except ValueError: return None
 
-    day_branch_str = day_pillar.get("branch", "")
-    year_branch_str = year_pillar.get("branch", "")
+    def _parse_tg(s: str) -> Tiangan | None:
+        try: return Tiangan(s)
+        except ValueError: return None
 
-    try:
-        day_dz = getattr(Dizhi, day_branch_str)
-        year_dz = getattr(Dizhi, year_branch_str)
-    except (AttributeError, TypeError):
-        return JSONResponse({"error": f"无法解析地支: day={day_branch_str} year={year_branch_str}"}, status_code=400)
+    # 构建 MiniChart（复用原函数期望的属性）
+    class _MiniPillar:
+        def __init__(self, stem, branch):
+            self.stem = stem
+            self.branch = branch
 
     class _MiniChart:
-        class _MiniPillar:
-            def __init__(self, branch):
-                self.branch = branch
-        def __init__(self, year_b, day_b):
-            self.year = self._MiniPillar(year_b)
-            self.day = self._MiniPillar(day_b)
+        pass
 
-    mini_chart = _MiniChart(year_dz, day_dz)
+    mini = _MiniChart()
+    mini.year = _MiniPillar(
+        _parse_tg(pillars.get("year", {}).get("stem", "")),
+        _parse_dz(pillars.get("year", {}).get("branch", "")),
+    )
+    mini.month = _MiniPillar(
+        _parse_tg(pillars.get("month", {}).get("stem", "")),
+        _parse_dz(pillars.get("month", {}).get("branch", "")),
+    )
+    mini.day = _MiniPillar(
+        _parse_tg(pillars.get("day", {}).get("stem", "")),
+        _parse_dz(pillars.get("day", {}).get("branch", "")),
+    )
+    mini.hour = _MiniPillar(
+        _parse_tg(pillars.get("hour", {}).get("stem", "")),
+        _parse_dz(pillars.get("hour", {}).get("branch", "")),
+    )
 
-    # 计算当月日期范围
+    # 命宫/身宫/胎元
+    for attr, key in [("minggong_branch", "minggong"), ("shengong_branch", "shengong"), ("taiyuan_branch", "taiyuan")]:
+        branch_str = chart_data.get(key, {}).get("branch", "")
+        dz = _parse_dz(branch_str) if branch_str else None
+        setattr(mini, attr, dz)
+
+    if not mini.day.branch:
+        return JSONResponse({"error": "缺少日柱地支"}, status_code=400)
+
+    # 用神数据
+    yongshen = chart_data.get("yongshen")
+
     _, last_day = calendar.monthrange(yr, mo)
     start = date(yr, mo, 1)
     end = date(yr, mo, last_day)
 
-    good, avoid = pick_good_dates(mini_chart, start, end)
+    results = pick_good_dates(mini, start, end, yongshen_data=yongshen)
 
     return {
         "year": yr,
         "month": mo,
-        "good_dates": [d.isoformat() for d in good],
-        "avoid_dates": [d.isoformat() for d in avoid],
+        "results": results,
     }
 
 

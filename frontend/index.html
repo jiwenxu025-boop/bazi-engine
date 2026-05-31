@@ -643,6 +643,12 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
   color:var(--text-secondary);transition:background .15s;
 }
 .calendar-day:hover{background:var(--surface-hover)}
+.calendar-day.great{
+  background:#15803d;color:#fff;font-weight:700;
+}
+html.dark .calendar-day.great{
+  background:#2d8a4e;color:#e8e4df;
+}
 .calendar-day.good{
   background:#dcfce7;color:#15803d;font-weight:600;
 }
@@ -655,6 +661,12 @@ html.dark .calendar-day.good{
 html.dark .calendar-day.avoid{
   background:#3b1a1a;color:#f87171;
 }
+.calendar-day.bad{
+  background:#b91c1c;color:#fff;font-weight:700;
+}
+html.dark .calendar-day.bad{
+  background:#c53030;color:#e8e4df;
+}
 .calendar-day.empty{background:transparent;cursor:default}
 .calendar-legend{
   display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--text-tertiary);
@@ -663,10 +675,14 @@ html.dark .calendar-day.avoid{
   display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;
   vertical-align:middle;
 }
-.calendar-legend .dot.good{background:#15803d}
-.calendar-legend .dot.avoid{background:#b91c1c}
+.calendar-legend .dot.great{background:#15803d}
+.calendar-legend .dot.good{background:#86dba5}
+.calendar-legend .dot.avoid{background:#f5a0a0}
+.calendar-legend .dot.bad{background:#b91c1c}
+html.dark .calendar-legend .dot.great{background:#2d8a4e}
 html.dark .calendar-legend .dot.good{background:#6ee7b7}
 html.dark .calendar-legend .dot.avoid{background:#f87171}
+html.dark .calendar-legend .dot.bad{background:#c53030}
 .calendar-actions{
   display:flex;gap:8px;margin-top:12px;
 }
