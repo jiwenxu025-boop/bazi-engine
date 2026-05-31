@@ -174,6 +174,9 @@ def scan_years(
     """
     results: list[AnnualScan] = []
 
+    import sys
+    print(f"[llm_review] chart_data={'present' if chart_data else 'None(LLM禁用)'}, on_llm_result={'set' if on_llm_result else 'None'}", file=sys.stderr)
+
     # 检测命局是否有伤官见官
     has_natal_shangguan = False
     if pillars_tengan:
@@ -447,14 +450,18 @@ def scan_years(
         # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
         if chart_data:
             try:
-                from ..llm_review import build_review_context, should_invoke_llm
+                from ..llm_review import build_review_context, should_invoke_llm, LLM_REVIEW_ENABLED, DEEPSEEK_KEY
                 yr_features = _extract_year_features(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,
                 )
                 personality_text = chart_data.get("personality", {}).get("profile", "")
                 # 判断是否需要 LLM，需要则收集上下文（不立即调用）
-                if should_invoke_llm(events, year, age):
+                llm_ok = should_invoke_llm(events, year, age)
+                if year == start_year:
+                    import sys
+                    print(f"[llm_review] 首次进入: LLM_REVIEW_ENABLED={LLM_REVIEW_ENABLED}, DEEPSEEK_KEY={'set' if DEEPSEEK_KEY else 'MISSING'}, age={age}", file=sys.stderr)
+                if llm_ok:
                     review_ctx = build_review_context(
                         chart_data, year, age,
                         ln_tg.value, ln_dz.value,
@@ -466,8 +473,9 @@ def scan_years(
                         personality_text=personality_text,
                     )
                     llm_tasks.append((len(results), review_ctx))
-            except Exception:
-                pass  # LLM review prep failure is non-blocking
+            except Exception as e:
+                import sys
+                print(f"[llm_review] 年份{year} LLM上下文构建失败: {e}", file=sys.stderr)
 
         # ── 贪生忘克化解（v0.8.0: P7—七杀/伤官攻击日主若有通关→减凶）──
         if tansheng_wangke:
@@ -555,11 +563,16 @@ def scan_years(
 
     # ── v0.11.1: LLM审查并行执行（循环中收集，此处并行发射）──
     if llm_tasks:
+        import sys
+        print(f"[llm_review] 共收集{len(llm_tasks)}个LLM任务, 开始并行执行", file=sys.stderr)
         if on_llm_result is not None:
             # 流式模式：逐个回调（含token级逐字推送）
             _execute_llm_reviews_streaming(results, llm_tasks, on_llm_result, on_llm_token)
         else:
             _execute_llm_reviews_parallel(results, llm_tasks)
+    else:
+        import sys
+        print(f"[llm_review] 无LLM任务(should_invoke_llm全部返回False或chart_data为空)", file=sys.stderr)
 
     # ── v0.15.2: 婚嫁回溯—强信号前一年检测前奏 ──
     results = _backtrack_hunjia_prelude(results)
