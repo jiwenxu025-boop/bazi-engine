@@ -115,7 +115,6 @@ class AnnualScan:
     stem_weight: float = 0.5         # 天干权重
     branch_weight: float = 0.5       # 地支权重
     dayun_weight_note: str = ""      # 大运重地支/流年重天干说明
-    spirit_tags: list[str] = field(default_factory=list)  # v0.16: 年神煞标签
 
     def to_dict(self) -> dict:
         return {
@@ -128,6 +127,5 @@ class AnnualScan:
             "branch_weight": self.branch_weight,
             "dayun_weight_note": self.dayun_weight_note,
             "events": [e.to_dict() for e in self.events],
-            "spirit_tags": self.spirit_tags,
         }
 

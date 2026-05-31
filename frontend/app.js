@@ -131,13 +131,9 @@ async function go(){
             llmTokens[msg.year] += msg.token;
             updateLlmTokenDisplay(msg.year, llmTokens[msg.year]);
           } else if (msg.phase === 'rules_done'){
-            // 1. 规则引擎完成，先弹出校验
+            // 1. 规则引擎完成，立即渲染
             d = msg.chart;
-            if (d.validation_questions && d.validation_questions.length){
-              _showValidationModal(d, function(){ render(d); });
-            } else {
-              render(d);
-            }
+            render(d);
             setTimeout(function(){
               r.scrollIntoView({behavior: 'smooth', block: 'start'});
             }, 80);
@@ -578,14 +574,7 @@ function render(d){
       h += '<span class=event-year>' + scan.year + '</span>';
       h += '<span class=event-ganzhi>' + scan.liunian + '</span>';
       h += '<span class=event-age>' + scan.age + '岁</span>';
-      // 神煞标签 (v0.16)
-      var spiritTags = '';
-      if (scan.spirit_tags && scan.spirit_tags.length){
-        for (var st = 0; st < scan.spirit_tags.length; st++){
-          spiritTags += '<span class=header-tag style="background:var(--accent);color:var(--accent-text);font-size:9px">' + scan.spirit_tags[st] + '</span>';
-        }
-      }
-      h += '<span class=event-tags>' + tagBadges.join('') + spiritTags + '</span>';
+      h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
       h += '<span class=chevron>▶</span>';
       h += '</div>';
       // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
@@ -994,73 +983,6 @@ function _stripScores(t){
   // 清理多余空格（保留换行，否则会吞掉 \n\n 导致 ##/### 失配）
   t = t.replace(/[^\S\n]{2,}/g, ' ');
   return t;
-}
-
-/* ==========================================
-   Validation Modal (输入校验)
-   ========================================== */
-function _showValidationModal(d, onPass){
-  var qs = d.validation_questions;
-  var h = '<div class=modal-overlay id=validationModal style="display:flex;opacity:1;visibility:visible">';
-  h += '<div class=modal style="max-width:440px;padding:24px 28px">';
-  h += '<h3 style="font-size:16px;margin-bottom:6px">🔍 八字校验</h3>';
-  h += '<p style="font-size:12px;color:var(--text-tertiary);margin-bottom:16px;line-height:1.6">请根据你的实际体质回答以下3题，帮助确认生辰是否准确。答对2题以上视为通过。</p>';
-
-  for (var qi = 0; qi < qs.length; qi++){
-    var q = qs[qi];
-    h += '<div style="margin-bottom:14px">';
-    h += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">' + (qi+1) + '. ' + q.question + '</div>';
-    for (var oi = 0; oi < q.options.length; oi++){
-      h += '<label style="display:block;font-size:12px;color:var(--text-secondary);padding:6px 8px;cursor:pointer;border-radius:4px;margin:2px 0" onmouseover="this.style.background=\'var(--tag-bg)\'" onmouseout="this.style.background=\'transparent\'">';
-      h += '<input type=radio name=vq' + qi + ' value=' + oi + ' style="margin-right:6px;accent-color:var(--accent)">';
-      h += q.options[oi];
-      h += '</label>';
-    }
-    h += '</div>';
-  }
-
-  h += '<div id=validationHint style="font-size:11px;color:var(--gold);margin:8px 0;display:none"></div>';
-  h += '<button class=btn id=validationSubmit style="margin-top:8px">确认提交</button>';
-  h += '<button class="btn-sm" style="margin-top:6px;width:100%;text-align:center" onclick="document.getElementById(\'validationModal\').remove();_validationCallback(true)">跳过校验，直接查看</button>';
-  h += '</div></div>';
-
-  var r = document.getElementById('result');
-  r.insertAdjacentHTML('beforeend', h);
-
-  var callbackCalled = false;
-  window._validationCallback = function(passed){
-    if (callbackCalled) return;
-    callbackCalled = true;
-    var modal = document.getElementById('validationModal');
-    if (modal) modal.remove();
-    if (!passed){
-      // 未通过：在结果顶部插入警告
-      var warnDiv = document.createElement('div');
-      warnDiv.innerHTML = '<div style="background:var(--error-bg);border:1px solid var(--gold);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--gold);line-height:1.7">⚠ <b>八字校验未通过</b>（答对少于2题）。当前八字可能有时辰或日期偏差，以下分析仅供参考，建议核对出生时间后重新排盘。</div>';
-      var resultEl = document.getElementById('result');
-      resultEl.insertBefore(warnDiv, resultEl.firstChild);
-    }
-    onPass();
-  };
-
-  document.getElementById('validationSubmit').onclick = function(){
-    var correct = 0;
-    for (var qi = 0; qi < qs.length; qi++){
-      var radios = document.getElementsByName('vq' + qi);
-      var selected = -1;
-      for (var ri = 0; ri < radios.length; ri++){
-        if (radios[ri].checked){ selected = parseInt(radios[ri].value); break; }
-      }
-      if (selected === qs[qi].answer) correct++;
-    }
-    var hint = document.getElementById('validationHint');
-    if (correct >= 2){
-      window._validationCallback(true);
-    } else {
-      hint.style.display = 'block';
-      hint.innerHTML = '⚠ 仅答对 ' + correct + '/3 题。八字可能不准确，建议核对时辰或日期后重试。仍可继续查看，但结果可信度降低。';
-    }
-  };
 }
 
 /* ==========================================
