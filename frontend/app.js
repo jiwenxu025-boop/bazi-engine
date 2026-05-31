@@ -1001,31 +1001,31 @@ function _stripScores(t){
    ========================================== */
 function _showValidationModal(d, onPass){
   var qs = d.validation_questions;
-  var h = '';
-  h += '<div id="validationModal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;justify-content:center;align-items:center">';
-  h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:24px 28px;max-width:420px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3)">';
-  h += '<h3 style="font-size:16px;margin-bottom:6px;color:var(--text)">八字校验</h3>';
+  var h = '<div class=modal-overlay id=validationModal style="display:flex;opacity:1;visibility:visible">';
+  h += '<div class=modal style="max-width:440px;padding:24px 28px">';
+  h += '<h3 style="font-size:16px;margin-bottom:6px">🔍 八字校验</h3>';
   h += '<p style="font-size:12px;color:var(--text-tertiary);margin-bottom:16px;line-height:1.6">请根据你的实际体质回答以下3题，帮助确认生辰是否准确。答对2题以上视为通过。</p>';
 
   for (var qi = 0; qi < qs.length; qi++){
     var q = qs[qi];
     h += '<div style="margin-bottom:14px">';
-    h += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">' + (qi+1) + '. ' + esc(q.question) + '</div>';
+    h += '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">' + (qi+1) + '. ' + q.question + '</div>';
     for (var oi = 0; oi < q.options.length; oi++){
-      h += '<label style="display:flex;align-items:center;font-size:12px;color:var(--text-secondary);padding:5px 8px;cursor:pointer;border-radius:4px;margin:2px 0" onmouseover="this.style.background=\'var(--tag-bg)\'" onmouseout="this.style.background=\'transparent\'">';
-      h += '<input type="radio" name="vq' + qi + '" value="' + oi + '" style="margin-right:8px;accent-color:var(--accent);flex-shrink:0">';
-      h += '<span>' + esc(q.options[oi]) + '</span>';
+      h += '<label style="display:block;font-size:12px;color:var(--text-secondary);padding:6px 8px;cursor:pointer;border-radius:4px;margin:2px 0" onmouseover="this.style.background=\'var(--tag-bg)\'" onmouseout="this.style.background=\'transparent\'">';
+      h += '<input type=radio name=vq' + qi + ' value=' + oi + ' style="margin-right:6px;accent-color:var(--accent)">';
+      h += q.options[oi];
       h += '</label>';
     }
     h += '</div>';
   }
 
-  h += '<div id="validationHint" style="font-size:11px;color:var(--gold);margin:8px 0;display:none"></div>';
-  h += '<button class="btn" id="validationSubmit" style="margin-top:8px">确认提交</button>';
+  h += '<div id=validationHint style="font-size:11px;color:var(--gold);margin:8px 0;display:none"></div>';
+  h += '<button class=btn id=validationSubmit style="margin-top:8px">确认提交</button>';
   h += '<button class="btn-sm" style="margin-top:6px;width:100%;text-align:center" onclick="document.getElementById(\'validationModal\').remove();_validationCallback(true)">跳过校验，直接查看</button>';
   h += '</div></div>';
 
-  document.body.insertAdjacentHTML('beforeend', h);
+  var r = document.getElementById('result');
+  r.insertAdjacentHTML('beforeend', h);
 
   var callbackCalled = false;
   window._validationCallback = function(passed){
