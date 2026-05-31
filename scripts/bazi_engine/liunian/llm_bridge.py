@@ -31,8 +31,17 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
             idx, year = futures[future]
             try:
                 llm_results = future.result(timeout=60)
-                sig_dicts = _signals_to_dicts(llm_results)
-                on_llm_result(year, sig_dicts)
+                # 直接写入 scan.events
+                for llm_evt in llm_results:
+                    results[idx].events.append(EventSignal(
+                        category=llm_evt.category, direction=llm_evt.direction,
+                        strength=llm_evt.strength, prediction=llm_evt.prediction,
+                        triggers=llm_evt.triggers,
+                        notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+                    ))
+                if on_llm_result:
+                    sig_dicts = _signals_to_dicts(llm_results)
+                    on_llm_result(year, sig_dicts)
             except Exception:
                 pass
 
@@ -77,8 +86,19 @@ def _execute_batch_streaming(results, llm_tasks, on_llm_result, on_llm_token):
 
     batch_results = call_llm_batch_review(ctxs, on_token=on_llm_token)
     for i, yr_results in enumerate(batch_results):
-        if yr_results:
-            year = results[year_map[i]].year if year_map[i] < len(results) else 0
+        idx = year_map[i]
+        # 直接写入 scan.events（v0.16: 不再依赖回调，确保前端初始渲染可见）
+        for llm_evt in yr_results:
+            results[idx].events.append(EventSignal(
+                category=llm_evt.category,
+                direction=llm_evt.direction,
+                strength=llm_evt.strength,
+                prediction=llm_evt.prediction,
+                triggers=llm_evt.triggers,
+                notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
+            ))
+        if yr_results and on_llm_result:
+            year = results[idx].year if idx < len(results) else 0
             sig_dicts = _signals_to_dicts(yr_results)
             on_llm_result(year, sig_dicts)
 
