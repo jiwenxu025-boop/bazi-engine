@@ -59,7 +59,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         triggers.append(f"{spouse_star_name}透干合入夫妻宫")
 
     # ── ★★ 级别 ──
-    # 天喜合动 (calibration: 3/3 verified: 案例A2023卯戌合, 2026午戌半合, 案例B2022寅亥合)
+    # 天喜合动 (calibration: 3/3 verified: 徐继文2023卯戌合, 2026午戌半合, 轩潇雅2022寅亥合)
     # 三种情况: 流年直接=天喜, 六合天喜, 半合/三合天喜
     if ln_branch == tianxi:
         strength = max(strength, 2)
@@ -94,11 +94,11 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         if fuyin_on_ri and has_zixing:
             strength = max(strength, 2)
             triggers.append("红鸾入命+夫妻宫伏吟+自刑")
-            notes.append("红鸾伏吟+自刑→倾向感情结束 (校准 1/2: 案例A2024)")
+            notes.append("红鸾伏吟+自刑→倾向感情结束 (校准 1/2: 徐继文2024)")
         elif fuyin_on_any and has_zixing:
             strength = max(strength, 2)
             triggers.append("红鸾入命+命局伏吟+自刑")
-            notes.append("红鸾伏吟+自刑→情绪内耗/矛盾 (校准: 案例C2024)")
+            notes.append("红鸾伏吟+自刑→情绪内耗/矛盾 (校准: 李宗泽2024)")
         elif fuyin_on_ri and prev_year_has_relationship:
             strength = max(strength, 2)
             triggers.append("红鸾入命+夫妻宫伏吟")
@@ -106,7 +106,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         elif fuyin_on_ri:
             strength = max(strength, 2)
             triggers.append("红鸾入命+夫妻宫伏吟")
-            notes.append("红鸾伏吟+前一年空窗→倾向新开始 (校准 1/2: 案例B2022)")
+            notes.append("红鸾伏吟+前一年空窗→倾向新开始 (校准 1/2: 轩潇雅2022)")
 
     # 天喜合动+偏财/正财 (男) or 官星 (女)
     if ln_branch == tianxi:
@@ -140,7 +140,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         if maochen_on_ri and tianxi_activated:
             strength = max(strength, 2)
             triggers.append("卯辰穿夫妻宫+天喜伴生")
-            notes.append("卯辰穿+天喜伴生→可进入但根基不稳 (校准 1/1: 案例A2023)")
+            notes.append("卯辰穿+天喜伴生→可进入但根基不稳 (校准 1/1: 徐继文2023)")
         elif maochen_on_ri:
             strength = max(strength, 2)
             triggers.append("卯辰穿夫妻宫")
@@ -148,7 +148,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         else:
             strength = max(strength, 2)
             triggers.append("卯辰穿命局")
-            notes.append("卯辰穿→人际/情绪困扰 (校准: 案例B2023/案例C2023时柱)")
+            notes.append("卯辰穿→人际/情绪困扰 (校准: 轩潇雅2023/李宗泽2023时柱)")
 
     # ── ★ 级别 ──
     # 空亡：降星+加备注（升级：统一降强度）

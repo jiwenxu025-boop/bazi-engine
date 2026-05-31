@@ -5,28 +5,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 CASES = {
     "人际": [
         # 来自校准库
-        {"name": "案例C-人际摩擦", "gender": "男", "year": 2007, "month": 10, "day": 22, "hour": 6,
+        {"name": "李宗泽-人际摩擦", "gender": "男", "year": 2007, "month": 10, "day": 22, "hour": 6,
          "events": {2024: "人际"}, "notes": "2024人际摩擦(校准库验证)"},
         # 来自搜索: 被骗100万坤造
         {"name": "被骗女-朋友背叛", "gender": "女", "year": 1980, "month": 7, "day": 15, "hour": 14,
          "events": {2018: "人际"}, "notes": "庚申 癸未 辛卯 乙未。2018被邻居骗100万"},
         # 比劫犯小人案例
-        {"name": "案例B-人际困扰", "gender": "女", "year": 2007, "month": 11, "day": 9, "hour": 7,
+        {"name": "轩潇雅-人际困扰", "gender": "女", "year": 2007, "month": 11, "day": 9, "hour": 7,
          "events": {2023: "人际"}, "notes": "2023人际困扰(校准库: 原标记为桃花负面,实为人际)"},
         # 刑冲案例
         {"name": "S9-被辞退男", "gender": "男", "year": 1997, "month": 3, "day": 10, "hour": 14,
          "events": {2020: "人际", 2021: "人际"}, "notes": "被辞职+合作被骗"},
     ],
     "状态": [
-        {"name": "案例C-备考状态", "gender": "男", "year": 2007, "month": 10, "day": 22, "hour": 6,
+        {"name": "李宗泽-备考状态", "gender": "男", "year": 2007, "month": 10, "day": 22, "hour": 6,
          "events": {2026: "状态"}, "notes": "2026备考中但朋友耽误(校准库验证)"},
-        {"name": "案例A-低谷", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
+        {"name": "徐继文-低谷", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
          "events": {2024: "状态"}, "notes": "2024分手后情绪"},
         {"name": "S4-创业男状态", "gender": "男", "year": 1988, "month": 10, "day": 25, "hour": 4,
          "events": {2020: "状态"}, "notes": "2020贵人+大工程, 状态上升"},
     ],
     "搬迁": [
-        {"name": "案例A-高考异地", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
+        {"name": "徐继文-高考异地", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
          "events": {2025: "搬迁"}, "notes": "2025高考异地入学(校准库)"},
         {"name": "山东→新疆搬家", "gender": "男", "year": 1975, "month": 9, "day": 2, "hour": 4,
          "events": {1993: "搬迁"}, "notes": "1975/09/02寅时。1993夏全家从山东搬新疆(多亮案例)"},
@@ -36,7 +36,7 @@ CASES = {
          "events": {2007: "搬迁"}, "notes": "2007结婚+搬家"},
     ],
     "健康": [
-        {"name": "案例A-健康", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
+        {"name": "徐继文-健康", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
          "events": {2026: "健康"}, "notes": "2026暂无健康问题(校准库中性)"},
         {"name": "S5-入狱男健康", "gender": "男", "year": 1963, "month": 4, "day": 15, "hour": 20,
          "events": {2016: "健康"}, "notes": "2016被捕入狱(重大事件)"},

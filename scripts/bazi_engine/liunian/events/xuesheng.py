@@ -68,7 +68,7 @@ def detect_xuesheng_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if ln_branch == yima and _has_branch_interaction(year_branch, ln_branch, "六冲"):
         strength = max(strength, 2)
         triggers.append(f"{year_branch.value}{ln_branch.value}冲+驿马→为学业远行")
-        notes.append("巳亥冲+驿马+升学年龄→高考异地 (校准 2/2: 案例A2025, 案例C2025)")
+        notes.append("巳亥冲+驿马+升学年龄→高考异地 (校准 2/2: 徐继文2025, 李宗泽2025)")
 
     # 文昌+驿马同现
     if ln_branch == yima and ln_branch == wenchang:
