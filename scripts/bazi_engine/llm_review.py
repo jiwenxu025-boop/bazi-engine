@@ -783,7 +783,7 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": messages,
-        "stream": False,
+        "stream": True,
         "temperature": 0.3,
         "max_tokens": 4096,
     }
