@@ -611,6 +611,73 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
 }
 
 /* ==========================================
+   Calendar (择日)
+   ========================================== */
+.calendar-section{margin-top:24px}
+.calendar-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;
+}
+.calendar-nav{
+  width:32px;height:32px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border);
+  cursor:pointer;font-size:14px;color:var(--text-secondary);
+  display:flex;align-items:center;justify-content:center;
+  transition:all var(--transition);
+}
+.calendar-nav:hover{border-color:var(--border-hover);color:var(--text)}
+.calendar-month{
+  font-size:15px;font-weight:600;color:var(--text);
+}
+.calendar-grid{
+  display:grid;grid-template-columns:repeat(7,1fr);
+  gap:2px;text-align:center;
+}
+.calendar-day-header{
+  font-size:10px;color:var(--text-tertiary);
+  padding:4px 0;font-weight:500;
+}
+.calendar-day{
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  font-size:13px;border-radius:6px;cursor:default;
+  color:var(--text-secondary);transition:background .15s;
+}
+.calendar-day:hover{background:var(--surface-hover)}
+.calendar-day.good{
+  background:#dcfce7;color:#15803d;font-weight:600;
+}
+html.dark .calendar-day.good{
+  background:#1a3b2a;color:#6ee7b7;
+}
+.calendar-day.avoid{
+  background:#fee2e2;color:#b91c1c;font-weight:600;
+}
+html.dark .calendar-day.avoid{
+  background:#3b1a1a;color:#f87171;
+}
+.calendar-day.empty{background:transparent;cursor:default}
+.calendar-legend{
+  display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--text-tertiary);
+}
+.calendar-legend .dot{
+  display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;
+  vertical-align:middle;
+}
+.calendar-legend .dot.good{background:#15803d}
+.calendar-legend .dot.avoid{background:#b91c1c}
+html.dark .calendar-legend .dot.good{background:#6ee7b7}
+html.dark .calendar-legend .dot.avoid{background:#f87171}
+.calendar-actions{
+  display:flex;gap:8px;margin-top:12px;
+}
+.calendar-export-btn{
+  font-size:12px;padding:6px 14px;border-radius:6px;
+  background:var(--accent);color:var(--accent-text);
+  border:none;cursor:pointer;transition:opacity .15s;
+}
+.calendar-export-btn:hover{opacity:.85}
+
+/* ==========================================
    States
    ========================================== */
 .no-signal-msg{

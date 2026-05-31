@@ -417,6 +417,74 @@ def batch_api(records: list[dict]):
 
 
 # ═══════════════════════════════════════════════════════════════
+# 择日 API
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/api/date-pick")
+def date_pick_api(body: dict):
+    """择日：根据命盘筛选吉日/凶日
+
+    POST body:
+        chart: { four_pillars: { day: { branch: "午" }, year: { branch: "子" } } }
+        year: int  目标年份
+        month: int 目标月份 (1-12)
+    Returns:
+        { year, month, good_dates: ["2025-06-03",...], avoid_dates: ["2025-06-07",...] }
+    """
+    import calendar
+    from datetime import date
+
+    from .date_picker import pick_good_dates
+
+    chart_data = body.get("chart", {})
+    yr = body.get("year")
+    mo = body.get("month")
+
+    if not yr or not mo:
+        return JSONResponse({"error": "缺少 year 或 month 参数"}, status_code=400)
+
+    # 从 chart_data 提取必要字段，重建最小 chart 对象供 date_picker 使用
+    pillars = chart_data.get("four_pillars", {})
+    day_pillar = pillars.get("day", {})
+    year_pillar = pillars.get("year", {})
+
+    from .enums import Dizhi
+
+    day_branch_str = day_pillar.get("branch", "")
+    year_branch_str = year_pillar.get("branch", "")
+
+    try:
+        day_dz = getattr(Dizhi, day_branch_str)
+        year_dz = getattr(Dizhi, year_branch_str)
+    except (AttributeError, TypeError):
+        return JSONResponse({"error": f"无法解析地支: day={day_branch_str} year={year_branch_str}"}, status_code=400)
+
+    class _MiniChart:
+        class _MiniPillar:
+            def __init__(self, branch):
+                self.branch = branch
+        def __init__(self, year_b, day_b):
+            self.year = self._MiniPillar(year_b)
+            self.day = self._MiniPillar(day_b)
+
+    mini_chart = _MiniChart(year_dz, day_dz)
+
+    # 计算当月日期范围
+    _, last_day = calendar.monthrange(yr, mo)
+    start = date(yr, mo, 1)
+    end = date(yr, mo, last_day)
+
+    good, avoid = pick_good_dates(mini_chart, start, end)
+
+    return {
+        "year": yr,
+        "month": mo,
+        "good_dates": [d.isoformat() for d in good],
+        "avoid_dates": [d.isoformat() for d in avoid],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
 # AI 追问 Chat 端点
 # ═══════════════════════════════════════════════════════════════
 

@@ -510,6 +510,9 @@ function render(d){
   };
   document.getElementById('result').dataset.dm = JSON.stringify(dmData);
 
+  // ── 择日月历 ──
+  h += _buildCalendar(d);
+
   // Flow years
   if (d.annual_scans && d.annual_scans.length){
     h += '<div class=section-title>流年</div>';
@@ -980,6 +983,165 @@ function _stripScores(t){
   // 清理多余空格（保留换行，否则会吞掉 \n\n 导致 ##/### 失配）
   t = t.replace(/[^\S\n]{2,}/g, ' ');
   return t;
+}
+
+/* ==========================================
+   Calendar (择日)
+   ========================================== */
+function _buildCalendar(d){
+  var now = new Date();
+  var yr = now.getFullYear();
+  var mo = now.getMonth() + 1; // 0-indexed
+  var months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  var weekdays = ['日','一','二','三','四','五','六'];
+
+  var h = '<div class=section-title>择日</div>';
+  h += '<div class=info-panel>';
+  h += '<div class=calendar-section id=calendarSection>';
+  h += '<div class=calendar-header>';
+  h += '<button class=calendar-nav onclick="_calendarNav(-1)" title="上个月">◀</button>';
+  h += '<span class=calendar-month id=calendarMonth>' + yr + '年' + months[mo-1] + '</span>';
+  h += '<button class=calendar-nav onclick="_calendarNav(1)" title="下个月">▶</button>';
+  h += '</div>';
+
+  // 星期头
+  h += '<div class=calendar-grid>';
+  for (var w = 0; w < 7; w++) h += '<div class=calendar-day-header>' + weekdays[w] + '</div>';
+
+  // 日期格子（初始占位）
+  var firstDay = new Date(yr, mo-1, 1).getDay();
+  var lastDate = new Date(yr, mo, 0).getDate();
+  for (var i = 0; i < firstDay; i++) h += '<div class="calendar-day empty"></div>';
+  for (var day = 1; day <= lastDate; day++){
+    h += '<div class=calendar-day id=calDay' + day + '>' + day + '</div>';
+  }
+  h += '</div>';
+
+  h += '<div class=calendar-legend>';
+  h += '<span><span class="dot good"></span>吉日</span>';
+  h += '<span><span class="dot avoid"></span>避日</span>';
+  h += '</div>';
+
+  h += '<div class=calendar-actions>';
+  h += '<button class=calendar-export-btn onclick="_exportICS()">📅 导出日历</button>';
+  h += '</div>';
+
+  h += '</div></div>'; // /calendar-section + /info-panel
+
+  // 存储当前年月，供翻页时使用
+  window._calYear = yr;
+  window._calMonth = mo;
+  window._calChart = d;  // 保存命盘数据供 API 请求用
+
+  // 异步加载当月吉凶标记
+  setTimeout(function(){ _loadCalendarMarks(yr, mo); }, 100);
+
+  return h;
+}
+
+function _calendarNav(dir){
+  var m = window._calMonth + dir;
+  var y = window._calYear;
+  if (m > 12){ m = 1; y++; }
+  if (m < 1){ m = 12; y--; }
+  window._calYear = y;
+  window._calMonth = m;
+
+  var months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  document.getElementById('calendarMonth').textContent = y + '年' + months[m-1];
+
+  // 重绘日期格子
+  var grid = document.querySelector('.calendar-grid');
+  var weekdays = ['日','一','二','三','四','五','六'];
+  var firstDay = new Date(y, m-1, 1).getDay();
+  var lastDate = new Date(y, m, 0).getDate();
+  var cells = '';
+  for (var w = 0; w < 7; w++) cells += '<div class=calendar-day-header>' + weekdays[w] + '</div>';
+  for (var i = 0; i < firstDay; i++) cells += '<div class="calendar-day empty"></div>';
+  for (var day = 1; day <= lastDate; day++){
+    cells += '<div class=calendar-day id=calDay' + day + '>' + day + '</div>';
+  }
+  grid.innerHTML = cells;
+
+  _loadCalendarMarks(y, m);
+}
+
+function _loadCalendarMarks(yr, mo){
+  var api = document.getElementById('apiUrl').value.replace(/\/$/, '') || window.location.origin;
+  var chartData = window._calChart;
+  if (!chartData) return;
+
+  fetch(api + '/api/date-pick', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({chart: chartData, year: yr, month: mo})
+  }).then(function(r){ return r.json(); }).then(function(data){
+    // 清除旧标记
+    var allDays = document.querySelectorAll('.calendar-day:not(.empty)');
+    for (var i = 0; i < allDays.length; i++){
+      allDays[i].classList.remove('good','avoid');
+    }
+    // 标记吉日
+    (data.good_dates || []).forEach(function(ds){
+      var d = new Date(ds + 'T00:00:00').getDate();
+      var el = document.getElementById('calDay' + d);
+      if (el) el.classList.add('good');
+    });
+    // 标记凶日
+    (data.avoid_dates || []).forEach(function(ds){
+      var d = new Date(ds + 'T00:00:00').getDate();
+      var el = document.getElementById('calDay' + d);
+      if (el) el.classList.add('avoid');
+    });
+  }).catch(function(){});
+}
+
+function _exportICS(){
+  var yr = window._calYear;
+  var mo = window._calMonth;
+  var goodDays = document.querySelectorAll('.calendar-day.good');
+  if (!goodDays.length){ alert('当前月份无吉日可导出'); return; }
+
+  var lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//BaziEngine//择日吉期//CN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:择日吉期'
+  ];
+
+  var now = new Date().toISOString().replace(/[-:]/g,'').slice(0,15) + 'Z';
+
+  for (var i = 0; i < goodDays.length; i++){
+    var day = parseInt(goodDays[i].textContent);
+    var d = new Date(yr, mo-1, day);
+    var ds = d.getFullYear() +
+      String(d.getMonth()+1).padStart(2,'0') +
+      String(d.getDate()).padStart(2,'0');
+
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + ds + '-bazi@zhaiji');
+    lines.push('DTSTAMP:' + now);
+    lines.push('DTSTART;VALUE=DATE:' + ds);
+    lines.push('DTEND;VALUE=DATE:' + ds);
+    lines.push('SUMMARY:宜：择日吉期');
+    lines.push('DESCRIPTION:八字择日系统筛选的吉日。宜安排重要事项、见人、签约。');
+    lines.push('TRANSP:TRANSPARENT');
+    lines.push('END:VEVENT');
+  }
+
+  lines.push('END:VCALENDAR');
+
+  var blob = new Blob([lines.join('\r\n')], {type: 'text/calendar;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '择日吉期_' + yr + '_' + mo + '.ics';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function md2html(t){
