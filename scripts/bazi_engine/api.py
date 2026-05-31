@@ -447,11 +447,11 @@ def date_pick_api(body: dict):
 
     pillars = chart_data.get("four_pillars", {})
 
-    def _parse_dz(s: str) -> Dizhi | None:
+    def _parse_dz(s: str):
         try: return Dizhi(s)
         except ValueError: return None
 
-    def _parse_tg(s: str) -> Tiangan | None:
+    def _parse_tg(s: str):
         try: return Tiangan(s)
         except ValueError: return None
 
