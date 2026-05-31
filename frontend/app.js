@@ -139,6 +139,7 @@ async function go(){
             }, 80);
           } else if (msg.phase === 'llm_result'){
             // 2. LLM审查某年完成，合并信号到对应年份
+            console.log('[bazi] llm_result received:', msg.year, msg.signals?.length || 0, 'signals');
             if (d && d.annual_scans){
               for (var si = 0; si < d.annual_scans.length; si++){
                 if (d.annual_scans[si].year === msg.year){
