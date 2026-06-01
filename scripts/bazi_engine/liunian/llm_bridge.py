@@ -88,7 +88,8 @@ def _execute_batch_streaming(results, llm_tasks, on_llm_result, on_llm_token):
     ctxs = [ctx for _, ctx in llm_tasks]
     year_map = [idx for idx, _ in llm_tasks]
 
-    batch_results = call_llm_batch_review(ctxs, on_token=on_llm_token)
+    # 批量模式 token 流无法分配具体年份，不传 on_token（结果仍会通过 llm_result 回调送达）
+    batch_results = call_llm_batch_review(ctxs, on_token=None)
     for i, yr_results in enumerate(batch_results):
         idx = year_map[i]
         # 直接写入 scan.events（v0.16: 不依赖回调，确保前端初始渲染可见）
