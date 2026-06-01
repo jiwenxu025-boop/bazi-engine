@@ -960,6 +960,13 @@ function _stripScores(t){
     if (v <= 3) return label + '偏低';
     return label;
   });
+  // "拘谨度高达9.0" / "表达欲低至2.5" → "拘谨度偏高" / "表达欲偏低"
+  t = t.replace(/([\u4e00-\u9fff\w]{2,12})(?:高达|低至|接近|约)\s*(\d+\.?\d*)/g, function(_, label, num){
+    var v = parseFloat(num);
+    if (v >= 7) return label + '偏高';
+    if (v <= 3) return label + '偏低';
+    return label;
+  });
   // 中文括号包裹的数字: "表达欲低（3.0）" → "表达欲偏低"
   t = t.replace(/（\s*(\d+\.?\d*)\s*）/g, function(_, num){
     var v = parseFloat(num);
