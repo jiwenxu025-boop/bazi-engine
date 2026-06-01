@@ -193,9 +193,15 @@ async def chart_stream(
         # 缓冲LLM结果和token（它们在build_chart线程中先到达，前端应先看到rules_done）
         buffered_llm: list[dict] = []
         buffered_llm_tokens: list[dict] = []
+        # SSE 心跳：Railway 代理超时通常 30s，每 15s 发一次保活
+        _HEARTBEAT_INTERVAL = 15.0
 
         while True:
-            msg_type, msg_data = await queue.get()
+            try:
+                msg_type, msg_data = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL)
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
+                continue
             if msg_type == "error":
                 yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -322,7 +328,13 @@ async def chart_stream(
                             loop_dy.call_soon_threadsafe(dy_queue.put_nowait, [])
 
                     executor.submit(_run_dayun)
-                    dayun_result = await dy_queue.get()
+                    while True:
+                        try:
+                            dayun_result = await asyncio.wait_for(dy_queue.get(), timeout=_HEARTBEAT_INTERVAL)
+                            break
+                        except asyncio.TimeoutError:
+                            yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
+                            continue
                     if dayun_result:
                         chart.dayun_interpretations = dayun_result
                         yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': dayun_result})}\n\n"
