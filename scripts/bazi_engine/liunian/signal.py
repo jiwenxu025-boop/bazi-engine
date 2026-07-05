@@ -17,6 +17,9 @@ class ScoreAccumulator:
         self.factors: list[Factor] = []
         self._min_strength: int = 0
         self._favorable: set[str] | None = favorable_set
+        self._current_shishen: str = ""
+        self._current_fav: bool | None = None
+        self._modulate_score: bool = True
 
     def add(self, score: int, trigger: str, note: str = "", fixed: bool = False):
         """添加因子。fixed=True 的因子不被喜忌调分（伤官/冲刑等方向固定型）。"""

@@ -10,6 +10,8 @@ def analyze_stress_profile(
     gender: str,
     pillars_data: list[dict],
     special_combos: list[str],
+    bingyao_combos: list[dict] | None = None,
+    scores: dict | None = None,
 ) -> dict:
     """抗压心理画像——三引擎架构（v0.10.0）
 
@@ -79,13 +81,22 @@ def analyze_stress_profile(
     # ════════════════════════════════════════
     # 引擎二：防御机制分类
     # ════════════════════════════════════════
-    combo_str = " ".join(special_combos)
     defense_mode = ""
     defense_desc = ""
 
     # C: 食伤制杀（优先级最高——主动反击型）
-    if ("食神制七杀" in combo_str or "食神制杀" in combo_str or
-        (has_shishen and has_qisha)):
+    _bingyao_names = {c["combo"] for c in bingyao_combos} if bingyao_combos else set()
+    _has_shishang_zhisha = bool(_bingyao_names & {"食神制杀", "伤官驾杀"})
+    _has_shayin = "杀印相生" in _bingyao_names
+    if scores and not _has_shishang_zhisha:
+        qs = scores.get("偏官", 0)
+        ss = scores.get("食神", 0) + scores.get("伤官", 0)
+        _has_shishang_zhisha = ss >= 3.0 and qs >= 3.0
+    if not _has_shayin and scores:
+        qs = scores.get("偏官", 0)
+        yi = scores.get("正印", 0) + scores.get("偏印", 0)
+        _has_shayin = qs >= 3.0 and yi >= 3.0
+    if _has_shishang_zhisha or (has_shishen and has_qisha):
         defense_mode = "C：火力反击型（食伤制杀）"
         defense_desc = (
             "遇到压力直接反击——用才华、语言、或破格行动去消灭压力源。"
@@ -93,8 +104,7 @@ def analyze_stress_profile(
             "极度慕强，只服比自己更强的人。弱点：情绪上头时可能过度反击、破坏关系。"
         )
     # B: 杀印相生（逻辑降维型）
-    elif ("杀印相生" in combo_str or
-          (has_qisha and (has_zhengyin or has_pianyin) and yin_count >= 1)):
+    elif _has_shayin or (has_qisha and (has_zhengyin or has_pianyin) and yin_count >= 1):
         defense_mode = "B：逻辑降维型（杀印相生）"
         defense_desc = (
             "遇到绝境不靠体力靠脑力——用深度学习、技术钻研、规则利用来吸收压力。"

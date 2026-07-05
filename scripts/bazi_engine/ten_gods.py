@@ -14,6 +14,34 @@ _WUXING_KE: dict[Wuxing, Wuxing] = {
 }
 
 
+
+
+# 天干相克配对 (value-based, for string comparison)
+TIANGAN_KE_PAIRS: set[tuple[str, str]] = {
+    ("甲", "戊"), ("甲", "己"), ("乙", "戊"), ("乙", "己"),
+    ("丙", "庚"), ("丙", "辛"), ("丁", "庚"), ("丁", "辛"),
+    ("戊", "壬"), ("戊", "癸"), ("己", "壬"), ("己", "癸"),
+    ("庚", "甲"), ("庚", "乙"), ("辛", "甲"), ("辛", "乙"),
+    ("壬", "丙"), ("壬", "丁"), ("癸", "丙"), ("癸", "丁"),
+}
+
+def wuxing_relation(src: Wuxing, dst: Wuxing) -> str:
+    """返回 src 对 dst 的生克关系字符串
+    
+    Returns: "生" | "克" | "被生" | "被克" | "比和"
+    """
+    if src == dst:
+        return "比和"
+    if _WUXING_SHENG[src] == dst:
+        return "生"
+    if _WUXING_KE[src] == dst:
+        return "克"
+    if _WUXING_SHENG[dst] == src:
+        return "被生"
+    if _WUXING_KE[dst] == src:
+        return "被克"
+    return "比和"
+
 def wuxing_sheng(wx: Wuxing) -> Wuxing:
     """返回 wx 所生的五行"""
     return _WUXING_SHENG[wx]

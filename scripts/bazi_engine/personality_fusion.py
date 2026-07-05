@@ -16,6 +16,7 @@ import json
 import os
 
 import httpx
+from ._http import shared_client
 
 from ._deepseek_config import (
     DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL,
@@ -293,10 +294,13 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         package["十神强度排行"] = [
             {"十神": name, "强度": round(score, 1)} for name, score in sorted_scores[:8]
         ]
-        package["月令五行"] = weighted.get("month_wuxing", "未知")
-        heju = weighted.get("heju_wuxing", {})
-        if heju:
-            package["合局化神"] = heju
+        # 排名旁标注"偏高""偏低"替代原始分数
+        for item in package["十神强度排行"]:
+            s = item["强度"]
+            item["相对强度"] = "偏高" if s >= 5 else ("正常" if s >= 2 else "偏低")
+            if s >= 3:
+                item.pop("强度", None)  # 只传定性不传定量
+        # 月令五行/合局化神已去除（引擎内部字段，LLM 不需要）
 
     # ── 六维度结构化信号（LLM从零写描述，自由解释数值）──
     trait_signals = pr_dict.get("trait_signals", {})
@@ -388,7 +392,7 @@ def generate_fusion_report(
         "model": DEEPSEEK_MODEL,
         "messages": messages,
         "stream": True,
-        "temperature": 0.7,
+        "temperature": float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3")),
         "max_tokens": 4096,
     }
 
@@ -396,7 +400,7 @@ def generate_fusion_report(
 
     try:
         _timeout = 120.0
-        with httpx.Client(timeout=_timeout) as client:
+        with shared_client(_timeout) as client:
             with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
                 if resp.status_code != 200:
                     body = ""
@@ -456,13 +460,13 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
         "model": DEEPSEEK_MODEL,
         "messages": messages,
         "stream": False,
-        "temperature": 0.7,
+        "temperature": float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3")),
         "max_tokens": 4096,
     }
 
     try:
         _timeout = 90.0 if "v4" in DEEPSEEK_MODEL.lower() else 30.0
-        with httpx.Client(timeout=_timeout) as client:
+        with shared_client(_timeout) as client:
             resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
             if resp.status_code != 200:
                 return None

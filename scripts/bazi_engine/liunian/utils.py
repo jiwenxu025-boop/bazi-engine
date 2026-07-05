@@ -11,6 +11,7 @@ from .._constants import (
     TIANGAN_WUHE,
 )
 from ..enums import Dizhi, Shishen, Tiangan, Wuxing
+from ..ten_gods import wuxing_ke, wuxing_sheng
 
 # 天干五合配对: 天干 → 其合配天干
 HEAVENLY_HE = {}
@@ -55,18 +56,13 @@ def classify_sb_relation(stem: Tiangan, branch: Dizhi) -> tuple[str, float, floa
         return ("干支一气", 0.50, 0.50)
 
     # 生克判定
-    _SHENG = {Wuxing.木: Wuxing.火, Wuxing.火: Wuxing.土, Wuxing.土: Wuxing.金,
-              Wuxing.金: Wuxing.水, Wuxing.水: Wuxing.木}
-    _KE = {Wuxing.木: Wuxing.土, Wuxing.土: Wuxing.水, Wuxing.水: Wuxing.火,
-           Wuxing.火: Wuxing.金, Wuxing.金: Wuxing.木}
-
-    if _SHENG.get(s_wx) == b_wx:
+    if wuxing_sheng(s_wx) == b_wx:
         return ("天干生地支", 0.45, 0.55)
-    if _SHENG.get(b_wx) == s_wx:
+    elif wuxing_sheng(b_wx) == s_wx:
         return ("地支生天干", 0.55, 0.45)
-    if _KE.get(s_wx) == b_wx:
+    elif wuxing_ke(s_wx) == b_wx:
         return ("盖头", 0.60, 0.40)
-    if _KE.get(b_wx) == s_wx:
+    elif wuxing_ke(b_wx) == s_wx:
         return ("截脚", 0.40, 0.60)
 
     return ("干支平衡", 0.50, 0.50)

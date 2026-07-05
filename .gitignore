@@ -9,3 +9,9 @@ scripts/data/free_usage.json
 scripts/data/feedback/
 .idea/
 _anonymize.py
+
+# IDE/工具自动生成的索引缓存
+scripts/bazi_engine/.codegraph/
+scripts/bazi_engine/.understand-anything/
+test_output.txt
+scripts/data/calibration_store.json

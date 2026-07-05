@@ -1,6 +1,9 @@
--i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
-
+# 核心依赖
 fastapi>=0.100.0
 uvicorn>=0.23.0
-ephem>=4.1.0
 httpx>=0.27.0
+ephem>=4.1.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# 开发依赖 (pip install -r requirements-dev.txt)

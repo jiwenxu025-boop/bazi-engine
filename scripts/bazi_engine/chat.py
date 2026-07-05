@@ -325,6 +325,7 @@ def check_free_quota(client_id: str) -> tuple[bool, int]:
 
     使用文件持久化存储，服务重启不丢失。
     IP 经哈希处理后存储，不保留原始 IP。
+    注意: NAT/代理环境下多用户共用同一 IP，一个用户用完额度其他人也会被拦。
     """
     today = time.strftime("%Y-%m-%d")
     data = _load_free_usage()

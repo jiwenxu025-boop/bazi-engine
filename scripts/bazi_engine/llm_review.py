@@ -9,6 +9,7 @@
 集成: DeepSeek API (同步调用，非流式)
 """
 
+from ._http import shared_client
 import json
 import os
 import re
@@ -394,7 +395,7 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
     try:
         _timeout = get_timeout()
         full_text_parts: list[str] = []
-        with httpx.Client(timeout=_timeout) as client:
+        with shared_client(_timeout) as client:
             with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
                 if resp.status_code != 200:
                     return []
@@ -577,7 +578,7 @@ def interpret_dayun(natal: dict, dayun_modulations: list[dict],
 
     try:
         import httpx
-        with httpx.Client(timeout=60.0) as client:
+        with shared_client(60.0) as client:
             resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
             if resp.status_code != 200:
                 return []
@@ -819,7 +820,7 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
     try:
         _timeout = get_timeout() * 2  # 多年批量调用给更多时间
         full_text_parts: list[str] = []
-        with httpx.Client(timeout=_timeout) as client:
+        with shared_client(_timeout) as client:
             with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
                 if resp.status_code != 200:
                     return [[] for _ in ctxs]

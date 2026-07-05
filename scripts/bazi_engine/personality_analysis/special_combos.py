@@ -303,6 +303,9 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     missing_wx = five - all_wuxing_set
     if len(missing_wx) == 1:
         mx = list(missing_wx)[0]
+        # 五行缺一的现代解读（基于经典五行特质推断，非古籍原文）：
+        # 木主仁→决断/条理 火主礼→热情/社交 土主信→稳定/责任
+        # 金主义→原则/执行 水主智→灵动/适应
         implications = {"木": "决断力偏弱或思维跳跃", "火": "热情不足或社交收敛",
                         "土": "稳定性或责任感偏弱", "金": "原则性或执行力偏弱",
                         "水": "灵动性或适应力偏弱"}

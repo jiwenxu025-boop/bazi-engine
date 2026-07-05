@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from ._http import shared_client
 
 VISION_API_URL = os.getenv("VISION_API_URL", "https://api.mimo.xiaomi.com/v1/chat/completions")
 VISION_MODEL = os.getenv("VISION_MODEL", "mimo-v2.5")
@@ -121,7 +122,7 @@ def ocr_birth_info(
     }
 
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with shared_client(60.0) as client:
             resp = client.post(VISION_API_URL, json=payload, headers=headers)
             if resp.status_code != 200:
                 raise RuntimeError(f"Vision API {resp.status_code}: {resp.text[:200]}")

@@ -23,16 +23,10 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
 
     # ── 1. 天干冲（天战）──
     # 天干相克: 甲乙木克戊己土, 丙丁火克庚辛金, 戊己土克壬癸水, 庚辛金克甲乙木, 壬癸水克丙丁火
-    _ke_pairs_tg = {
-        ("甲", "戊"): True, ("甲", "己"): True, ("乙", "戊"): True, ("乙", "己"): True,
-        ("丙", "庚"): True, ("丙", "辛"): True, ("丁", "庚"): True, ("丁", "辛"): True,
-        ("戊", "壬"): True, ("戊", "癸"): True, ("己", "壬"): True, ("己", "癸"): True,
-        ("庚", "甲"): True, ("庚", "乙"): True, ("辛", "甲"): True, ("辛", "乙"): True,
-        ("壬", "丙"): True, ("壬", "丁"): True, ("癸", "丙"): True, ("癸", "丁"): True,
-    }
+    from ..ten_gods import TIANGAN_KE_PAIRS
     ln_tg_val = ln_stem.value if hasattr(ln_stem, 'value') else str(ln_stem)
     dn_tg_val = dn_stem.value if hasattr(dn_stem, 'value') else str(dn_stem)
-    tg_clash = (ln_tg_val, dn_tg_val) in _ke_pairs_tg or (dn_tg_val, ln_tg_val) in _ke_pairs_tg
+    tg_clash = (ln_tg_val, dn_tg_val) in TIANGAN_KE_PAIRS or (dn_tg_val, ln_tg_val) in TIANGAN_KE_PAIRS
 
     if tg_clash:
         # 判定大运天干是否为喜用

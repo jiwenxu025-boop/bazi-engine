@@ -1,8 +1,14 @@
 [project]
 name = "bazi-engine"
-version = "0.1.0"
+version = "0.14.0"
 description = "八字排盘计算引擎"
-requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "httpx>=0.27.0",
+    "ephem>=4.1.0",
+]
+requires-python = ">=3.12"  # 实际运行环境 3.13，保留宽容性
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -19,6 +25,10 @@ select = [
     "W",      # pycodestyle warnings
     "I",      # isort (import ordering)
     "N",      # pep8-naming (only errors)
+    "B",      # flake8-bugbear (bug detection)
+    "SIM",    # flake8-simplify (code simplification)
+    "UP",     # pyupgrade (modern syntax)
+    "RUF",    # ruff-specific rules
 ]
 
 ignore = [

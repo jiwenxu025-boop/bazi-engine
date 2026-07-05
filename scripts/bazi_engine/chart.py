@@ -176,14 +176,14 @@ class BaziChart:
                 "dizhi": [i.to_dict() for i in self.dizhi_interactions],
             },
             "spirits": [s.to_dict() for s in self.spirits],
-            "annual_scans": [a.to_dict() for a in self.annual_scans],
+            "annual_scans": [a.to_dict() for a in self.annual_scans] if hasattr(self, "annual_scans") and self.annual_scans else [],
             "warnings": self.warnings,
             "personality": self.personality_result,
             "family": self.family_result,
             "life_stage": self.life_stage,
             "void_gods": [v.to_dict() for v in self.void_gods],
             "nayin_relations": [nr.to_dict() for nr in self.nayin_relations],
-            "changsheng": [cs.to_dict() for cs in self.changsheng_states],
+            "changsheng": [cs.to_dict() for cs in self.changsheng_states] if hasattr(self, "changsheng_states") and self.changsheng_states else [],
             "palace_star": self.palace_star_result,
             "tiaohou": self.tiaohou_result,
             "health_profile": self.health_profile,
@@ -693,7 +693,15 @@ def build_chart(
         fav_shishen = yongshen_data.get("favorable", [])
         harm_shishen = yongshen_data.get("harmful", [])
 
-        interactions_dict = chart.to_dict().get("interactions", {})
+        # Compute interactions directly (avoid circular to_dict call)
+        _sl = [(chart.year.stem, "年柱"), (chart.month.stem, "月柱"),
+               (chart.day.stem, "日柱"), (chart.hour.stem, "时柱")]
+        _bl = [(chart.year.branch, "年柱"), (chart.month.branch, "月柱"),
+               (chart.day.branch, "日柱"), (chart.hour.branch, "时柱")]
+        interactions_dict = {
+            "tiangan_wuhe": [w.to_dict() for w in find_tiangan_wuhe(_sl)],
+            "dizhi": [d.to_dict() for d in find_all_dizhi_interactions(_bl)],
+        }
 
         # 性格分析
         pr = analyze_personality(

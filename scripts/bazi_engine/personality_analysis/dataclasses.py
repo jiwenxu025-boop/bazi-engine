@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class PersonalityResult:
     """性格分析结果"""
-    day_master_core: str = ""
+    day_master_core: dict = field(default_factory=dict)
     strength_label: str = ""
     dominant_ten_god: str = ""
     pattern_influence: str = ""

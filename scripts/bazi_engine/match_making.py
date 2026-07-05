@@ -11,7 +11,7 @@ from ._constants import (
 )
 
 
-def match_score(chart1, chart2) -> tuple[int, str]:
+def match_score(chart1: "BaziChart", chart2: "BaziChart") -> tuple[int, str]:
     """双人合婚评分。
 
     评分维度（满分 100）：

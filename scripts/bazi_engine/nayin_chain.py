@@ -22,24 +22,7 @@ def nayin_to_wuxing(nayin_name: str) -> Wuxing | None:
     return mapping.get(last)
 
 
-def _wx_relation(src: Wuxing, dst: Wuxing) -> str:
-    """返回 src 对 dst 的生克关系字符串"""
-    if src == dst:
-        return "比和"
-    # 建立生克映射
-    _SHENG = {Wuxing.木: Wuxing.火, Wuxing.火: Wuxing.土, Wuxing.土: Wuxing.金,
-              Wuxing.金: Wuxing.水, Wuxing.水: Wuxing.木}
-    _KE = {Wuxing.木: Wuxing.土, Wuxing.土: Wuxing.水, Wuxing.水: Wuxing.火,
-           Wuxing.火: Wuxing.金, Wuxing.金: Wuxing.木}
-    if _SHENG.get(src) == dst:
-        return "生"
-    if _KE.get(src) == dst:
-        return "克"
-    if _SHENG.get(dst) == src:
-        return "被生"
-    if _KE.get(dst) == src:
-        return "被克"
-    return "比和"
+from .ten_gods import wuxing_relation as _wx_relation
 
 
 @dataclass

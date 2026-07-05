@@ -5,6 +5,7 @@ v0.8.0: +墓库相冲核爆检测（辰戌/丑未冲 → 土气激增 + 杂气�
 
 from dataclasses import dataclass, field
 
+from .ten_gods import wuxing_ke, wuxing_sheng
 from ._constants import (
     DIZHI_BANHE,
     DIZHI_LIUCHONG,
@@ -403,7 +404,7 @@ def detect_tansheng_wangke(stems_and_labels: list[tuple[Tiangan, str]],
             continue
 
         # 检查 A 原本克 C
-        a_ke_c = _KE.get(a_wx) == c_wx
+        a_ke_c = wuxing_ke(a_wx) == c_wx
         if not a_ke_c:
             continue
 

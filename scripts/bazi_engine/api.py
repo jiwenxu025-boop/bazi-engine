@@ -105,6 +105,221 @@ def chart_api(
     return JSONResponse(content=result)
 
 
+async def stream_chart(    name, gender, year, month, day, hour,
+    ln_range, fav_set, life_stage, hour_confirmed, practical,
+):
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+
+    def on_llm(year_val: int, signals: list[dict]):
+        """LLM审查完成回调：推入队列"""
+        loop.call_soon_threadsafe(
+            queue.put_nowait,
+            ("llm", {"phase": "llm_result", "year": year_val, "signals": signals})
+        )
+
+    def on_llm_tok(year_val: int, token: str):
+        """LLM审查逐token回调"""
+        loop.call_soon_threadsafe(
+            queue.put_nowait,
+            ("llm_token", {"phase": "llm_token", "year": year_val, "token": token})
+        )
+
+    # 用可变容器把 BaziChart 对象从线程传出来，供大运解读等后续步骤使用
+    chart_obj_ref: list = []
+
+    def run_build():
+        """在线程中执行完整的 build_chart（含LLM审查）"""
+        try:
+            c = build_chart(
+                name=name or "未知", gender=gender,
+                year=year, month=month, day=day, hour=hour,
+                liunian_range=ln_range,
+                favorable=fav_set,
+                calibrate=False,
+                life_stage_override=life_stage if life_stage != "auto" else "",
+                hour_confirmed=hour_confirmed,
+                on_llm_result=on_llm,
+                on_llm_token=on_llm_tok,
+            )
+            chart_obj_ref.append(c)
+            result = c.to_dict()
+            if practical:
+                _strip_technical(result)
+            loop.call_soon_threadsafe(queue.put_nowait, ("chart", result))
+        except Exception as e:
+            loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
+
+    # 立即告知前端连接已建立
+    yield f"data: {json.dumps({'phase': 'started', 'message': '规则引擎计算中...'})}\n\n"
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    loop.run_in_executor(executor, run_build)
+
+    # 缓冲LLM结果和token（它们在build_chart线程中先到达，前端应先看到rules_done）
+    buffered_llm: list[dict] = []
+    buffered_llm_tokens: list[dict] = []
+    # SSE 心跳：Railway 代理超时通常 30s，每 15s 发一次保活
+    _HEARTBEAT_INTERVAL = 15.0
+
+    while True:
+        try:
+            msg_type, msg_data = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL)
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
+            continue
+        if msg_type == "error":
+            yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
+            yield "data: [DONE]\n\n"
+            executor.shutdown(wait=False)
+            return
+        elif msg_type == "llm_token":
+            buffered_llm_tokens.append(msg_data)
+        elif msg_type == "llm":
+            buffered_llm.append(msg_data)
+        elif msg_type == "chart":
+            chart_data = msg_data
+            # 1. 先发规则引擎结果
+            yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
+
+            # 2. 刷新缓冲的LLM token（逐字推理过程）
+            for tok_msg in buffered_llm_tokens:
+                yield f"data: {json.dumps(tok_msg)}\n\n"
+
+            # 3. 刷新缓冲的LLM结果
+            for llm_msg in buffered_llm:
+                yield f"data: {json.dumps(llm_msg)}\n\n"
+
+            # 3. 性格融合报告逐token流式输出（仅融合实际启用时进入）
+            chart = chart_obj_ref[0] if chart_obj_ref else None
+            fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
+            fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
+            if fusion_enabled and fusion_key and chart_data.get("personality"):
+                try:
+                    from datetime import date
+
+                    from .personality_fusion import build_fusion_data_package, generate_fusion_report
+                    age_info = None
+                    if chart and hasattr(chart, 'birth_dt'):
+                        today = date.today()
+                        age = today.year - chart.birth_dt.year
+                        if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
+                            age -= 1
+                        dm = chart_data.get("day_master", {})
+                        age_info = {
+                            "年龄": age,
+                            "日干": dm.get("stem", ""),
+                            "五行": dm.get("wuxing", ""),
+                            "阴阳": dm.get("yinyang", ""),
+                        }
+                    pkg = build_fusion_data_package(
+                        chart_data.get("personality", {}),
+                        chart_data.get("family"),
+                        chart_data.get("life_stage", ""),
+                        age_info=age_info,
+                    )
+                    fusion_queue: asyncio.Queue = asyncio.Queue()
+
+                    def on_token(tok: str):
+                        loop.call_soon_threadsafe(
+                            fusion_queue.put_nowait, ("token", tok))
+
+                    fusion_done_flag = {"done": False}
+
+                    def run_fusion():
+                        try:
+                            if not fusion_key:
+                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
+                                return
+                            full = generate_fusion_report(pkg, on_chunk=on_token)
+                            if full:
+                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_done", full))
+                            else:
+                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "API返回空"))
+                            fusion_done_flag["done"] = True
+                        except Exception as e:
+                            loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", str(e)))
+                            fusion_done_flag["done"] = True
+
+                    fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    loop.run_in_executor(fusion_ex, run_fusion)
+
+                    _fusion_start = loop.time()
+                    while True:
+                        try:
+                            ft, fd = await asyncio.wait_for(fusion_queue.get(), timeout=15.0)
+                        except asyncio.TimeoutError:
+                            if fusion_done_flag["done"]:
+                                break  # thread finished but queue empty
+                            elapsed = loop.time() - _fusion_start
+                            if elapsed > 90:
+                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合超时({elapsed:.0f}s)'})}\n\n"
+                                fusion_ex.shutdown(wait=False)
+                                break
+                            continue
+                        if ft == "token":
+                            yield f"data: {json.dumps({'phase': 'personality_token', 'token': fd})}\n\n"
+                            _fusion_start = loop.time()  # reset timeout on activity
+                        elif ft == "fusion_done":
+                            if fd:
+                                yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd})}\n\n"
+                            fusion_ex.shutdown(wait=False)
+                            break
+                        elif ft == "fusion_error":
+                            yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
+                            fusion_ex.shutdown(wait=False)
+                            break
+                except Exception as e:
+                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合引擎异常: {e}'})}\n\n"
+            else:
+                detail = []
+                if not fusion_enabled: detail.append("BAZI_FUSION_ENGINE未设为1")
+                if not fusion_key: detail.append("DEEPSEEK_API_KEY未设置")
+                if not chart_data.get("personality"): detail.append("性格数据为空")
+                yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合跳过: ' + '; '.join(detail)})}\n\n"
+
+            # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
+            try:
+                from .llm_review import DEEPSEEK_KEY, LLM_REVIEW_ENABLED, enrich_dayun_interpretations
+                loop_dy = asyncio.get_running_loop()
+                dy_queue: asyncio.Queue = asyncio.Queue()
+                dy_error: list = []
+
+                def _run_dayun():
+                    try:
+                        result = enrich_dayun_interpretations(chart) if chart else []
+                        loop_dy.call_soon_threadsafe(dy_queue.put_nowait, result)
+                    except Exception as e:
+                        dy_error.append(str(e))
+                        loop_dy.call_soon_threadsafe(dy_queue.put_nowait, [])
+
+                executor.submit(_run_dayun)
+                while True:
+                    try:
+                        dayun_result = await asyncio.wait_for(dy_queue.get(), timeout=_HEARTBEAT_INTERVAL)
+                        break
+                    except asyncio.TimeoutError:
+                        yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
+                        continue
+                if dayun_result:
+                    chart.dayun_interpretations = dayun_result
+                    yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': dayun_result})}\n\n"
+                elif dy_error:
+                    yield f"data: {json.dumps({'phase': 'dayun_error', 'message': dy_error[0]})}\n\n"
+                else:
+                    detail = "dayun_modulations为空" if (chart and not getattr(chart, 'dayun_modulations', None)) else (
+                        "LLM开关未启用" if not LLM_REVIEW_ENABLED else (
+                        "DEEPSEEK_API_KEY未设置" if not DEEPSEEK_KEY else "LLM返回空"))
+                    yield f"data: {json.dumps({'phase': 'dayun_error', 'message': detail})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'dayun_error', 'message': f'大运解读模块异常: {e}'})}\n\n"
+
+            # 5. 结束
+            yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+            yield "data: [DONE]\n\n"
+            executor.shutdown(wait=False)
+            return
+
 @app.get("/api/chart/stream")
 async def chart_stream(
     name: str = Query("", description="姓名（可选）"),
@@ -141,220 +356,10 @@ async def chart_stream(
 
     fav_set = set(favorable) if favorable else None
 
-    async def stream_chart():
-        queue: asyncio.Queue = asyncio.Queue()
-        loop = asyncio.get_event_loop()
-
-        def on_llm(year_val: int, signals: list[dict]):
-            """LLM审查完成回调：推入队列"""
-            loop.call_soon_threadsafe(
-                queue.put_nowait,
-                ("llm", {"phase": "llm_result", "year": year_val, "signals": signals})
-            )
-
-        def on_llm_tok(year_val: int, token: str):
-            """LLM审查逐token回调"""
-            loop.call_soon_threadsafe(
-                queue.put_nowait,
-                ("llm_token", {"phase": "llm_token", "year": year_val, "token": token})
-            )
-
-        # 用可变容器把 BaziChart 对象从线程传出来，供大运解读等后续步骤使用
-        chart_obj_ref: list = []
-
-        def run_build():
-            """在线程中执行完整的 build_chart（含LLM审查）"""
-            try:
-                c = build_chart(
-                    name=name or "未知", gender=gender,
-                    year=year, month=month, day=day, hour=hour,
-                    liunian_range=ln_range,
-                    favorable=fav_set,
-                    calibrate=False,
-                    life_stage_override=life_stage if life_stage != "auto" else "",
-                    hour_confirmed=hour_confirmed,
-                    on_llm_result=on_llm,
-                    on_llm_token=on_llm_tok,
-                )
-                chart_obj_ref.append(c)
-                result = c.to_dict()
-                if practical:
-                    _strip_technical(result)
-                loop.call_soon_threadsafe(queue.put_nowait, ("chart", result))
-            except Exception as e:
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
-
-        # 立即告知前端连接已建立
-        yield f"data: {json.dumps({'phase': 'started', 'message': '规则引擎计算中...'})}\n\n"
-
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        loop.run_in_executor(executor, run_build)
-
-        # 缓冲LLM结果和token（它们在build_chart线程中先到达，前端应先看到rules_done）
-        buffered_llm: list[dict] = []
-        buffered_llm_tokens: list[dict] = []
-        # SSE 心跳：Railway 代理超时通常 30s，每 15s 发一次保活
-        _HEARTBEAT_INTERVAL = 15.0
-
-        while True:
-            try:
-                msg_type, msg_data = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL)
-            except asyncio.TimeoutError:
-                yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
-                continue
-            if msg_type == "error":
-                yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
-                yield "data: [DONE]\n\n"
-                executor.shutdown(wait=False)
-                return
-            elif msg_type == "llm_token":
-                buffered_llm_tokens.append(msg_data)
-            elif msg_type == "llm":
-                buffered_llm.append(msg_data)
-            elif msg_type == "chart":
-                chart_data = msg_data
-                # 1. 先发规则引擎结果
-                yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
-
-                # 2. 刷新缓冲的LLM token（逐字推理过程）
-                for tok_msg in buffered_llm_tokens:
-                    yield f"data: {json.dumps(tok_msg)}\n\n"
-
-                # 3. 刷新缓冲的LLM结果
-                for llm_msg in buffered_llm:
-                    yield f"data: {json.dumps(llm_msg)}\n\n"
-
-                # 3. 性格融合报告逐token流式输出（仅融合实际启用时进入）
-                chart = chart_obj_ref[0] if chart_obj_ref else None
-                fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
-                fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
-                if fusion_enabled and fusion_key and chart_data.get("personality"):
-                    try:
-                        from datetime import date
-
-                        from .personality_fusion import build_fusion_data_package, generate_fusion_report
-                        age_info = None
-                        if chart and hasattr(chart, 'birth_dt'):
-                            today = date.today()
-                            age = today.year - chart.birth_dt.year
-                            if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
-                                age -= 1
-                            dm = chart_data.get("day_master", {})
-                            age_info = {
-                                "年龄": age,
-                                "日干": dm.get("stem", ""),
-                                "五行": dm.get("wuxing", ""),
-                                "阴阳": dm.get("yinyang", ""),
-                            }
-                        pkg = build_fusion_data_package(
-                            chart_data.get("personality", {}),
-                            chart_data.get("family"),
-                            chart_data.get("life_stage", ""),
-                            age_info=age_info,
-                        )
-                        fusion_queue: asyncio.Queue = asyncio.Queue()
-
-                        def on_token(tok: str):
-                            loop.call_soon_threadsafe(
-                                fusion_queue.put_nowait, ("token", tok))
-
-                        fusion_done_flag = {"done": False}
-
-                        def run_fusion():
-                            try:
-                                if not fusion_key:
-                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
-                                    return
-                                full = generate_fusion_report(pkg, on_chunk=on_token)
-                                if full:
-                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_done", full))
-                                else:
-                                    loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "API返回空"))
-                                fusion_done_flag["done"] = True
-                            except Exception as e:
-                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", str(e)))
-                                fusion_done_flag["done"] = True
-
-                        fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                        loop.run_in_executor(fusion_ex, run_fusion)
-
-                        _fusion_start = loop.time()
-                        while True:
-                            try:
-                                ft, fd = await asyncio.wait_for(fusion_queue.get(), timeout=15.0)
-                            except asyncio.TimeoutError:
-                                if fusion_done_flag["done"]:
-                                    break  # thread finished but queue empty
-                                elapsed = loop.time() - _fusion_start
-                                if elapsed > 90:
-                                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合超时({elapsed:.0f}s)'})}\n\n"
-                                    fusion_ex.shutdown(wait=False)
-                                    break
-                                continue
-                            if ft == "token":
-                                yield f"data: {json.dumps({'phase': 'personality_token', 'token': fd})}\n\n"
-                                _fusion_start = loop.time()  # reset timeout on activity
-                            elif ft == "fusion_done":
-                                if fd:
-                                    yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd})}\n\n"
-                                fusion_ex.shutdown(wait=False)
-                                break
-                            elif ft == "fusion_error":
-                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
-                                fusion_ex.shutdown(wait=False)
-                                break
-                    except Exception as e:
-                        yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合引擎异常: {e}'})}\n\n"
-                else:
-                    detail = []
-                    if not fusion_enabled: detail.append("BAZI_FUSION_ENGINE未设为1")
-                    if not fusion_key: detail.append("DEEPSEEK_API_KEY未设置")
-                    if not chart_data.get("personality"): detail.append("性格数据为空")
-                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合跳过: ' + '; '.join(detail)})}\n\n"
-
-                # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
-                try:
-                    from .llm_review import DEEPSEEK_KEY, LLM_REVIEW_ENABLED, enrich_dayun_interpretations
-                    loop_dy = asyncio.get_running_loop()
-                    dy_queue: asyncio.Queue = asyncio.Queue()
-                    dy_error: list = []
-
-                    def _run_dayun():
-                        try:
-                            result = enrich_dayun_interpretations(chart) if chart else []
-                            loop_dy.call_soon_threadsafe(dy_queue.put_nowait, result)
-                        except Exception as e:
-                            dy_error.append(str(e))
-                            loop_dy.call_soon_threadsafe(dy_queue.put_nowait, [])
-
-                    executor.submit(_run_dayun)
-                    while True:
-                        try:
-                            dayun_result = await asyncio.wait_for(dy_queue.get(), timeout=_HEARTBEAT_INTERVAL)
-                            break
-                        except asyncio.TimeoutError:
-                            yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
-                            continue
-                    if dayun_result:
-                        chart.dayun_interpretations = dayun_result
-                        yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': dayun_result})}\n\n"
-                    elif dy_error:
-                        yield f"data: {json.dumps({'phase': 'dayun_error', 'message': dy_error[0]})}\n\n"
-                    else:
-                        detail = "dayun_modulations为空" if (chart and not getattr(chart, 'dayun_modulations', None)) else (
-                            "LLM开关未启用" if not LLM_REVIEW_ENABLED else (
-                            "DEEPSEEK_API_KEY未设置" if not DEEPSEEK_KEY else "LLM返回空"))
-                        yield f"data: {json.dumps({'phase': 'dayun_error', 'message': detail})}\n\n"
-                except Exception as e:
-                    yield f"data: {json.dumps({'phase': 'dayun_error', 'message': f'大运解读模块异常: {e}'})}\n\n"
-
-                # 5. 结束
-                yield f"data: {json.dumps({'phase': 'done'})}\n\n"
-                yield "data: [DONE]\n\n"
-                executor.shutdown(wait=False)
-                return
-
-    return StreamingResponse(stream_chart(), media_type="text/event-stream",
+    return StreamingResponse(stream_chart(
+        name, gender, year, month, day, hour,
+        ln_range, fav_set, life_stage, hour_confirmed, practical,
+    ), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})
 
@@ -839,6 +844,7 @@ fetch('/api/admin/codes?key=' + new URLSearchParams(location.search).get('key'))
 
 _FEEDBACK_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "feedback"
 _FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+_FEEDBACK_LOCK = threading.Lock()
 
 
 @app.post("/api/feedback")

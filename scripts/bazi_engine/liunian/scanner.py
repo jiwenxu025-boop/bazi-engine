@@ -1,4 +1,5 @@
 """主扫描函数 — scan_years() 逐年循环。"""
+from dataclasses import dataclass
 from datetime import date
 
 from ..enums import Dizhi, Tiangan
@@ -134,6 +135,63 @@ def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
                         e.notes.insert(0, year_to_note[r.year])
 
     return results
+
+
+@dataclass
+class ScanConfig:
+    """流年扫描配置 — scan_years 的参数封装"""
+    day_master: Tiangan
+    year_branch: Dizhi
+    day_branch: Dizhi
+    month_branch: Dizhi
+    hour_branch: Dizhi
+    gender: str
+    start_age: int
+    luck_pillars: list[tuple[Tiangan, Dizhi]]
+    birth_date: date
+    start_year: int
+    end_year: int
+    known_events: dict[int, str] | None = None
+    favorable: set[str] | None = None
+    personality_ctx: dict | None = None
+    life_stage_override: str = ""
+    chart_pattern: str = ""
+    pillars_tengan: list[Tiangan] | None = None
+    is_fei_ju: bool = False
+    tiaohou_climate: str = "中和"
+    dayun_modulations: list[dict] | None = None
+    tansheng_wangke: list[dict] | None = None
+    false_generations: list[dict] | None = None
+    health_profile: dict | None = None
+    chart_data: dict | None = None
+    on_llm_result=None
+    on_llm_token=None
+
+
+def scan_years_from_config(config: ScanConfig) -> list[AnnualScan]:
+    """从 ScanConfig 调用 scan_years (解包后传入)"""
+    return scan_years(
+        config.day_master, config.year_branch, config.day_branch,
+        config.month_branch, config.hour_branch, config.gender,
+        config.start_age, config.luck_pillars, config.birth_date,
+        config.start_year, config.end_year,
+        known_events=config.known_events,
+        favorable=config.favorable,
+        personality_ctx=config.personality_ctx,
+        life_stage_override=config.life_stage_override,
+        chart_pattern=config.chart_pattern,
+        pillars_tengan=config.pillars_tengan,
+        is_fei_ju=config.is_fei_ju,
+        tiaohou_climate=config.tiaohou_climate,
+        dayun_modulations=config.dayun_modulations,
+        tansheng_wangke=config.tansheng_wangke,
+        false_generations=config.false_generations,
+        health_profile=config.health_profile,
+        chart_data=config.chart_data,
+        on_llm_result=config.on_llm_result,
+        on_llm_token=config.on_llm_token,
+    )
+
 
 def scan_years(
     day_master: Tiangan,

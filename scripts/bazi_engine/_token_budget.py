@@ -2,6 +2,7 @@
 
 使用简单的中文 token 估算（中文约 1 字 ≈ 1 token，英文约 1 词 ≈ 1.3 token）。
 误差约 ±20%，但对于预算控制足够了。
+import re
 """
 
 # DeepSeek 模型上下文窗口
@@ -21,7 +22,6 @@ def estimate_tokens(text: str) -> int:
     - 英文单词 ≈ 1.3 token
     - 数字和标点 ≈ 0.5 token
     """
-    import re
 
     chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
     english_words = len(re.findall(r'[a-zA-Z]+', text))

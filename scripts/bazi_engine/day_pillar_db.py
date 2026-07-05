@@ -23,11 +23,12 @@ def _is_leap(y: int) -> bool:
 
 
 def _days_before_year(y: int) -> int:
-    """1900-01-01 到 y-01-01 的天数"""
-    days = 0
-    for yr in range(1900, y):
-        days += 366 if _is_leap(yr) else 365
-    return days
+    """1900-01-01 到 y-01-01 的天数 (O(1) 公式)"""
+    def _leaps_upto(n: int) -> int:
+        return n // 4 - n // 100 + n // 400
+    years = y - 1900
+    leaps = _leaps_upto(y - 1) - _leaps_upto(1899)
+    return years * 365 + leaps
 
 
 def _days_before_month(y: int, m: int) -> int:
@@ -61,6 +62,7 @@ def lookup_day_pillar(year: int, month: int, day: int) -> tuple[str, str]:
     return _TIANGAN[tg_idx], _DIZHI[dz_idx]
 
 
+
 def verify_known_cases() -> bool:
     """验证已知案例，确保查询准确。"""
     cases = [
@@ -73,3 +75,12 @@ def verify_known_cases() -> bool:
         if stem != exp_stem or branch != exp_branch:
             return False
     return True
+
+
+# 模块加载时自动验证日柱计算
+assert verify_known_cases(), "日柱计算验证失败!"
+
+
+if __name__ == "__main__":
+    result = verify_known_cases()
+    print(f"验证: {result}")
