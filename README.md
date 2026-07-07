@@ -97,7 +97,7 @@ python tests/calibration_others.py
 bazi-engine/
 ├── SKILL.md                        # Claude Code Skill 入口
 ├── README.md
-├── Procfile                        # Railway 部署
+├── Procfile                        # 部署配置
 ├── requirements.txt
 ├── scripts/
 │   ├── bazi_engine/                # Python 引擎包
@@ -188,35 +188,42 @@ bazi-engine/
 
 ---
 
-## 🚀 部署（Render 免费版）
+## 🚀 部署（Hugging Face Spaces - 免费，不绑卡）
 
-[Render](https://render.com) 提供免费 Web Service（每月 750 小时，512MB RAM），适合个人项目。
+[Hugging Face Spaces](https://huggingface.co/spaces) 提供免费的 Docker 部署，无需绑定银行卡。
 
-### 一键部署（推荐）
+### 部署步骤
 
-1. Fork 本仓库到你的 GitHub
-2. 登录 [Render Dashboard](https://dashboard.render.com)
-3. 点击 **New +** → **Blueprint**
-4. 连接 GitHub，选择本仓库
-5. Render 自动读取 render.yaml，点击 **Apply**
-6. 等待 3-5 分钟构建部署
-7. 访问 https://bazi-engine.onrender.com/api/health 验证
+1. **注册** [Hugging Face](https://huggingface.co/join)（用邮箱即可，不绑卡）
+2. 登录后点击右上角头像 → **New Space**
+3. 填写：
+   - **Space Name**: 
+   - **License**: MIT（或其他）
+   - **Space SDK**: 选择 **Docker**
+4. 创建后进入 Settings → **Repository**
+   - 在 **Mirror your Space** 中连接你的 GitHub 仓库
+   - 或手动把代码推送到 Space 的 Git 仓库
+5. Space 自动检测 Dockerfile 并构建部署
+6. 构建完成后访问 
 
-### 手动部署
+### 环境变量设置
 
-1. 在 Render Dashboard 点击 **New +** → **Web Service**
-2. 连接 GitHub 仓库
-3. 设置：
-   - **Runtime**: Docker
-   - **Branch**: main
-   - **Region**: Singapore（亚洲延迟最低）
-   - **Plan**: Free
-4. 添加环境变量：
-   - BAZI_PUBLIC: true
-   - FRONTEND_DIR: /app/frontend
-   - DEEPSEEK_API_KEY: sk-xxx （可选，LLM追问功能）
-5. 创建服务，等待部署完成
+在 Space 的 **Settings → Repository secrets** 中添加：
+
+| 变量名 | 值 | 说明 |
+|--------|-----|------|
+| BAZI_PUBLIC | true | 公网模式 |
+| FRONTEND_DIR | /app/frontend | 前端页面路径 |
+
+（可选）LLM 追问功能需额外设置 DEEPSEEK_API_KEY。
+
+### 代码已适配
+
+仓库中的 Dockerfile 已配置为端口 7860（Hugging Face Spaces 要求）。
 
 ### Railway 迁移说明
 
-原 Railway 用户只需将 GitHub 仓库重新连接到 Render 即可，代码和 Dockerfile 已适配。
+之前的 Railway 部署因免费额度用完停服。迁移到 Hugging Face Spaces 后完全免费，无需绑定任何支付方式。
+
+[Render](https://render.com) 提供免费 Web Service（每月 750 小时，512MB RAM），适合个人项目。
+

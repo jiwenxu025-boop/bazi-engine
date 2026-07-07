@@ -14,6 +14,6 @@ COPY frontend/ /app/frontend/
 ENV FRONTEND_DIR=/app/frontend
 ENV BAZI_PUBLIC=true
 
-EXPOSE 8080
+EXPOSE 7860
 
 CMD ["python", "-m", "uvicorn", "scripts.bazi_engine.api:app", "--host", "0.0.0.0", "--port", "8080"]
