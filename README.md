@@ -184,3 +184,39 @@ bazi-engine/
 ## 免责声明
 
 本引擎仅供传统文化学习与娱乐参考，分析结果不构成任何决策依据。命理学属于传统文化范畴，请理性看待。
+
+
+---
+
+## 🚀 部署（Render 免费版）
+
+[Render](https://render.com) 提供免费 Web Service（每月 750 小时，512MB RAM），适合个人项目。
+
+### 一键部署（推荐）
+
+1. Fork 本仓库到你的 GitHub
+2. 登录 [Render Dashboard](https://dashboard.render.com)
+3. 点击 **New +** → **Blueprint**
+4. 连接 GitHub，选择本仓库
+5. Render 自动读取 render.yaml，点击 **Apply**
+6. 等待 3-5 分钟构建部署
+7. 访问 https://bazi-engine.onrender.com/api/health 验证
+
+### 手动部署
+
+1. 在 Render Dashboard 点击 **New +** → **Web Service**
+2. 连接 GitHub 仓库
+3. 设置：
+   - **Runtime**: Docker
+   - **Branch**: main
+   - **Region**: Singapore（亚洲延迟最低）
+   - **Plan**: Free
+4. 添加环境变量：
+   - BAZI_PUBLIC: true
+   - FRONTEND_DIR: /app/frontend
+   - DEEPSEEK_API_KEY: sk-xxx （可选，LLM追问功能）
+5. 创建服务，等待部署完成
+
+### Railway 迁移说明
+
+原 Railway 用户只需将 GitHub 仓库重新连接到 Render 即可，代码和 Dockerfile 已适配。
