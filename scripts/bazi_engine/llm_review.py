@@ -13,6 +13,7 @@ from ._http import shared_client
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -573,21 +574,29 @@ def interpret_dayun(natal: dict, dayun_modulations: list[dict],
         "messages": messages,
         "stream": False,
         "temperature": 0.3,
-        "max_tokens": 2048,
+        "max_tokens": 4096,
     }
 
     try:
-        import httpx
         with shared_client(60.0) as client:
             resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
             if resp.status_code != 200:
+                print(f"[dayun_llm] status={resp.status_code} body={resp.text[:300]}",
+                      file=sys.stderr)
                 return []
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             if not content:
+                print(f"[dayun_llm] empty content body={str(data)[:500]}",
+                      file=sys.stderr)
                 return []
-            return _parse_dayun_response(content, len(dayun_modulations))
-    except Exception:
+            parsed = _parse_dayun_response(content, len(dayun_modulations))
+            if not parsed:
+                print(f"[dayun_llm] parse empty content={content[:800]}",
+                      file=sys.stderr)
+            return parsed
+    except Exception as e:
+        print(f"[dayun_llm] exception={type(e).__name__}: {e}", file=sys.stderr)
         return []
 
 
@@ -685,21 +694,78 @@ def _parse_dayun_response(content: str, expected_count: int) -> list[dict]:
     """解析大运解读 JSON 响应"""
     import json as _json
     import re as _re
-    match = _re.search(r'\{[\s\S]*"periods"[\s\S]*\}', content)
-    if not match:
+
+    def _normalise_periods(raw) -> list:
+        if isinstance(raw, dict):
+            for key in ("periods", "dayun", "大运", "大运解读", "items", "results"):
+                value = raw.get(key)
+                if isinstance(value, list):
+                    return value
+            return []
+        if isinstance(raw, list):
+            return raw
         return []
-    try:
-        data = _json.loads(match.group(0))
-        periods = data.get("periods", [])
+
+    def _coerce_result(periods: list) -> list[dict]:
         result = []
-        for p in periods[:expected_count]:
-            result.append({
-                "index": p.get("index", 0),
-                "interpretation": p.get("interpretation", ""),
-            })
+        for idx, p in enumerate(periods[:expected_count]):
+            if isinstance(p, str):
+                interpretation = p.strip()
+                index = idx
+            elif isinstance(p, dict):
+                index = p.get("index", p.get("period_index", p.get("序号", idx)))
+                interpretation = (
+                    p.get("interpretation")
+                    or p.get("text")
+                    or p.get("summary")
+                    or p.get("解读")
+                    or p.get("内容")
+                    or ""
+                )
+            else:
+                continue
+            interpretation = str(interpretation).strip()
+            if interpretation:
+                result.append({"index": index, "interpretation": interpretation})
         return result
-    except (_json.JSONDecodeError, KeyError):
-        return []
+
+    def _json_candidates(text: str) -> list[str]:
+        cleaned = text.strip()
+        cleaned = _re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = _re.sub(r"\s*```$", "", cleaned)
+        candidates = [cleaned]
+
+        fenced = _re.findall(r"```(?:json)?\s*([\s\S]*?)```", text)
+        candidates.extend(block.strip() for block in fenced)
+
+        object_match = _re.search(r'\{[\s\S]*\}', text)
+        if object_match:
+            candidates.append(object_match.group(0))
+        array_match = _re.search(r'\[[\s\S]*\]', text)
+        if array_match:
+            candidates.append(array_match.group(0))
+
+        # 去重但保持顺序
+        unique = []
+        seen = set()
+        for item in candidates:
+            if item and item not in seen:
+                seen.add(item)
+                unique.append(item)
+        return unique
+
+    try:
+        for candidate in _json_candidates(content):
+            try:
+                data = _json.loads(candidate)
+            except _json.JSONDecodeError:
+                continue
+            result = _coerce_result(_normalise_periods(data))
+            if result:
+                return result
+    except KeyError:
+        pass
+    return []
 
 
 # ═══════════════════════════════════════════════════════════════

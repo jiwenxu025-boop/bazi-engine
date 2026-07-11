@@ -332,3 +332,25 @@ def test_vector_personality_fallback():
     assert rag._build_personality_query_text(dp) == ""
     results = rag.retrieve_for_generation("personality", dp)
     assert isinstance(results, list)
+
+
+def test_parse_dayun_response_variants():
+    """大运 LLM 返回代码块、数组或字段别名时也能解析"""
+    from bazi_engine.llm_review import _parse_dayun_response
+
+    fenced = """```json
+{"periods":[{"index":0,"interpretation":"甲子运重在稳定积累。"}]}
+```"""
+    assert _parse_dayun_response(fenced, 8) == [
+        {"index": 0, "interpretation": "甲子运重在稳定积累。"}
+    ]
+
+    alias_fields = '{"大运解读":[{"序号":1,"解读":"乙丑运注意节奏和资源分配。"}]}'
+    assert _parse_dayun_response(alias_fields, 8) == [
+        {"index": 1, "interpretation": "乙丑运注意节奏和资源分配。"}
+    ]
+
+    bare_list = '[{"period_index":2,"text":"丙寅运机会增多，但要控制冲动。"}]'
+    assert _parse_dayun_response(bare_list, 8) == [
+        {"index": 2, "interpretation": "丙寅运机会增多，但要控制冲动。"}
+    ]
