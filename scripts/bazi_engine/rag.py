@@ -88,14 +88,80 @@ def _extract_ngrams(text: str, min_len: int = 2, max_len: int = 6) -> list[str]:
     return list(ngrams)
 
 
+# ── 本地向量基元（零依赖，确定性）──
+
+
+def _build_ngram_freq(text: str, min_len: int = 2, max_len: int = 4) -> dict[str, int]:
+    """构建 n-gram 频次字典（字符级 2-4 gram）。"""
+    freq: dict[str, int] = {}
+    for ng in _extract_ngrams(text, min_len, max_len):
+        freq[ng] = freq.get(ng, 0) + 1
+    return freq
+
+
+def _ngram_cosine_from_freq(freq_a: dict[str, int], freq_b: dict[str, int]) -> float:
+    """从两个频次字典计算余弦相似度。"""
+    if not freq_a or not freq_b:
+        return 0.0
+    keys = set(freq_a.keys()) | set(freq_b.keys())
+    dot = sum(freq_a.get(k, 0) * freq_b.get(k, 0) for k in keys)
+    mag_a = sum(v * v for v in freq_a.values()) ** 0.5
+    mag_b = sum(v * v for v in freq_b.values()) ** 0.5
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+def _build_personality_query_text(data_package: dict) -> str:
+    """从性格融合数据包构造向量查询文本。"""
+    parts: list[str] = ["性格分析"]
+    for key in ["日主画像", "格局状态", "全局最高指令", "关键组合",
+                "粒度性格特质", "十神强度排行", "六维度信号", "家境背景"]:
+        val = data_package.get(key)
+        if val is None:
+            continue
+        if val == "" or val == [] or val == {}:
+            continue
+        if isinstance(val, (dict, list)):
+            s = json.dumps(val, ensure_ascii=False, separators=(",", ":"))
+            if len(s) > 400:
+                s = s[:400]
+        else:
+            s = str(val)[:200]
+        if not s:
+            continue
+        parts.append(f"{key}:{s}")
+    if len(parts) == 1:
+        return ""
+    return " ".join(parts)[:2000]
+
+
+# ── 个性向量预计算缓存 ──
+_PERSONALITY_VEC_READY: bool = False
+
+
+def _ensure_personality_vectors():
+    """为所有 personality chunk 预计算 n-gram 频次向量。"""
+    global _PERSONALITY_VEC_READY
+    if _PERSONALITY_VEC_READY:
+        return
+    for c in _chunks:
+        if "personality" in c.get("sections", []) and "ngram_freq" not in c:
+            text = c["heading"] + " " + c["text"]
+            c["ngram_freq"] = _build_ngram_freq(text)
+    _PERSONALITY_VEC_READY = True
+
+
 def _load_all():
-    global _chunks, _loaded
+    global _chunks, _loaded, _PERSONALITY_VEC_READY
     if _loaded:
         return
     _loaded = True
+    _PERSONALITY_VEC_READY = False
     _chunks.clear()
     _load_references()
     _load_calibration()
+    _ensure_personality_vectors()
 
 
 def _chunk_markdown_section(source: str, heading: str, body: str, sections: list[str],
@@ -426,6 +492,28 @@ def retrieve_for_generation(section: str, chart_or_ctx: dict,
         return [c for c, s in scored[:top_k] if s > 0.5]
 
     if section == "personality":
+        _ensure_personality_vectors()
+        query_text = _build_personality_query_text(chart_or_ctx)
+        query_freq = _build_ngram_freq(query_text)
+
+        vec_candidates = [c for c in candidates if c.get("ngram_freq")]
+        if vec_candidates and query_freq:
+            scored = [(c, _ngram_cosine_from_freq(query_freq, c["ngram_freq"])) for c in vec_candidates]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            VEC_THRESHOLD = 0.01
+            vec_hits = [c for c, s in scored if s > VEC_THRESHOLD]
+            if vec_hits:
+                # 向量为主，关键词为次级 tiebreaker
+                kw_terms = _build_personality_query_terms(chart_or_ctx)
+                final_scored = []
+                for c in vec_hits[:top_k]:
+                    kw_score = _score_chunk(c, kw_terms, None, None, None) * 0.001
+                    vec_score = _ngram_cosine_from_freq(query_freq, c["ngram_freq"])
+                    final_scored.append((c, vec_score + kw_score))
+                final_scored.sort(key=lambda x: x[1], reverse=True)
+                return [c for c, s in final_scored[:top_k]]
+
+        # fallback: 已有关键词检索
         query_terms = _build_personality_query_terms(chart_or_ctx)
         scored = [(c, _score_chunk(c, query_terms, None, None, None)) for c in candidates]
         scored.sort(key=lambda x: x[1], reverse=True)

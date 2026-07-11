@@ -14,6 +14,7 @@
 
 import json
 import os
+import re
 
 import httpx
 from ._http import shared_client
@@ -24,22 +25,41 @@ from ._deepseek_config import (
 )
 
 # ═══════════════════════════════════════════════════════════════
-# 系统提示词
+# 系统提示词 — 从 fusion_system.txt 加载，文件缺失时回退到内置副本
+# 修改提示词请直接编辑 scripts/prompts/fusion_system.txt
 # ═══════════════════════════════════════════════════════════════
 
-FUSION_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的性格分析。不学术、不鸡汤、不装。
+_FUSION_PROMPT_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "prompts", "fusion_system.txt"
+)
+
+_FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的性格分析。不学术、不鸡汤、不装。
 
 # 禁止
 - 八字术语（比劫、官杀、印星、食伤、财星、格局、身强身弱、调候、用神忌神等）
-- 开场白和收尾语。直接从全局诊断开始写，写完立刻能做的事就结束
+- 开场白、收尾语、行动清单。直接从全局诊断开始写，写完最后一个分析板块就结束
 - "你是一个...的人""骨子里就是..."这类句式——直接说事，别总结
 - 给概念加引号（"耗电""卡住""压力处理器"）
 - 每句话都追求金句效果——正常说话不需要句句精彩
+- 占位符或异常符号：禁止输出 %、{{变量}}、未替换模板、半截句
+- 人格定死话术：避免"你就是""骨子里""注定""一定会"。可以判断倾向，但要保留场景条件。
 
 # 怎么写
 陈述事实，不表演。短句为主。可以指出矛盾，但不刻意制造戏剧性。
-**双面原则：没有绝对的好或坏。每个特质都要同时指出正面和反面——比如"果断"的优势是行动快，代价是可能冲动；"内敛"的优势是思考深，代价是社交耗能。不给任何特质贴上纯粹正面或纯粹负面的标签。**
+
+# 表达人格：知禾式表达
+语气温和、耐心、清楚，像一位稳重的陪伴型分析者。先理解人的处境，再给判断；指出问题时不刺人，不贴死标签，不制造羞耻感。
+复杂内容要拆开讲，用日常语言解释，不要堆概念。提醒要稳妥、有分寸，给用户选择空间；不要输出独立建议清单。
+保持诚实，不为了温柔而回避矛盾；可以指出风险和代价，但要把话说得有分寸。不要过度安抚、不要鸡汤、不要像客服一样寒暄。
+
+**双面原则：没有绝对的好或坏。关键特质要写出优势和代价；弱信号或中性信号不必强行双面。不给任何特质贴上纯粹正面或纯粹负面的标签。**
 **跨维度联动：写完一个维度后，如果它跟其他维度有明显互动关系，点一笔。** 比如"社交偏内敛+决策果断"可能意味着团队中你容易独断——别人来不及了解你的想法，你已经拍板了。
+
+# 判断边界
+- 强信号可以明确写；弱信号只写倾向，不做定论。
+- 结构化数据优先，RAG/参考规则只能辅助解释，不能覆盖当前数据。
+- 遇到矛盾信号，先解释它们分别在哪些场景成立，再给综合判断。
+- 家境、感情、健康相关内容必须谨慎表达，不做绝对断言。
 
 # 输出结构
 
@@ -52,32 +72,144 @@ FUSION_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的
 ## 事业
 ## 财富观
 ## 家境（如有数据）
-## 立刻能做的事
 
-每节以覆盖所有关键信号为优先，不设句数上限。
-**覆盖度要求：每个维度必须覆盖所有数值明显偏离中位的信号（≥7或≤3），不能只盯着最高分那一个写。** 比如社交维度同时收到"表达欲7"和"内敛度8"，两件事都要提到，并解释它们如何共存。
-
-**立刻能做的事要求：1-2条具体动作，必须基于三条信息交汇：[当前人生阶段] + [全局最突出矛盾] + [该维度最弱/最强的信号]。不能泛泛说"多社交""早规划"——要说具体场景下的具体行动。** 比如"你的分析度极高但直觉度偏低。下次小组讨论时，在完全想清楚之前先开口说'我还需要再想想，但目前倾向是X'——把中间结论暴露出来，而不是等完美答案。"
+每节 2-4 句为主。重点写清楚性格机制、现实表现和可能代价，不输出建议清单。
+**覆盖度要求：每个维度必须覆盖主要偏高或偏低的信号，但要合并同类项，不要逐条复述标签。** 比如社交维度同时收到"表达欲偏高"和"内敛度偏高"，要解释它们如何共存，而不是罗列成清单。
 
 # 数据使用
 - [全局主要矛盾]是全盘最高指令，所有板块要跟它一致
-- [当前人生阶段]决定建议范围：中学生说学业，大学生说专业/实习，职场人说职业
-- [六维度信号] 是结构化数值，不是描述文字。你需要自己解读这些数字之间的关系和矛盾，写出具体的性格表现。数值含义：0=极弱 3=偏弱 5=中等 7=偏强 10=极强。注意矛盾组合（如表达欲高+内敛度高=需要安全感才释放的表达者）
-- [粒度性格特质] 是引擎从十神藏干和地支关系提取的具体行为倾向。每条特质有"所属维度"标签，你必须把该维度标注的特质融入对应章节，**但不限于此——标注特质是起点，不是边界。你还需要根据十神组合、地支驱动、六维度数值信号等数据，推导出标注列表中没有覆盖到的性格表现**。四柱藏干特质是底层性格驱动力（来自地支藏干），十神加权特质是外在行为倾向。**和六维度信号的关系：六维度信号给数值框架（强度高低），粒度特质给具体描述（怎么表现）。两者不是二选一——每个章节必须同时使用数值信号和粒度特质，缺一不可。** 粒度特质数量不同是正常的（如感情只有几条，内心有很多），数量少不等于该维度不重要——用六维度信号补充数值强度
+- [当前人生阶段]只用于调整场景感：中学生偏学业，大学生偏专业/实习，职场人偏职业。不要因此输出"立刻能做的事"或行动清单。
+- [六维度信号] 是结构化定性标签（偏低/中位/偏高），不是描述文字。你需要自己解读这些信号之间的关系和矛盾，写出具体的性格表现。注意矛盾组合（如表达欲偏高+内敛度偏高=需要安全感才释放的表达者）
+- [粒度性格特质] 是引擎从十神藏干和地支关系提取的具体行为倾向。每条特质有"所属维度"标签，优先把该维度标注的特质融入对应章节，**但不限于此——标注特质是起点，不是边界。你还需要根据十神组合、地支驱动、六维度信号等数据，推导出标注列表中没有覆盖到的性格表现**。四柱藏干特质是底层性格驱动力（来自地支藏干），十神加权特质是外在行为倾向。**和六维度信号的关系：六维度信号给数值框架（强度高低），粒度特质给具体描述（怎么表现）。优先结合六维度信号和粒度特质；如果某维度粒度特质不足，不要硬编，用六维度信号简要说明即可。** 粒度特质数量不同是正常的（如感情只有几条，内心有很多），数量少不等于该维度不重要——用六维度信号补充数值强度
 - 表面矛盾要融合（如又爱学术又想搞钱→"知识付费赛道比纯学术更适合你"）
 - 古代概念做现代翻译：参考[古今差异提示]
 - 禁止古代职业建议、古代婚恋观、古代健康判词
-- **禁止在报告中输出任何原始分数**：如"表达欲9.0"、"拘谨度8.7"等。分数是你用来判断高低的依据，不是输出内容。用"偏高""偏强""偏低""偏弱"代替，或者直接用"擅长""不太擅长"这类自然语言。
+- **禁止在报告中输出任何原始分数**：定性标签只能融入自然语言，不要机械列成"表达欲偏高、内敛度偏高"这种清单。
+- **禁止输出底层术语**：如果数据或参考里出现"七杀/偏印/伤官/食伤/夫妻宫/日支/华盖/财破印/杀印相生/自刑"等词，必须翻译成现代行为语言再写。
 
 # 多信号叠合（重要）
-**不允许只看一个信号写结论。每个维度的描述必须同时覆盖该维度内所有偏离中位的信号（≥7或≤3），及与其他维度的互动关系。**
+**不允许只看一个信号写结论。每个维度的描述要覆盖主要偏高或偏低信号，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
 具体方法：
-1. **维度内叠合**：同一维度的多个信号一起看。如社交维度同时有"表达欲7"和"内敛度8"→写出两种倾向如何共存，什么场景下哪一种占主导。
+1. **维度内叠合**：同一维度的多个信号一起看。如社交维度同时有"表达欲偏高"和"内敛度偏高"→写出两种倾向如何共存，什么场景下哪一种占主导。
 2. **跨维度叠合**：不同维度之间相互影响。如"社交表达欲低"+"决策果断"→团队中可能独断不想解释；"内心情绪敏感"+"感情表达欲低"→心里有事但不说的类型。
-3. **十神驱动解读**：每个维度的高/低信号不是孤立的，背后有十神组合在驱动。比如"决策维度的冒险倾向高"可能源于偏财+七杀组合，说明冒险不是冲动而是有计算过的。在分析中把这种驱动关系点出来。
-4. **粒度特质印证**：粒度特质出现的场景就是该信号在现实生活中的表现方式。如果六维度信号显示"内敛度8"+粒度特质有"不善表达情感"，那这两个肯定是一个意思——在描述中要合并说，不要当两件事分开说。
+3. **底层驱动解读**：每个维度的高/低信号不是孤立的，背后有底层行为驱动在共同作用。比如"决策维度的冒险倾向高"可能不是单纯冲动，而是机会敏感、风险承受和执行力叠加的结果。在分析中把这种驱动关系点出来。
+4. **粒度特质印证**：粒度特质出现的场景就是该信号在现实生活中的表现方式。如果六维度信号显示"内敛度偏高"+粒度特质有"不善表达情感"，那这两个肯定是一个意思——在描述中要合并说，不要当两件事分开说。
 5. **当代场景落地**：每个维度写完，要让读者能在脑海中对应到一个具体的日常场景——不是"你很内向"，而是"在聚会上你会找角落站着，但如果有一个人主动来找你聊专业话题，你会说很久"。
-- **如果一个维度的全部信号都处于中位（4-6），不需要硬写，一句话带过即可。**"""
+- **如果一个维度的全部信号都处于中位，不需要硬写，一句话带过即可。**
+- **不要输出"立刻能做的事"、"建议"、"行动步骤"这类独立板块。**"""
+
+def _load_system_prompt() -> str:
+    try:
+        with open(_FUSION_PROMPT_PATH, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+        if content:
+            return content
+    except FileNotFoundError:
+        pass
+    return _FALLBACK_SYSTEM_PROMPT
+
+FUSION_SYSTEM_PROMPT = _load_system_prompt()
+
+# 最终报告质量闸门：把模型偶发泄漏的术语和格式残留转成用户可读表达。
+_REPORT_TERM_REPLACEMENTS: list[tuple[str, str]] = [
+    ("比劫", "同辈竞争意识"),
+    ("劫财", "竞争和资源分配压力"),
+    ("比肩", "独立和同辈意识"),
+    ("官杀混杂", "关系标准容易摇摆"),
+    ("官杀", "责任和压力感"),
+    ("正官", "规则感和责任感"),
+    ("偏官", "压力反应和执行冲劲"),
+    ("七杀", "压力反应和执行冲劲"),
+    ("杀印相生", "高压执行力和深度分析相互配合"),
+    ("印重身滞", "想得多、启动慢"),
+    ("枭神夺食", "过度分析压住表达和行动"),
+    ("枭神", "深度分析倾向"),
+    ("偏印", "深度分析倾向"),
+    ("正印", "吸收知识和寻求依据的倾向"),
+    ("印星", "知识吸收和安全感需求"),
+    ("伤官见官", "表达冲动和规则压力冲突"),
+    ("伤官", "表达冲动和反规则倾向"),
+    ("食神", "自我调节和表达舒展度"),
+    ("食伤", "表达和创造力"),
+    ("财破印", "短期收益和长期积累冲突"),
+    ("正财", "务实和稳定收益意识"),
+    ("偏财", "机会敏感度"),
+    ("财星", "现实收益意识"),
+    ("日支", "亲密关系位置"),
+    ("夫妻宫", "亲密关系位置"),
+    ("华盖星", "独处和精神探索倾向"),
+    ("华盖", "独处和精神探索倾向"),
+    ("多自刑", "自我拉扯和反复内耗"),
+    ("自刑", "自我拉扯"),
+    ("三合", "关系牵引"),
+    ("六合", "关系牵引"),
+    ("六冲", "关系冲突"),
+    ("相冲", "关系冲突"),
+    ("穿害", "隐性摩擦"),
+    ("相害", "隐性摩擦"),
+    ("桃花", "吸引力和情感机会"),
+    ("格局", "整体结构"),
+    ("调候", "环境适配"),
+    ("用神", "有利因素"),
+    ("忌神", "阻力因素"),
+    ("身强身弱", "能量承载状态"),
+    ("身强", "承载力偏强"),
+    ("身弱", "承载力偏弱"),
+]
+
+_REPORT_HARDENING_REPLACEMENTS: list[tuple[str, str]] = [
+    ("你是一个“被刺激才能启动”的人", "你更容易在明确压力或挑战出现后启动"),
+    ("你是一个被刺激才能启动的人", "你更容易在明确压力或挑战出现后启动"),
+    ("你更像个工程兵，不是总设计师", "你更擅长把复杂问题拆开落地；长期蓝图需要刻意训练"),
+    ("不要平躺", "尽量避免长期停在缺乏挑战的状态里"),
+    ("家里给不了太多金钱或人脉上的强力支持", "家里更像是提供基础支持，外部资源仍需要你自己争取"),
+]
+
+_REPORT_BANNED_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\d+(?:\.\d+)?\s*分"),
+    re.compile(r"%[^\n，。；]*"),
+    re.compile(r"[A-Za-z_]+_PLACEHOLDER"),
+    re.compile(r"\{\{.*?\}\}"),
+]
+
+
+def sanitize_fusion_report(text: str) -> str:
+    """清理 LLM 最终报告中的术语泄漏、占位符和过硬断言。"""
+    if not text:
+        return text
+
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
+    for old, new in _REPORT_HARDENING_REPLACEMENTS:
+        cleaned = cleaned.replace(old, new)
+    for old, new in _REPORT_TERM_REPLACEMENTS:
+        cleaned = cleaned.replace(old, new)
+
+    # 当前产品形态只保留分析稿，不展示独立建议/行动板块。
+    cleaned = re.sub(
+        r"\n?#{0,3}\s*(立刻能做的事|建议|行动步骤)[：:：]?\s*\n[\s\S]*$",
+        "",
+        cleaned,
+    )
+
+    # 清理模型偶发的格式残留，比如“%的时间...”。
+    cleaned = re.sub(r"%[^，。；\n]*", "", cleaned)
+    cleaned = re.sub(r"\d+(?:\.\d+)?\s*分", "", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = cleaned.replace("（）", "").replace("()", "")
+    return cleaned.strip()
+
+
+def fusion_report_quality_issues(text: str) -> list[str]:
+    """返回最终报告中仍然可检测的质量问题。"""
+    issues: list[str] = []
+    for term, _ in _REPORT_TERM_REPLACEMENTS:
+        if term in text:
+            issues.append(f"术语泄漏:{term}")
+    for pat in _REPORT_BANNED_PATTERNS:
+        if pat.search(text):
+            issues.append(f"异常格式:{pat.pattern}")
+    return issues
 
 # ═══════════════════════════════════════════════════════════════
 # 数据包构建
@@ -124,6 +256,85 @@ def _clean_ancient_refs(text: str) -> str:
     text = re.sub(r'[（(]《[^》]+》[^）)]*[）)]', '', text)
 
     return text.strip()
+
+
+def _score_to_band(val: float) -> str:
+    """将原始数值(0-10)转为定性标签。"""
+    if val >= 7:
+        return "偏高"
+    elif val >= 4:
+        return "中位"
+    else:
+        return "偏低"
+
+
+def _strip_score_text(text: str) -> str:
+    """移除给 LLM 的文本中的原始分数片段。"""
+    import re
+
+    text = re.sub(r"[（(]\s*[-+]?\d+(?:\.\d+)?\s*分\s*[）)]", "", text)
+    text = re.sub(r"[-+]?\d+(?:\.\d+)?\s*分", "", text)
+    return text.strip()
+
+
+def _sanitize_package(package: dict) -> dict:
+    """将 LLM 数据包中的原始数值转换为定性标签。
+
+    防止原始分数泄漏到 prompt 中导致 LLM 复读数字。
+    内部规则数据不受影响。
+    """
+    import re
+
+    # ── 0. 日主画像：去掉身强弱等文本中的原始分数 ──
+    dm_profile = package.get("日主画像", {})
+    if isinstance(dm_profile, dict):
+        for key, val in list(dm_profile.items()):
+            if isinstance(val, str):
+                dm_profile[key] = _strip_score_text(val)
+
+    # ── 1. 六维度信号：去掉综合分数，数值→定性标签 ──
+    signals = package.get("六维度信号", {})
+    for dim_name, dim_data in list(signals.items()):
+        if not isinstance(dim_data, dict):
+            continue
+        # 去掉综合分数（内部聚合值，LLM 不需要）
+        dim_data.pop("综合分数", None)
+        # 数值 → 定性标签
+        for key, val in list(dim_data.items()):
+            if isinstance(val, bool):
+                continue
+            if isinstance(val, (int, float)) and key not in ("身强弱修正",):
+                dim_data[key] = _score_to_band(val)
+        # 重新格式化 _需覆盖信号: "表达欲=8.0(偏高)" → "表达欲偏高"
+        hint = dim_data.get("_需覆盖信号", "")
+        if hint and isinstance(hint, str):
+            parts = [p.strip() for p in hint.split("|")]
+            parts = [p for p in parts if p and not p.startswith("综合分数=")]
+            hint = " | ".join(parts)
+            dim_data["_需覆盖信号"] = re.sub(
+                r'(\w+)=[\d.]+\((偏高|偏低)\)', r'\1\2', hint
+            )
+
+    # ── 2. 十神加权特质：强度 → 强度定性 ──
+    granular = package.get("粒度性格特质", {})
+    weighted_traits = granular.get("十神加权特质", [])
+    for item in weighted_traits:
+        if "强度" in item:
+            raw = item.pop("强度")
+            item["强度定性"] = _score_to_band(raw)
+
+    # ── 3. 十神强度排行：始终去掉原始强度，始终提供相对强度定性标签 ──
+    ranking = package.get("十神强度排行", [])
+    for item in ranking:
+        s = item.pop("强度", 0)
+        if s >= 5:
+            item["相对强度"] = "偏高"
+        elif s >= 2:
+            item["相对强度"] = "正常"
+        else:
+            item["相对强度"] = "偏低"
+
+    return package
 
 
 def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
@@ -294,12 +505,7 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         package["十神强度排行"] = [
             {"十神": name, "强度": round(score, 1)} for name, score in sorted_scores[:8]
         ]
-        # 排名旁标注"偏高""偏低"替代原始分数
-        for item in package["十神强度排行"]:
-            s = item["强度"]
-            item["相对强度"] = "偏高" if s >= 5 else ("正常" if s >= 2 else "偏低")
-            if s >= 3:
-                item.pop("强度", None)  # 只传定性不传定量
+        # 注意：数值→定性标签的转换由 _sanitize_package() 统一处理
         # 月令五行/合局化神已去除（引擎内部字段，LLM 不需要）
 
     # ── 六维度结构化信号（LLM从零写描述，自由解释数值）──
@@ -314,6 +520,8 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                 continue
             _hints = []
             for k, v in raw.items():
+                if k == "综合分数" or isinstance(v, bool):
+                    continue
                 if isinstance(v, (int, float)) and (v >= 7 or v <= 3):
                     _hints.append(f"{k}={v}" + ("(偏高)" if v >= 7 else "(偏低)"))
             for k, v in raw.items():
@@ -347,25 +555,49 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         if fam_info:
             package["家境背景"] = fam_info
 
+    # ── 统一数据清洗：数值→定性标签 ──
+    package = _sanitize_package(package)
+
     return package
 
 
 def build_fusion_user_prompt(data_package: dict) -> str:
-    """构建发给 LLM 的 User Prompt（数据 + RAG 参考知识 + 生成指令）"""
-    prompt = f"""请根据以下 Python 引擎提取的全盘底层数据，严格按照 System Prompt 的要求，生成一份综合融合报告。
+    """构建发给 LLM 的 User Prompt（数据 + RAG 参考知识 + 生成指令）。
 
-【底层数据输入】：
-{json.dumps(data_package, ensure_ascii=False, indent=2)}"""
-    # RAG 知识检索（v0.18.0）：插入参考规则/校准片段
+    顺序：结构化数据 → RAG 参考片段 → 最终输出约束。
+    输出约束放在最后，确保 LLM 在生成前最后看到的是输出规格。
+    """
+    parts: list[str] = []
+
+    # 1. 结构化数据
+    parts.append(
+        "请根据以下结构化数据进行性格分析。\n\n"
+        "【结构化数据】\n"
+        f"{json.dumps(data_package, ensure_ascii=False, indent=2)}"
+    )
+
+    # 2. RAG 参考片段（中间）
     try:
         from .rag import retrieve_for_generation, format_snippets
         rag_snippets = retrieve_for_generation("personality", data_package, top_k=4)
         if rag_snippets:
-            rag_text = format_snippets(rag_snippets, max_chars=1200)
-            prompt += "\n\n" + rag_text
+            parts.append("")
+            parts.append(format_snippets(rag_snippets, max_chars=1200))
     except Exception:
         pass
-    return prompt
+
+    # 3. 最终输出约束（结尾）
+    parts.append("")
+    parts.append(
+        "【输出要求】\n"
+        "- 严格按照系统提示的格式和约束输出。\n"
+        "- 禁止在报告中出现任何原始分数或原始八字术语。\n"
+        "- 每个维度优先解释主要矛盾，合并同类信号，不逐条罗列标签。\n"
+        "- 如果全部信号处于中位，一句话带过即可。\n"
+        "- 不输出“立刻能做的事”“建议”“行动步骤”等独立板块。"
+    )
+
+    return "\n".join(parts)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -440,7 +672,7 @@ def generate_fusion_report(
                     except json.JSONDecodeError:
                         continue
 
-        text = "".join(full_text_parts)
+        text = sanitize_fusion_report("".join(full_text_parts))
         if not text:
             raise RuntimeError("流式响应已完成但未收到任何内容")
         return text
@@ -483,7 +715,7 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
 
             body = resp.json()
             content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return content or None
+            return sanitize_fusion_report(content) if content else None
 
     except Exception:
         return None
