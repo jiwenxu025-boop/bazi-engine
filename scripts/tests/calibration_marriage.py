@@ -230,5 +230,8 @@ if __name__ == "__main__":
             print(f"  [MISS] {m}")
 
     print(f"\n{'=' * 60}")
-    print(f"严格命中: {total_strict}/{total_expected} ({total_strict/total_expected*100:.0f}%)")
-    print(f"容差命中: {total_strict+total_tolerance}/{total_expected} ({(total_strict+total_tolerance)/total_expected*100:.0f}%)")
+    if total_expected > 0:
+        print(f"严格命中: {total_strict}/{total_expected} ({total_strict/total_expected*100:.0f}%)")
+        print(f"容差命中: {total_strict+total_tolerance}/{total_expected} ({(total_strict+total_tolerance)/total_expected*100:.0f}%)")
+    else:
+        print("无预期事件，跳过命中率计算")

@@ -351,11 +351,21 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
 
 
 def build_fusion_user_prompt(data_package: dict) -> str:
-    """构建发给 LLM 的 User Prompt"""
-    return f"""请根据以下 Python 引擎提取的全盘底层数据，严格按照 System Prompt 的要求，生成一份综合融合报告。
+    """构建发给 LLM 的 User Prompt（数据 + RAG 参考知识 + 生成指令）"""
+    prompt = f"""请根据以下 Python 引擎提取的全盘底层数据，严格按照 System Prompt 的要求，生成一份综合融合报告。
 
 【底层数据输入】：
 {json.dumps(data_package, ensure_ascii=False, indent=2)}"""
+    # RAG 知识检索（v0.18.0）：插入参考规则/校准片段
+    try:
+        from .rag import retrieve_for_generation, format_snippets
+        rag_snippets = retrieve_for_generation("personality", data_package, top_k=4)
+        if rag_snippets:
+            rag_text = format_snippets(rag_snippets, max_chars=1200)
+            prompt += "\n\n" + rag_text
+    except Exception:
+        pass
+    return prompt
 
 
 # ═══════════════════════════════════════════════════════════════

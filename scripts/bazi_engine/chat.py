@@ -115,6 +115,16 @@ def build_messages(chart_data: dict, user_question: str,
     context = build_chat_context(chart_data)
     system_prompt = SYSTEM_PROMPT_BASE + context
 
+    # ── RAG 知识检索（v0.17.0）──
+    try:
+        from .rag import retrieve_for_chat, format_snippets
+        rag_snippets = retrieve_for_chat(chart_data, user_question, top_k=4)
+        if rag_snippets:
+            rag_text = format_snippets(rag_snippets, max_chars=1200)
+            system_prompt += "\n\n" + rag_text
+    except Exception:
+        pass  # RAG 静默降级
+
     messages = [{"role": "system", "content": system_prompt}]
 
     if history:

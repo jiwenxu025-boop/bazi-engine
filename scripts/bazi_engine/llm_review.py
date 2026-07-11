@@ -651,6 +651,17 @@ def _build_dayun_prompt(natal: dict, modulations: list[dict],
             f"主题:{theme} | 十年基调:{direction} | {fav_note} | 与原局: {inters}"
         )
 
+    # ── RAG 知识检索（v0.18.0）──
+    try:
+        from .rag import retrieve_for_generation, format_snippets
+        ctx = {"natal": natal, "modulations": modulations}
+        rag_snippets = retrieve_for_generation("dayun", ctx, top_k=4)
+        if rag_snippets:
+            rag_text = format_snippets(rag_snippets, max_chars=1200)
+            parts.append("\n\n" + rag_text)
+    except Exception:
+        pass
+
     parts.append("""
 ## 任务
 为每步大运写一句60字以内的解读，要点：
