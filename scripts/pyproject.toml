@@ -36,6 +36,9 @@ ignore = [
     "N802",   # uppercase module-level names (e.g. TIANGAN_LU)
     "N803",   # uppercase argument names
     "N806",   # uppercase variable names
+    "RUF001", # Chinese punctuation in user-facing strings is intentional
+    "RUF002", # Chinese punctuation in docstrings is intentional
+    "RUF003", # Chinese punctuation in comments is intentional
 ]
 
 [tool.ruff.lint.per-file-ignores]

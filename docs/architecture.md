@@ -112,6 +112,8 @@ LLM calls should remain optional. Core chart calculation, four pillars, dayun, p
 - Unit tests cover core tables, pillar calculation, signal scoring, liunian helpers, solar terms, API import, and token-budget helpers.
 - Calibration tests exercise known-case accuracy thresholds when cases execute successfully.
 - Tests that depend on a local calibration store should skip when `scripts/data/calibration_store.json` is absent, but core engine tests must continue to run.
+- Local `ruff` requires `PYTHONUTF8=1` on Windows when installing `requirements-dev.txt`, because the requirements file contains UTF-8 comments.
+- Current lint baseline is not clean. `RUF001`, `RUF002`, and `RUF003` are ignored because Chinese punctuation is intentional in user-facing strings, docstrings, and comments. Remaining lint debt should be handled separately from rule refactors.
 
 Useful commands:
 
@@ -120,6 +122,31 @@ cd C:\Users\21469\bazi-engine\scripts
 python -m pytest tests/ -q
 python -m pytest tests/test_api.py tests/test_token_budget.py -q
 ```
+
+## Build Chart Stage Dependencies
+
+`build_chart()` is still the main orchestration function. The early shell, pillar, hidden-stem/nayin, palace-origin, nayin-relation, and yongshen stages are already split into helpers. The remaining stages have these dependencies:
+
+| Stage | Inputs | Writes | Downstream users | Refactor risk |
+| --- | --- | --- | --- | --- |
+| Tiaohou | `chart.day_master`, month/day branches, `all_stems`, `all_branches` | `chart.tiaohou_result` | health profile, liunian scan, personality validation, LLM context | Low |
+| Health profile | `chart.tiaohou_result`, `all_branches`, `chart.day_master` | `chart.health_profile` | liunian scan, user output | Low |
+| Ten gods | day master, pillar stems, hidden stems | per-pillar `ten_god`, `ten_gods_map` | output serialization, personality/family analysis | Low |
+| Pattern | month branch, `all_stems`, day master, yongshen `cong_ge` | `chart.pattern`, `chart.pattern_notes` | pattern yongshen, liunian scan, life-stage, personality/family analysis | Medium |
+| Pattern yongshen | `chart.pattern`, day master, existing `_yongshen_result` | `_yongshen_result["pattern_yongshen"]` | output serialization, personality/family analysis | Medium |
+| Void gods | day master, month branch, `all_stems`, yongshen favorable ten gods | `chart.void_gods` | output serialization | Low |
+| Dayun | year stem, gender, month pillar, birth datetime | direction, luck pillars, start age, luck periods | dayun modulation, liunian scan, life-stage, body-use | Medium |
+| Dayun modulation | day master, natal pillars, luck pillars, yongshen favorable/harmful data | `chart.dayun_modulations` | liunian scan, output serialization | Medium |
+| Interactions | natal stems/branches with pillar labels | `tiangan_interactions`, `dizhi_interactions`, `tansheng_wangke`, `false_generations` | spirits, liunian scan, personality/family analysis, LLM context | Medium |
+| Spirits | day master, year stem, year/day branches, branch labels | `chart.spirits` | palace-star analysis, output serialization | Low |
+| Liunian scan | natal branches, gender, start age, luck pillars, known events, yongshen, pattern, tiaohou, dayun modulation, interactions, health profile | `chart.annual_scans` | changsheng, life-stage, body-use, output serialization | High |
+| Changsheng | day master, natal branches, luck pillars, annual scans | `chart.changsheng_states` | output serialization | Medium |
+| Life stage | override or current age, start age, luck pillars, annual scans, pattern | `chart.life_stage` | output serialization, analysis context | Medium |
+| Personality and family | chart-derived pillar data, yongshen, pattern, interactions, tiaohou, family context | `chart.personality_result`, `chart.family_result` | palace/body analysis, output serialization | High |
+| Palace stars | analysis pillar data, spirits, day master | `chart.palace_star_result` | output serialization | Medium |
+| Body-use | analysis pillar data, interactions, luck pillars, annual scans | `chart.body_use_result` | output serialization | Medium |
+
+Recommended next extraction: combine the Tiaohou and health-profile code into one helper only after adding a behavior test. This stage has explicit inputs, writes isolated chart fields, and feeds later stages without mutating shared rule data.
 
 ## Refactoring Rules
 
