@@ -1,5 +1,6 @@
 """大运计算: 方向 序列 起运年龄"""
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from .enums import Dizhi, Tiangan, dizhi_by_index, tiangan_by_index
@@ -96,9 +97,6 @@ def describe_dayun_weight(dayun_stem: Tiangan, dayun_branch: Dizhi) -> str:
 # ═══════════════════════════════════════════════════════════════
 # 大运调制器（v0.8.0: 方向二核心）
 # ═══════════════════════════════════════════════════════════════
-
-from dataclasses import dataclass
-
 
 @dataclass
 class DayunModulation:

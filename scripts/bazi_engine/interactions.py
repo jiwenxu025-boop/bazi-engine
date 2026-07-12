@@ -448,10 +448,7 @@ def detect_jiagong(gans: list, zhis: list) -> list[dict]:
             idx2 = dz_list.index(zhis[j])
             diff = abs(idx2 - idx1)
             if diff == 2 or diff == 10:
-                if diff == 2:
-                    mid_idx = (idx1 + idx2) // 2
-                else:
-                    mid_idx = (idx1 + idx2 + 12) // 2 % 12
+                mid_idx = (idx1 + idx2) // 2 if diff == 2 else (idx1 + idx2 + 12) // 2 % 12
                 mid_dz = dz_list[mid_idx % 12]
                 if mid_dz not in zhis:
                     results.append({

@@ -156,15 +156,11 @@ def _find_dominant_shishen(pillars_data: list[dict],
     # 按加权分数降序排列
     sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     dominant = sorted_items[0][0]
-    sorted_items[0][1]
 
     is_fav = dominant not in harmful_shishen
 
     personality_entry = SHISHEN_PERSONALITY.get(dominant)
-    if personality_entry:
-        desc = personality_entry[0] if is_fav else personality_entry[1]
-    else:
-        desc = ""
+    desc = (personality_entry[0] if is_fav else personality_entry[1]) if personality_entry else ""
 
     return (dominant, is_fav, desc)
 

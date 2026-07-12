@@ -235,10 +235,7 @@ def analyze_palace_stars(pillars_data: list[dict],
     for pd in pillars_data:
         pillar_type = pd.get("pillar_type", "")
         ten_god = pd.get("ten_god", "")
-        if not ten_god or ten_god == "日主":
-            ten_god_display = "日主"
-        else:
-            ten_god_display = ten_god
+        ten_god_display = "日主" if not ten_god or ten_god == "日主" else ten_god
 
         palace_meaning = _PALACE_MEANINGS.get(pillar_type, "")
 

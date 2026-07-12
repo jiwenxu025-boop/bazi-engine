@@ -7,6 +7,7 @@
 from dataclasses import dataclass
 
 from .enums import Wuxing
+from .ten_gods import wuxing_relation as _wx_relation
 
 
 def nayin_to_wuxing(nayin_name: str) -> Wuxing | None:
@@ -20,9 +21,6 @@ def nayin_to_wuxing(nayin_name: str) -> Wuxing | None:
     last = nayin_name[-1]
     mapping = {"金": Wuxing.金, "木": Wuxing.木, "水": Wuxing.水, "火": Wuxing.火, "土": Wuxing.土}
     return mapping.get(last)
-
-
-from .ten_gods import wuxing_relation as _wx_relation
 
 
 @dataclass

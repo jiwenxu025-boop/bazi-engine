@@ -193,27 +193,28 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("POST", DEEPSEEK_API_URL,
-                                     json=payload, headers=headers) as resp:
-                if resp.status_code != 200:
-                    body = await resp.aread()
-                    yield f"data: [ERROR] DeepSeek API {resp.status_code}: {body.decode()[:200]}\n\n"
-                    return
+        async with (
+            httpx.AsyncClient(timeout=60.0) as client,
+            client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
+        ):
+            if resp.status_code != 200:
+                body = await resp.aread()
+                yield f"data: [ERROR] DeepSeek API {resp.status_code}: {body.decode()[:200]}\n\n"
+                return
 
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield f"data: {json.dumps({'token': content})}\n\n"
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
+            async for line in resp.aiter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield f"data: {json.dumps({'token': content})}\n\n"
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
 
         # 追加免责后缀
         yield f"data: {json.dumps({'token': DISCLAIMER_SUFFIX})}\n\n"

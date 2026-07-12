@@ -153,10 +153,7 @@ def _changsheng_status(day_master: Tiangan, branch: Dizhi) -> str:
 
 def _is_in_same_sanhe(a: Dizhi, b: Dizhi) -> bool:
     """检查两个地支是否在同一三合局中（含半合）"""
-    for trio in DIZHI_SANHE:
-        if a in trio and b in trio:
-            return True
-    return False
+    return any(a in trio and b in trio for trio in DIZHI_SANHE)
 
 def _life_stage(age: int,
                 dayun_ten_god: str | None = None,
@@ -409,10 +406,7 @@ def _is_kongwang(branch: Dizhi, kw: tuple[Dizhi, Dizhi]) -> bool:
 def _has_root(stem: Tiangan, branch: Dizhi) -> bool:
     """天干在地支是否有根(同五行藏干)。无根=虚浮无力。"""
     wx = stem.wuxing
-    for hs in DIZHI_CANGGAN.get(branch, []):
-        if hs.stem.wuxing == wx:
-            return True
-    return False
+    return any(hs.stem.wuxing == wx for hs in DIZHI_CANGGAN.get(branch, []))
 
 def _is_ke_wx(a, b) -> bool:
     """a 五行克 b 五行？"""

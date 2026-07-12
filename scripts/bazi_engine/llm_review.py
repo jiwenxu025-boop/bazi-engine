@@ -398,30 +398,32 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
     try:
         _timeout = get_timeout()
         full_text_parts: list[str] = []
-        with shared_client(_timeout) as client:
-            with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
-                if resp.status_code != 200:
-                    return []
+        with (
+            shared_client(_timeout) as client,
+            client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
+        ):
+            if resp.status_code != 200:
+                return []
 
-                for line in resp.iter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_text_parts.append(content)
-                                if on_token:
-                                    on_token(content)
-                    except json.JSONDecodeError:
-                        continue
+            for line in resp.iter_lines():
+                line = line.strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    choices = chunk.get("choices", [])
+                    if choices:
+                        delta = choices[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            full_text_parts.append(content)
+                            if on_token:
+                                on_token(content)
+                except json.JSONDecodeError:
+                    continue
 
         content = "".join(full_text_parts)
         if not content:
@@ -827,29 +829,31 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
     try:
         _timeout = get_timeout() * 2  # 多年批量调用给更多时间
         full_text_parts: list[str] = []
-        with shared_client(_timeout) as client:
-            with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
-                if resp.status_code != 200:
-                    return [[] for _ in ctxs]
-                for line in resp.iter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_text_parts.append(content)
-                                if on_token:
-                                    on_token(content)
-                    except json.JSONDecodeError:
-                        continue
+        with (
+            shared_client(_timeout) as client,
+            client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
+        ):
+            if resp.status_code != 200:
+                return [[] for _ in ctxs]
+            for line in resp.iter_lines():
+                line = line.strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    choices = chunk.get("choices", [])
+                    if choices:
+                        delta = choices[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            full_text_parts.append(content)
+                            if on_token:
+                                on_token(content)
+                except json.JSONDecodeError:
+                    continue
 
         content = "".join(full_text_parts)
         if not content:

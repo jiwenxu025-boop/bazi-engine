@@ -98,12 +98,12 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
     if dn_branch:
         suiyun_parts: list[str] = []
         # 天干相克（天战）
-        from ..ten_gods import TIANGAN_KE_PAIRS as _ke_pairs
+        from ..ten_gods import TIANGAN_KE_PAIRS
         ln_v = ln_stem.value if ln_stem else ""
         dn_v = dn_stem.value if dn_stem else ""
-        if (ln_v, dn_v) in _ke_pairs:
+        if (ln_v, dn_v) in TIANGAN_KE_PAIRS:
             suiyun_parts.append(f"流年{ln_v}克大运{dn_v}(天战)")
-        elif (dn_v, ln_v) in _ke_pairs:
+        elif (dn_v, ln_v) in TIANGAN_KE_PAIRS:
             suiyun_parts.append(f"大运{dn_v}克流年{ln_v}(天战-运伐岁)")
 
         # 地支冲（地战）

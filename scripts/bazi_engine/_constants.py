@@ -5,6 +5,8 @@
 修正记录: 丑藏干中余气互换(辛癸), 福星贵人重写, 孤辰寡宿改三会局, 太极贵人戊己扩四季
 """
 
+from dataclasses import dataclass
+
 from .enums import Dizhi, Tiangan, Wuxing
 
 # ═══════════════════════════════════════════════════════════════
@@ -145,9 +147,6 @@ DIZHI_XIANGHAI: list[tuple[Dizhi, Dizhi]] = [
 # ═══════════════════════════════════════════════════════════════
 # 地支藏干
 # ═══════════════════════════════════════════════════════════════
-
-from dataclasses import dataclass
-
 
 @dataclass(frozen=True)
 class HiddenStem:

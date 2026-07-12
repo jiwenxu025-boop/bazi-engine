@@ -259,8 +259,8 @@ def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
             category="婚嫁",
             direction=best.direction,
             strength=derived_strength,
-            triggers=best.triggers + ["桃花→婚嫁(交叉引用)"],
-            notes=best.notes + ["感情信号较强，成年命主→倾向婚姻/长期关系方向"],
+            triggers=[*best.triggers, "桃花→婚嫁(交叉引用)"],
+            notes=[*best.notes, "感情信号较强，成年命主→倾向婚姻/长期关系方向"],
         ))
 
     # Rule 2: 婚嫁≥2 → 补桃花（仅当无原生桃花≥2★时才补，避免重复）
@@ -276,7 +276,7 @@ def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
                 category="桃花",
                 direction=best.direction,
                 strength=min(best.strength, 2),
-                triggers=best.triggers + ["婚嫁→桃花(交叉引用)"],
-                notes=best.notes + ["婚嫁信号强→必有感情事件铺垫"],
+                triggers=[*best.triggers, "婚嫁→桃花(交叉引用)"],
+                notes=[*best.notes, "婚嫁信号强→必有感情事件铺垫"],
             ))
 

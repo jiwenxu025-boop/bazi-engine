@@ -391,7 +391,7 @@ def get_tiaohou_health_profile(tiaohou_result: dict | None) -> dict:
 
 
 def get_wuxing_balance_health(all_branches: list, day_master,
-                               all_stems: list = None) -> list[dict]:
+                               all_stems: list | None = None) -> list[dict]:
     """五行偏枯→脏腑预警（v0.10.0: 引擎二）
 
     检测规则：

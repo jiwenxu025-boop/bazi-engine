@@ -395,33 +395,35 @@ def generate_fusion_report(
 
     try:
         _timeout = 120.0
-        with shared_client(_timeout) as client:
-            with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
-                if resp.status_code != 200:
-                    body = ""
-                    with suppress(Exception):
-                        body = resp.read().decode("utf-8", errors="replace")[:300]
-                    raise RuntimeError(f"API返回{resp.status_code}: {body}")
+        with (
+            shared_client(_timeout) as client,
+            client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
+        ):
+            if resp.status_code != 200:
+                body = ""
+                with suppress(Exception):
+                    body = resp.read().decode("utf-8", errors="replace")[:300]
+                raise RuntimeError(f"API返回{resp.status_code}: {body}")
 
-                for line in resp.iter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]  # remove "data: " prefix
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_text_parts.append(content)
-                                if on_chunk:
-                                    on_chunk(content)
-                    except json.JSONDecodeError:
-                        continue
+            for line in resp.iter_lines():
+                line = line.strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]  # remove "data: " prefix
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    choices = chunk.get("choices", [])
+                    if choices:
+                        delta = choices[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            full_text_parts.append(content)
+                            if on_chunk:
+                                on_chunk(content)
+                except json.JSONDecodeError:
+                    continue
 
         text = "".join(full_text_parts)
         if not text:

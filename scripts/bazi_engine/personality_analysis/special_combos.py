@@ -24,10 +24,7 @@ def _yangren_branch(day_stem_str: str) -> str | None:
 
 def _has_branch_in_pillars(branch_str: str, pillars_data: list[dict]) -> bool:
     """检查任意柱是否包含某地支"""
-    for p in pillars_data:
-        if p.get("branch") == branch_str:
-            return True
-    return False
+    return any(p.get("branch") == branch_str for p in pillars_data)
 
 def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
                           pillars_data: list[dict],

@@ -62,10 +62,7 @@ def _compute_dizhi_traits(interactions: dict,
     for item in dizhi_list:
         rel_type = item.get("type", "")
         branches = item.get("branches", [])
-        if isinstance(branches, list):
-            branch_str = "".join(branches)
-        else:
-            branch_str = str(branches)
+        branch_str = "".join(branches) if isinstance(branches, list) else str(branches)
 
         # 六冲
         if rel_type == "六冲":

@@ -229,7 +229,7 @@ def find_all_changsheng_states(day_master: Tiangan,
     results.extend(detect_jue_chu_feng_sheng(
         day_master,
         [b for b, _ in pillars],
-        [l for _, l in pillars],
+        [label for _, label in pillars],
     ))
 
     return results
