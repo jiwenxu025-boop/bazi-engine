@@ -14,6 +14,7 @@ from bazi_engine.chart import (
     _compute_liunian_stage,
     _compute_nayin_relations,
     _compute_palace_origins,
+    _compute_palace_star_stage,
     _compute_personality_family_stage,
     _compute_pattern_stage,
     _compute_spirits_stage,
@@ -726,3 +727,48 @@ def test_compute_personality_family_stage_sets_analysis_and_returns_context(monk
     assert chart.personality_result["strength_label"] == "强（5.5分）"
     assert chart.personality_result["pattern_validation"]["status"] == "成格"
     assert chart.family_result["level"] == "普通"
+
+
+def test_compute_palace_star_stage_sets_four_palace_entries(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
+    _compute_ten_gods_stage(chart)
+    all_stems = _compute_pattern_stage(chart)
+    _compute_void_gods_stage(chart, all_stems)
+    start_age = _compute_dayun_stage(chart, gender="男")
+    _compute_dayun_modulation_stage(chart, start_age)
+    _, branch_labels = _compute_interactions_stage(chart, all_branches)
+    _compute_spirits_stage(chart, branch_labels)
+    _compute_liunian_stage(
+        chart,
+        gender="男",
+        start_age=start_age,
+        liunian_range=(2023, 2024),
+        known_events=None,
+        favorable=None,
+    )
+    pd, _ = _compute_personality_family_stage(chart, gender="男", family_context=None)
+
+    _compute_palace_star_stage(chart, pd)
+
+    assert [entry["pillar_type"] for entry in chart.palace_star_result["entries"]] == ["年柱", "月柱", "日柱", "时柱"]
+    assert chart.palace_star_result["entries"][0]["occupying_ten_god"] == "正财"
+    assert chart.palace_star_result["entries"][0]["spirits_at_palace"] == ["天乙贵人", "禄"]
+    assert "年柱（正财）" in chart.palace_star_result["summary"]

@@ -788,6 +788,19 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
     return pd, interactions_dict
 
 
+def _compute_palace_star_stage(chart: BaziChart, pd) -> None:
+    if pd is not None:
+        try:
+            from .personality_analysis import build_pillars_data_for_analysis
+            from .palace_star import analyze_palace_stars
+            pd_ps = build_pillars_data_for_analysis(chart)
+            chart.palace_star_result = analyze_palace_stars(
+                pd_ps, chart.spirits, chart.day_master
+            ).to_dict()
+        except Exception as e:
+            chart.warnings.append(f"宫位叠象分析失败: {e}")
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -911,16 +924,7 @@ def build_chart(
     pd, interactions_dict = _compute_personality_family_stage(chart, gender, family_context)
 
     # ── 13b. 宫位叠象 ──
-    if pd is not None:
-        try:
-            from .personality_analysis import build_pillars_data_for_analysis
-            from .palace_star import analyze_palace_stars
-            pd_ps = build_pillars_data_for_analysis(chart)
-            chart.palace_star_result = analyze_palace_stars(
-                pd_ps, chart.spirits, chart.day_master
-            ).to_dict()
-        except Exception as e:
-            chart.warnings.append(f"宫位叠象分析失败: {e}")
+    _compute_palace_star_stage(chart, pd)
 
     # ── 13c. 宾主体用 + 墓库应期 ──
     try:
