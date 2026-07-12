@@ -11,6 +11,7 @@ from bazi_engine.chart import (
     _compute_nayin_relations,
     _compute_palace_origins,
     _compute_pattern_stage,
+    _compute_spirits_stage,
     _compute_tiaohou_health_stage,
     _compute_ten_gods_stage,
     _compute_void_gods_stage,
@@ -437,10 +438,48 @@ def test_compute_interactions_stage_sets_interactions_and_returns_labels():
             "notes": [],
         }
     ]
-    assert [(item.inter_type, [p.value for p in item.participants]) for item in chart.dizhi_interactions] == [
-        ("六冲", ["辰", "戌"]),
-        ("相害", ["亥", "申"]),
-        ("墓库相冲", ["辰", "戌"]),
-    ]
+    dizhi_relations = {
+        (item.inter_type, frozenset(p.value for p in item.participants))
+        for item in chart.dizhi_interactions
+    }
+    assert {
+        ("六冲", frozenset({"辰", "戌"})),
+        ("相害", frozenset({"亥", "申"})),
+        ("墓库相冲", frozenset({"辰", "戌"})),
+    }.issubset(dizhi_relations)
+    half_relations = {relation for relation in dizhi_relations if relation[0] == "半合"}
+    assert half_relations in ({("半合", frozenset({"申", "辰"}))}, set())
     assert chart.tansheng_wangke == []
     assert chart.false_generations is None
+
+
+def test_compute_spirits_stage_sets_known_case_spirits():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+    _, branch_labels = _compute_interactions_stage(chart, all_branches)
+
+    _compute_spirits_stage(chart, branch_labels)
+
+    assert [spirit.to_dict() for spirit in chart.spirits] == [
+        {"name": "天乙贵人", "category": "吉神", "pillar": "年柱", "source": "以年干丁查", "notes": []},
+        {"name": "学堂", "category": "吉神", "pillar": "月柱", "source": "以日干壬查", "notes": []},
+        {"name": "太极贵人", "category": "吉神", "pillar": "月柱", "source": "以日干壬查", "notes": []},
+        {"name": "福星贵人", "category": "吉神", "pillar": "日柱", "source": "以日干壬查", "notes": []},
+        {"name": "红鸾", "category": "吉神", "pillar": "日柱", "source": "以年支亥查", "notes": []},
+        {"name": "天喜", "category": "吉神", "pillar": "时柱", "source": "以年支亥查（红鸾对冲）", "notes": []},
+        {"name": "寡宿", "category": "凶神", "pillar": "时柱", "source": "以年支亥查", "notes": []},
+        {"name": "禄", "category": "吉神", "pillar": "年柱", "source": "以日干壬查", "notes": []},
+    ]

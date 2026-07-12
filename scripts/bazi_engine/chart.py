@@ -578,6 +578,14 @@ def _compute_interactions_stage(
     return stem_labels, branch_labels
 
 
+def _compute_spirits_stage(chart: BaziChart, branch_labels: list[tuple[Dizhi, str]]) -> None:
+    chart.spirits = find_all_spirits(
+        chart.day_master, chart.year.stem,
+        chart.year.branch, chart.day.branch,
+        branch_labels,
+    )
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -676,11 +684,7 @@ def build_chart(
     stem_labels, branch_labels = _compute_interactions_stage(chart, all_branches)
 
     # ── 10. 神煞 ──
-    chart.spirits = find_all_spirits(
-        chart.day_master, chart.year.stem,
-        chart.year.branch, chart.day.branch,
-        branch_labels,
-    )
+    _compute_spirits_stage(chart, branch_labels)
 
     # ── 11. 流年 ──
     if liunian_range:
