@@ -22,17 +22,28 @@ This project is a rule-first Bazi chart engine with optional LLM assistance. The
 ```text
 API / CLI / frontend
   -> build_chart()
+    -> initialize chart shell and input state
     -> compute four pillars
-    -> attach hidden stems, ten gods, nayin, minggong, shengong, taiyuan
-    -> evaluate yongshen, tiaohou, pattern, health profile
+    -> attach hidden stems and nayin
+    -> compute minggong, shengong, taiyuan
+    -> compute nayin relations
+    -> evaluate yongshen
+    -> evaluate tiaohou and health profile
+    -> attach ten gods
+    -> determine pattern and pattern yongshen
+    -> detect void gods
     -> compute dayun and dayun modulation
     -> detect tiangan/dizhi interactions and spirits
     -> optionally scan liunian years
-    -> analyze personality, family, palace stars, body-use
+    -> compute changsheng states
+    -> determine life stage
+    -> analyze personality and family
+    -> analyze palace stars
+    -> analyze body-use and muku timing
     -> BaziChart.to_dict()
 ```
 
-`scripts/bazi_engine/chart.py` is currently the main orchestration layer. `BaziChart` is the shared in-memory chart object. `build_chart()` is intentionally treated as the public factory contract for API, CLI, and tests.
+`scripts/bazi_engine/chart.py` is currently the main orchestration layer. `BaziChart` is the shared in-memory chart object. `build_chart()` is intentionally treated as the public factory contract for API, CLI, and tests. The orchestration is split into `_compute_*_stage()` helpers so each stage's reads, writes, and downstream dependencies can be tested without changing rule modules.
 
 ## Domain Modules
 
@@ -125,7 +136,7 @@ python -m pytest tests/test_api.py tests/test_token_budget.py -q
 
 ## Build Chart Stage Dependencies
 
-`build_chart()` is still the main orchestration function. The early shell, pillar, hidden-stem/nayin, palace-origin, nayin-relation, and yongshen stages are already split into helpers. The remaining stages have these dependencies:
+`build_chart()` is still the main orchestration function. The chart-building stages are now split into helper boundaries in `scripts/bazi_engine/chart.py`. These dependencies describe what each helper reads and writes:
 
 | Stage | Inputs | Writes | Downstream users | Refactor risk |
 | --- | --- | --- | --- | --- |
@@ -146,7 +157,7 @@ python -m pytest tests/test_api.py tests/test_token_budget.py -q
 | Palace stars | analysis pillar data, spirits, day master | `chart.palace_star_result` | output serialization | Medium |
 | Body-use | analysis pillar data, interactions, luck pillars, annual scans | `chart.body_use_result` | output serialization | Medium |
 
-Recommended next extraction: combine the Tiaohou and health-profile code into one helper only after adding a behavior test. This stage has explicit inputs, writes isolated chart fields, and feeds later stages without mutating shared rule data.
+Current orchestration status: the listed stages are helper boundaries inside `chart.py`, covered by focused stage tests plus a public `build_chart()` shape regression. Further structural work should move cohesive helpers into domain modules only when there is a concrete maintenance need; avoid module churn that does not reduce real complexity.
 
 ## Refactoring Rules
 
