@@ -586,6 +586,64 @@ def _compute_spirits_stage(chart: BaziChart, branch_labels: list[tuple[Dizhi, st
     )
 
 
+def _compute_liunian_stage(
+    chart: BaziChart,
+    gender: str,
+    start_age: int,
+    liunian_range: tuple[int, int],
+    known_events: dict[int, str] | None,
+    favorable: set[str] | None,
+    on_llm_result=None,
+    on_llm_token=None,
+) -> None:
+    # 构建性格上下文供流年个性化
+    p_ctx = None
+    try:
+        from .liunian import build_personality_context
+        yongshen_data = chart._yongshen_result or {}
+        p_ctx = build_personality_context(
+            day_master=chart.day_master,
+            strength=yongshen_data.get("strength", "中和"),
+            favorable_shishen=yongshen_data.get("favorable", []),
+            harmful_shishen=yongshen_data.get("harmful", []),
+            pillars_tengan=[chart.year.stem, chart.month.stem,
+                            chart.day.stem, chart.hour.stem],
+            gender=gender,
+        )
+    except Exception:
+        chart.warnings.append("性格上下文构建失败，流年将无个性化备注")
+
+    chart.annual_scans = scan_years(
+        chart.day_master,
+        chart.year.branch,
+        chart.day.branch,
+        chart.month.branch,
+        chart.hour.branch,
+        gender,
+        start_age,
+        chart.luck_pillars,
+        chart.birth_dt.date(),
+        liunian_range[0],
+        liunian_range[1],
+        known_events,
+        favorable or (set(chart._yongshen_result.get("favorable", [])) if chart._yongshen_result else None),
+        personality_ctx=p_ctx,
+        life_stage_override=getattr(chart, '_life_stage_override', ''),
+        chart_pattern=chart.pattern,
+        pillars_tengan=[chart.year.stem, chart.month.stem,
+                        chart.day.stem, chart.hour.stem],
+        is_fei_ju=chart.tiaohou_result.get("is_fei_ju", False) if chart.tiaohou_result else False,
+        tiaohou_climate=chart.tiaohou_result.get("climate", "中和") if chart.tiaohou_result else "中和",
+        dayun_modulations=chart.dayun_modulations,
+        tansheng_wangke=chart.tansheng_wangke,
+        false_generations=chart.false_generations,
+        health_profile=chart.health_profile,
+        chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
+        on_llm_result=on_llm_result,
+        on_llm_token=on_llm_token,
+    )
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -688,49 +746,13 @@ def build_chart(
 
     # ── 11. 流年 ──
     if liunian_range:
-        # 构建性格上下文供流年个性化
-        p_ctx = None
-        try:
-            from .liunian import build_personality_context
-            yongshen_data = chart._yongshen_result or {}
-            p_ctx = build_personality_context(
-                day_master=chart.day_master,
-                strength=yongshen_data.get("strength", "中和"),
-                favorable_shishen=yongshen_data.get("favorable", []),
-                harmful_shishen=yongshen_data.get("harmful", []),
-                pillars_tengan=[chart.year.stem, chart.month.stem,
-                                chart.day.stem, chart.hour.stem],
-                gender=gender,
-            )
-        except Exception:
-            chart.warnings.append("性格上下文构建失败，流年将无个性化备注")
-
-        chart.annual_scans = scan_years(
-            chart.day_master,
-            chart.year.branch,
-            chart.day.branch,
-            chart.month.branch,
-            chart.hour.branch,
-            gender,
-            start_age,
-            chart.luck_pillars,
-            chart.birth_dt.date(),
-            liunian_range[0],
-            liunian_range[1],
-            known_events,
-            favorable or (set(chart._yongshen_result.get("favorable", [])) if chart._yongshen_result else None),
-            personality_ctx=p_ctx,
-            life_stage_override=getattr(chart, '_life_stage_override', ''),
-            chart_pattern=chart.pattern,
-            pillars_tengan=[chart.year.stem, chart.month.stem,
-                            chart.day.stem, chart.hour.stem],
-            is_fei_ju=chart.tiaohou_result.get("is_fei_ju", False) if chart.tiaohou_result else False,
-            tiaohou_climate=chart.tiaohou_result.get("climate", "中和") if chart.tiaohou_result else "中和",
-            dayun_modulations=chart.dayun_modulations,
-            tansheng_wangke=chart.tansheng_wangke,
-            false_generations=chart.false_generations,
-            health_profile=chart.health_profile,
-            chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
+        _compute_liunian_stage(
+            chart,
+            gender=gender,
+            start_age=start_age,
+            liunian_range=liunian_range,
+            known_events=known_events,
+            favorable=favorable,
             on_llm_result=on_llm_result,
             on_llm_token=on_llm_token,
         )
