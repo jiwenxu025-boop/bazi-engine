@@ -5,6 +5,7 @@ from datetime import datetime
 from bazi_engine.chart import (
     _attach_hidden_stems_and_nayin,
     _compute_dayun_stage,
+    _compute_dayun_modulation_stage,
     _compute_four_pillars,
     _compute_nayin_relations,
     _compute_palace_origins,
@@ -352,3 +353,43 @@ def test_compute_dayun_stage_sets_direction_start_age_and_periods():
     assert chart.luck_periods[0]["大运"] == "丁未"
     assert chart.luck_periods[0]["年龄"] == "6-15岁"
     assert chart.luck_periods[0]["序"] == 1
+
+
+def test_compute_dayun_modulation_stage_sets_known_case_modulations():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _compute_yongshen_stage(chart, favorable=None)
+    start_age = _compute_dayun_stage(chart, gender="男")
+
+    _compute_dayun_modulation_stage(chart, start_age)
+
+    assert len(chart.dayun_modulations) == 8
+    first, second = chart.dayun_modulations[:2]
+    assert first["period_index"] == 0
+    assert first["dayun_stem"] == "丁"
+    assert first["dayun_branch"] == "未"
+    assert first["age_range"] == "6-15岁"
+    assert first["stem_interactions"] == ["与原局壬合化木"]
+    assert first["branch_interactions"] == ["与原局亥半合木"]
+    assert first["stem_is_favorable"] is True
+    assert first["branch_is_favorable"] is True
+    assert first["baseline_offset"] == 1
+    assert first["theme"] == "财运"
+    assert second["period_index"] == 1
+    assert second["dayun_stem"] == "丙"
+    assert second["dayun_branch"] == "午"
+    assert second["age_range"] == "16-25岁"
+    assert second["branch_interactions"] == ["与原局戌半合火"]
+    assert second["baseline_offset"] == 1
