@@ -28,6 +28,51 @@ from bazi_engine.chart import (
 from bazi_engine.enums import Dizhi, Tiangan
 
 
+def _case_a_chart():
+    return _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+
+
+def _prepare_case_a_through_spirits():
+    chart = _case_a_chart()
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
+    _compute_ten_gods_stage(chart)
+    all_stems = _compute_pattern_stage(chart)
+    _compute_void_gods_stage(chart, all_stems)
+    start_age = _compute_dayun_stage(chart, gender="男")
+    _compute_dayun_modulation_stage(chart, start_age)
+    _, branch_labels = _compute_interactions_stage(chart, all_branches)
+    _compute_spirits_stage(chart, branch_labels)
+    return chart, start_age
+
+
+def _prepare_case_a_through_liunian(liunian_range=(2023, 2024)):
+    chart, start_age = _prepare_case_a_through_spirits()
+    _compute_liunian_stage(
+        chart,
+        gender="男",
+        start_age=start_age,
+        liunian_range=liunian_range,
+        known_events=None,
+        favorable=None,
+    )
+    return chart, start_age
+
+
 def test_init_chart_shell_sets_input_state_and_hour_warning():
     chart = _init_chart_shell(
         name="test",
@@ -494,39 +539,7 @@ def test_compute_spirits_stage_sets_known_case_spirits():
 
 def test_compute_liunian_stage_scans_known_two_year_range(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
-    chart = _init_chart_shell(
-        name="案例A",
-        gender="男",
-        year=2007,
-        month=8,
-        day=26,
-        hour=20,
-        day_pillar_override=None,
-        favorable=None,
-        life_stage_override="",
-        family_context=None,
-        hour_confirmed=True,
-    )
-    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
-    _attach_hidden_stems_and_nayin(chart)
-    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
-    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
-    _compute_ten_gods_stage(chart)
-    all_stems = _compute_pattern_stage(chart)
-    _compute_void_gods_stage(chart, all_stems)
-    start_age = _compute_dayun_stage(chart, gender="男")
-    _compute_dayun_modulation_stage(chart, start_age)
-    _, branch_labels = _compute_interactions_stage(chart, all_branches)
-    _compute_spirits_stage(chart, branch_labels)
-
-    _compute_liunian_stage(
-        chart,
-        gender="男",
-        start_age=start_age,
-        liunian_range=(2023, 2024),
-        known_events=None,
-        favorable=None,
-    )
+    chart, _ = _prepare_case_a_through_liunian()
 
     assert [scan.year for scan in chart.annual_scans] == [2023, 2024]
     assert [scan.age for scan in chart.annual_scans] == [16, 17]
@@ -554,38 +567,7 @@ def test_compute_liunian_stage_scans_known_two_year_range(monkeypatch):
 
 def test_compute_changsheng_stage_sets_pillar_dayun_and_liunian_states(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
-    chart = _init_chart_shell(
-        name="案例A",
-        gender="男",
-        year=2007,
-        month=8,
-        day=26,
-        hour=20,
-        day_pillar_override=None,
-        favorable=None,
-        life_stage_override="",
-        family_context=None,
-        hour_confirmed=True,
-    )
-    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
-    _attach_hidden_stems_and_nayin(chart)
-    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
-    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
-    _compute_ten_gods_stage(chart)
-    all_stems = _compute_pattern_stage(chart)
-    _compute_void_gods_stage(chart, all_stems)
-    start_age = _compute_dayun_stage(chart, gender="男")
-    _compute_dayun_modulation_stage(chart, start_age)
-    _, branch_labels = _compute_interactions_stage(chart, all_branches)
-    _compute_spirits_stage(chart, branch_labels)
-    _compute_liunian_stage(
-        chart,
-        gender="男",
-        start_age=start_age,
-        liunian_range=(2023, 2024),
-        known_events=None,
-        favorable=None,
-    )
+    chart, _ = _prepare_case_a_through_liunian()
 
     _compute_changsheng_stage(chart)
 
@@ -645,38 +627,7 @@ def test_compute_life_stage_uses_fixed_current_age_and_liunian_signal(monkeypatc
             return cls(2026, 7, 12)
 
     monkeypatch.setattr(chart_module, "date", FixedDate)
-    chart = _init_chart_shell(
-        name="案例A",
-        gender="男",
-        year=2007,
-        month=8,
-        day=26,
-        hour=20,
-        day_pillar_override=None,
-        favorable=None,
-        life_stage_override="",
-        family_context=None,
-        hour_confirmed=True,
-    )
-    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
-    _attach_hidden_stems_and_nayin(chart)
-    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
-    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
-    _compute_ten_gods_stage(chart)
-    all_stems = _compute_pattern_stage(chart)
-    _compute_void_gods_stage(chart, all_stems)
-    start_age = _compute_dayun_stage(chart, gender="男")
-    _compute_dayun_modulation_stage(chart, start_age)
-    _, branch_labels = _compute_interactions_stage(chart, all_branches)
-    _compute_spirits_stage(chart, branch_labels)
-    _compute_liunian_stage(
-        chart,
-        gender="男",
-        start_age=start_age,
-        liunian_range=(2025, 2026),
-        known_events=None,
-        favorable=None,
-    )
+    chart, start_age = _prepare_case_a_through_liunian(liunian_range=(2025, 2026))
 
     _compute_life_stage(chart, life_stage_override="", start_age=start_age)
 
@@ -686,38 +637,7 @@ def test_compute_life_stage_uses_fixed_current_age_and_liunian_signal(monkeypatc
 def test_compute_personality_family_stage_sets_analysis_and_returns_context(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
-    chart = _init_chart_shell(
-        name="案例A",
-        gender="男",
-        year=2007,
-        month=8,
-        day=26,
-        hour=20,
-        day_pillar_override=None,
-        favorable=None,
-        life_stage_override="",
-        family_context=None,
-        hour_confirmed=True,
-    )
-    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
-    _attach_hidden_stems_and_nayin(chart)
-    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
-    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
-    _compute_ten_gods_stage(chart)
-    all_stems = _compute_pattern_stage(chart)
-    _compute_void_gods_stage(chart, all_stems)
-    start_age = _compute_dayun_stage(chart, gender="男")
-    _compute_dayun_modulation_stage(chart, start_age)
-    _, branch_labels = _compute_interactions_stage(chart, all_branches)
-    _compute_spirits_stage(chart, branch_labels)
-    _compute_liunian_stage(
-        chart,
-        gender="男",
-        start_age=start_age,
-        liunian_range=(2023, 2024),
-        known_events=None,
-        favorable=None,
-    )
+    chart, start_age = _prepare_case_a_through_liunian()
     _compute_changsheng_stage(chart)
     _compute_life_stage(chart, life_stage_override="大学", start_age=start_age)
 
@@ -733,38 +653,7 @@ def test_compute_personality_family_stage_sets_analysis_and_returns_context(monk
 def test_compute_palace_star_stage_sets_four_palace_entries(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
-    chart = _init_chart_shell(
-        name="案例A",
-        gender="男",
-        year=2007,
-        month=8,
-        day=26,
-        hour=20,
-        day_pillar_override=None,
-        favorable=None,
-        life_stage_override="",
-        family_context=None,
-        hour_confirmed=True,
-    )
-    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
-    _attach_hidden_stems_and_nayin(chart)
-    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
-    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
-    _compute_ten_gods_stage(chart)
-    all_stems = _compute_pattern_stage(chart)
-    _compute_void_gods_stage(chart, all_stems)
-    start_age = _compute_dayun_stage(chart, gender="男")
-    _compute_dayun_modulation_stage(chart, start_age)
-    _, branch_labels = _compute_interactions_stage(chart, all_branches)
-    _compute_spirits_stage(chart, branch_labels)
-    _compute_liunian_stage(
-        chart,
-        gender="男",
-        start_age=start_age,
-        liunian_range=(2023, 2024),
-        known_events=None,
-        favorable=None,
-    )
+    chart, _ = _prepare_case_a_through_liunian()
     pd, _ = _compute_personality_family_stage(chart, gender="男", family_context=None)
 
     _compute_palace_star_stage(chart, pd)
@@ -778,38 +667,7 @@ def test_compute_palace_star_stage_sets_four_palace_entries(monkeypatch):
 def test_compute_body_use_stage_sets_balance_and_muku_signals(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
-    chart = _init_chart_shell(
-        name="案例A",
-        gender="男",
-        year=2007,
-        month=8,
-        day=26,
-        hour=20,
-        day_pillar_override=None,
-        favorable=None,
-        life_stage_override="",
-        family_context=None,
-        hour_confirmed=True,
-    )
-    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
-    _attach_hidden_stems_and_nayin(chart)
-    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
-    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
-    _compute_ten_gods_stage(chart)
-    all_stems = _compute_pattern_stage(chart)
-    _compute_void_gods_stage(chart, all_stems)
-    start_age = _compute_dayun_stage(chart, gender="男")
-    _compute_dayun_modulation_stage(chart, start_age)
-    _, branch_labels = _compute_interactions_stage(chart, all_branches)
-    _compute_spirits_stage(chart, branch_labels)
-    _compute_liunian_stage(
-        chart,
-        gender="男",
-        start_age=start_age,
-        liunian_range=(2023, 2024),
-        known_events=None,
-        favorable=None,
-    )
+    chart, _ = _prepare_case_a_through_liunian()
     pd, interactions_dict = _compute_personality_family_stage(chart, gender="男", family_context=None)
 
     _compute_body_use_stage(chart, pd, interactions_dict)
