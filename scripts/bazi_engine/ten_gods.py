@@ -27,7 +27,7 @@ TIANGAN_KE_PAIRS: set[tuple[str, str]] = {
 
 def wuxing_relation(src: Wuxing, dst: Wuxing) -> str:
     """返回 src 对 dst 的生克关系字符串
-    
+
     Returns: "生" | "克" | "被生" | "被克" | "比和"
     """
     if src == dst:

@@ -96,9 +96,12 @@ def validate_pattern(pattern: str, day_master,
     def _w(name: str) -> float:
         return (weighted_scores or {}).get(name, 0)
 
-    shi_w = _w("食神"); shang_w = _w("伤官")
-    _w("正官"); sha_w = _w("偏官") + _w("七杀")
-    cai_w = _w("正财") + _w("偏财"); yin_w = _w("正印") + _w("偏印")
+    shi_w = _w("食神")
+    shang_w = _w("伤官")
+    _w("正官")
+    sha_w = _w("偏官") + _w("七杀")
+    cai_w = _w("正财") + _w("偏财")
+    yin_w = _w("正印") + _w("偏印")
     bijie_w = _w("比肩") + _w("劫财")
 
     all_shishen = set()
@@ -160,7 +163,8 @@ def validate_pattern(pattern: str, day_master,
             supports.append("七杀被合——凶神受制,《子平真诠》:合杀为贵,减其凶性")
         zhi_clean = shi_w >= sha_w * 1.5 or shang_w >= sha_w * 1.5
         zhi_barely = (shi_w >= sha_w * 0.7) or (shang_w >= sha_w * 0.7)
-        has_zhi = shi_tg or shang_tg; has_hua = yin_tg
+        has_zhi = shi_tg or shang_tg
+        has_hua = yin_tg
 
         if has_zhi and has_hua:
             issues.append("制化两立——食制又见印化,互相掣肘(《子平真诠》:制化不宜并见)")

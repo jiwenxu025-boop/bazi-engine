@@ -642,11 +642,16 @@ def _build_dayun_prompt(natal: dict, modulations: list[dict],
         sfav = m.get("stem_is_favorable")
         bfav = m.get("branch_is_favorable")
         fav_note = ""
-        if sfav is True: fav_note += "天干为喜"
-        elif sfav is False: fav_note += "天干为忌"
-        if bfav is True: fav_note += " 地支为喜"
-        elif bfav is False: fav_note += " 地支为忌"
-        if not fav_note: fav_note = "喜忌中性"
+        if sfav is True:
+            fav_note += "天干为喜"
+        elif sfav is False:
+            fav_note += "天干为忌"
+        if bfav is True:
+            fav_note += " 地支为喜"
+        elif bfav is False:
+            fav_note += " 地支为忌"
+        if not fav_note:
+            fav_note = "喜忌中性"
 
         parts.append(
             f"  [{m['period_index']}] {stem}{branch}运 {age} | "

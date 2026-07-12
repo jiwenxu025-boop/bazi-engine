@@ -57,15 +57,19 @@ class ScoreAccumulator:
     def strength(self) -> int:
         """从总分映射到1-3星，不低于最小保证"""
         base = max(abs(self.total), self._min_strength)
-        if base >= 4: return 3
-        if base >= 2: return 2
+        if base >= 4:
+            return 3
+        if base >= 2:
+            return 2
         return 1
 
     @property
     def direction(self) -> str:
         t = self.total
-        if t >= 1: return "正面"
-        if t <= -1: return "负面"
+        if t >= 1:
+            return "正面"
+        if t <= -1:
+            return "负面"
         return "中性"
 
     def is_significant(self, threshold: int = 0) -> bool:

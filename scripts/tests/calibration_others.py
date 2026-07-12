@@ -72,7 +72,8 @@ if __name__ == "__main__":
                         if s["year"] == year:
                             for e in s["events"]:
                                 if e["category"] == expected_cat:
-                                    found = e; break
+                                    found = e
+                                    break
                     hit = "HIT" if found and found["strength"] >= 2 else ("WEAK" if found else "MISS")
                     d = f'{found["direction"]} *{found["strength"]} [{", ".join(found["triggers"][:2])}]' if found else "-"
                     results.append((hit, d))

@@ -166,10 +166,13 @@ def analyze_family(
     # 纳音月生年
     year_nayin = year_p.get("nayin", "")
     month_nayin = month_p.get("nayin", "")
-    yn_wx = None; mn_wx = None
+    yn_wx = None
+    mn_wx = None
     for kw in ("金", "木", "水", "火", "土"):
-        if kw in year_nayin: yn_wx = kw
-        if kw in month_nayin: mn_wx = kw
+        if kw in year_nayin:
+            yn_wx = kw
+        if kw in month_nayin:
+            mn_wx = kw
     _wx_sheng_map = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
     if yn_wx and mn_wx and _wx_sheng_map.get(mn_wx) == yn_wx:
         upgrade_signals += 1
@@ -428,7 +431,8 @@ def analyze_family(
 
     def _get_changsheng(branch: str, wuxing: str) -> str:
         """返回某地支在该五行长生十二宫中的位置名"""
-        if wuxing not in _wuxing_changsheng: return ""
+        if wuxing not in _wuxing_changsheng:
+            return ""
         try:
             idx = _wuxing_changsheng[wuxing].index(branch)
             return _cycle_names[idx]
@@ -544,8 +548,10 @@ def analyze_family(
             ny_wx = ""
             mn_wx = ""
             for kw, v in {"金": "金", "木": "木", "水": "水", "火": "火", "土": "土"}.items():
-                if kw in year_nayin: ny_wx = v
-                if kw in month_nayin: mn_wx = v
+                if kw in year_nayin:
+                    ny_wx = v
+                if kw in month_nayin:
+                    mn_wx = v
             if ny_wx and mn_wx:
                 from ..ten_gods import wuxing_ke, wuxing_sheng
                 try:

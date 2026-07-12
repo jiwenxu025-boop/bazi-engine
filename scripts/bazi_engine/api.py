@@ -282,9 +282,12 @@ async def stream_chart(    name, gender, year, month, day, hour,
                     yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合引擎异常: {e}'})}\n\n"
             else:
                 detail = []
-                if not fusion_enabled: detail.append("BAZI_FUSION_ENGINE未设为1")
-                if not fusion_key: detail.append("DEEPSEEK_API_KEY未设置")
-                if not chart_data.get("personality"): detail.append("性格数据为空")
+                if not fusion_enabled:
+                    detail.append("BAZI_FUSION_ENGINE未设为1")
+                if not fusion_key:
+                    detail.append("DEEPSEEK_API_KEY未设置")
+                if not chart_data.get("personality"):
+                    detail.append("性格数据为空")
                 yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合跳过: ' + '; '.join(detail)})}\n\n"
 
             # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
@@ -477,12 +480,16 @@ def date_pick_api(body: dict):
     pillars = chart_data.get("four_pillars", {})
 
     def _parse_dz(s: str):
-        try: return Dizhi(s)
-        except ValueError: return None
+        try:
+            return Dizhi(s)
+        except ValueError:
+            return None
 
     def _parse_tg(s: str):
-        try: return Tiangan(s)
-        except ValueError: return None
+        try:
+            return Tiangan(s)
+        except ValueError:
+            return None
 
     # 构建 MiniChart（复用原函数期望的属性）
     class _MiniPillar:
