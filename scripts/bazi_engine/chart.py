@@ -536,6 +536,48 @@ def _compute_dayun_modulation_stage(chart: BaziChart, start_age: int) -> None:
         chart.warnings.append(f"大运调制失败: {e}")
 
 
+def _compute_interactions_stage(
+    chart: BaziChart,
+    all_branches: list[Dizhi],
+) -> tuple[list[tuple[Tiangan, str]], list[tuple[Dizhi, str]]]:
+    stem_labels = [
+        (chart.year.stem, "年柱"), (chart.month.stem, "月柱"),
+        (chart.day.stem, "日柱"), (chart.hour.stem, "时柱"),
+    ]
+    branch_labels = [
+        (chart.year.branch, "年柱"), (chart.month.branch, "月柱"),
+        (chart.day.branch, "日柱"), (chart.hour.branch, "时柱"),
+    ]
+    chart.tiangan_interactions = find_tiangan_wuhe(stem_labels)
+    chart.dizhi_interactions = find_all_dizhi_interactions(branch_labels)
+
+    from .interactions import detect_tansheng_wangke
+    chart.tansheng_wangke = [
+        {"path": list(gg.path), "cancelled_ke": list(gg.cancelled_ke),
+         "bridge": gg.bridge, "note": gg.note}
+        for gg in detect_tansheng_wangke(stem_labels, chart.day_master)
+    ]
+
+    try:
+        from .tiaohou import detect_false_generation
+        false_gens = detect_false_generation(
+            chart.day_master,
+            [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem],
+            all_branches,
+        )
+        if false_gens:
+            chart.false_generations = [
+                {"subject": fg.subject, "source": fg.source,
+                 "condition": fg.condition, "effect": fg.effect,
+                 "severity": fg.severity, "fix_wuxing": fg.fix_wuxing}
+                for fg in false_gens
+            ]
+    except Exception:
+        pass
+
+    return stem_labels, branch_labels
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -630,43 +672,8 @@ def build_chart(
     # ── 8b. 大运调制（v0.8.0: 方向二核心，放在luck_pillars赋值之后）──
     _compute_dayun_modulation_stage(chart, start_age)
 
-    # ── 9. 干支关系 ──
-    stem_labels = [
-        (chart.year.stem, "年柱"), (chart.month.stem, "月柱"),
-        (chart.day.stem, "日柱"), (chart.hour.stem, "时柱"),
-    ]
-    branch_labels = [
-        (chart.year.branch, "年柱"), (chart.month.branch, "月柱"),
-        (chart.day.branch, "日柱"), (chart.hour.branch, "时柱"),
-    ]
-    chart.tiangan_interactions = find_tiangan_wuhe(stem_labels)
-    chart.dizhi_interactions = find_all_dizhi_interactions(branch_labels)
-
-    # ── 9b. 贪生忘克（v0.8.0）──
-    from .interactions import detect_tansheng_wangke
-    chart.tansheng_wangke = [
-        {"path": list(gg.path), "cancelled_ke": list(gg.cancelled_ke),
-         "bridge": gg.bridge, "note": gg.note}
-        for gg in detect_tansheng_wangke(stem_labels, chart.day_master)
-    ]
-
-    # ── 9c. 假生陷阱（v0.13.0: 火炎土焦/金多水浊/土重金埋+原3条）──
-    try:
-        from .tiaohou import detect_false_generation
-        false_gens = detect_false_generation(
-            chart.day_master,
-            [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem],
-            all_branches,
-        )
-        if false_gens:
-            chart.false_generations = [
-                {"subject": fg.subject, "source": fg.source,
-                 "condition": fg.condition, "effect": fg.effect,
-                 "severity": fg.severity, "fix_wuxing": fg.fix_wuxing}
-                for fg in false_gens
-            ]
-    except Exception:
-        pass
+    # ── 9. 干支关系 + 贪生忘克 + 假生陷阱 ──
+    stem_labels, branch_labels = _compute_interactions_stage(chart, all_branches)
 
     # ── 10. 神煞 ──
     chart.spirits = find_all_spirits(

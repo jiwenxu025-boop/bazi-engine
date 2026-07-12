@@ -7,6 +7,7 @@ from bazi_engine.chart import (
     _compute_dayun_stage,
     _compute_dayun_modulation_stage,
     _compute_four_pillars,
+    _compute_interactions_stage,
     _compute_nayin_relations,
     _compute_palace_origins,
     _compute_pattern_stage,
@@ -393,3 +394,53 @@ def test_compute_dayun_modulation_stage_sets_known_case_modulations():
     assert second["age_range"] == "16-25岁"
     assert second["branch_interactions"] == ["与原局戌半合火"]
     assert second["baseline_offset"] == 1
+
+
+def test_compute_interactions_stage_sets_interactions_and_returns_labels():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+
+    stem_labels, branch_labels = _compute_interactions_stage(chart, all_branches)
+
+    assert [(stem.value, label) for stem, label in stem_labels] == [
+        ("丁", "年柱"),
+        ("戊", "月柱"),
+        ("壬", "日柱"),
+        ("庚", "时柱"),
+    ]
+    assert [(branch.value, label) for branch, label in branch_labels] == [
+        ("亥", "年柱"),
+        ("申", "月柱"),
+        ("辰", "日柱"),
+        ("戌", "时柱"),
+    ]
+    assert [item.to_dict() for item in chart.tiangan_interactions] == [
+        {
+            "type": "天干五合",
+            "participants": ["丁", "壬"],
+            "pillars": ["年柱", "日柱"],
+            "result": "化木",
+            "notes": [],
+        }
+    ]
+    assert [(item.inter_type, [p.value for p in item.participants]) for item in chart.dizhi_interactions] == [
+        ("六冲", ["辰", "戌"]),
+        ("相害", ["亥", "申"]),
+        ("墓库相冲", ["辰", "戌"]),
+    ]
+    assert chart.tansheng_wangke == []
+    assert chart.false_generations is None
