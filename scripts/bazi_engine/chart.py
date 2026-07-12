@@ -501,6 +501,20 @@ def _compute_void_gods_stage(chart: BaziChart, all_stems: list[Tiangan]) -> None
         chart.warnings.append(f"虚神检测失败: {e}")
 
 
+def _compute_dayun_stage(chart: BaziChart, gender: str) -> int:
+    chart.dayun_direction_str = dayun_direction(chart.year.stem, gender)
+    chart.luck_pillars = generate_luck_pillars(
+        chart.month.stem, chart.month.branch, chart.dayun_direction_str
+    )
+    start_age, _remainder, age_w = compute_start_age(
+        chart.birth_dt, chart.dayun_direction_str
+    )
+    chart.warnings.extend(age_w)
+    chart.start_age = start_age
+    chart.luck_periods = format_luck_periods(start_age, chart.luck_pillars)
+    return start_age
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -590,16 +604,7 @@ def build_chart(
     _compute_void_gods_stage(chart, all_stems)
 
     # ── 8. 大运 ──
-    chart.dayun_direction_str = dayun_direction(chart.year.stem, gender)
-    chart.luck_pillars = generate_luck_pillars(
-        chart.month.stem, chart.month.branch, chart.dayun_direction_str
-    )
-    start_age, remainder, age_w = compute_start_age(
-        chart.birth_dt, chart.dayun_direction_str
-    )
-    chart.warnings.extend(age_w)
-    chart.start_age = start_age
-    chart.luck_periods = format_luck_periods(start_age, chart.luck_pillars)
+    start_age = _compute_dayun_stage(chart, gender)
 
     # ── 8b. 大运调制（v0.8.0: 方向二核心，放在luck_pillars赋值之后）──
     chart.dayun_modulations = None

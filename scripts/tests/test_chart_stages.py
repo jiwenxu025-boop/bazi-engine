@@ -4,6 +4,7 @@ from datetime import datetime
 
 from bazi_engine.chart import (
     _attach_hidden_stems_and_nayin,
+    _compute_dayun_stage,
     _compute_four_pillars,
     _compute_nayin_relations,
     _compute_palace_origins,
@@ -317,3 +318,37 @@ def test_compute_void_gods_stage_sets_month_hidden_unrevealed_gods():
     ]
     assert "月支午藏丁" in void_gods[0]["interpretation"]
     assert "月支午藏己" in void_gods[1]["interpretation"]
+
+
+def test_compute_dayun_stage_sets_direction_start_age_and_periods():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+
+    start_age = _compute_dayun_stage(chart, gender="男")
+
+    assert start_age == 6
+    assert chart.dayun_direction_str == "逆排"
+    assert chart.start_age == 6
+    assert [(stem.value, branch.value) for stem, branch in chart.luck_pillars[:6]] == [
+        ("丁", "未"),
+        ("丙", "午"),
+        ("乙", "巳"),
+        ("甲", "辰"),
+        ("癸", "卯"),
+        ("壬", "寅"),
+    ]
+    assert chart.luck_periods[0]["大运"] == "丁未"
+    assert chart.luck_periods[0]["年龄"] == "6-15岁"
+    assert chart.luck_periods[0]["序"] == 1
