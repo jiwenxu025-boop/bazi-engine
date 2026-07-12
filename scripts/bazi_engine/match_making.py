@@ -4,11 +4,16 @@
     from .match_making import match_score
     score, report = match_score(chart1, chart2)
 """
+from typing import TYPE_CHECKING
+
 from .enums import Tiangan, Dizhi, Shishen
 from ._constants import (
     TIANGAN_WUHE, DIZHI_LIUHE, DIZHI_LIUCHONG, DIZHI_XIANGHAI,
     DIZHI_SANHE, DIZHI_XIANGXING,
 )
+
+if TYPE_CHECKING:
+    from .chart import BaziChart
 
 
 def match_score(chart1: "BaziChart", chart2: "BaziChart") -> tuple[int, str]:
