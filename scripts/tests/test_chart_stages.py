@@ -24,6 +24,7 @@ from bazi_engine.chart import (
     _compute_void_gods_stage,
     _compute_yongshen_stage,
     _init_chart_shell,
+    build_chart,
 )
 from bazi_engine.enums import Dizhi, Tiangan
 
@@ -677,3 +678,24 @@ def test_compute_body_use_stage_sets_balance_and_muku_signals(monkeypatch):
     assert chart.body_use_result["body_count"] == 1
     assert chart.body_use_result["use_count"] == 2
     assert chart.body_use_result["mu_ku_signals"] == ["原局辰+戌冲→墓库逢冲，重大转机信号"]
+
+
+def test_build_chart_returns_full_analysis_shape_for_known_case(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_AI_ENABLED", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
+
+    chart = build_chart("案例A", "男", 2007, 8, 26, 20, liunian_range=(2023, 2024))
+    data = chart.to_dict()
+
+    assert data["name"] == "案例A"
+    assert data["four_pillars"]["year"]["stem"] == "丁"
+    assert data["four_pillars"]["day"]["stem"] == "壬"
+    assert len(data["dayun"]["periods"]) == 8
+    assert len(data["annual_scans"]) == 2
+    assert len(data["changsheng"]) == 14
+    assert data["personality"]
+    assert data["family"]
+    assert len(data["palace_star"]["entries"]) == 4
+    assert data["body_use"]["body_count"] == 1
+    assert data["body_use"]["use_count"] == 2
