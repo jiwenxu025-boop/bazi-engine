@@ -8,6 +8,7 @@ from bazi_engine.chart import (
     _compute_dayun_modulation_stage,
     _compute_four_pillars,
     _compute_interactions_stage,
+    _compute_changsheng_stage,
     _compute_liunian_stage,
     _compute_nayin_relations,
     _compute_palace_origins,
@@ -544,3 +545,67 @@ def test_compute_liunian_stage_scans_known_two_year_range(monkeypatch):
         ("学业", "正面", 3),
         ("财运", "正面", 3),
     }.issubset(second_year_events)
+
+
+def test_compute_changsheng_stage_sets_pillar_dayun_and_liunian_states(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
+    _compute_ten_gods_stage(chart)
+    all_stems = _compute_pattern_stage(chart)
+    _compute_void_gods_stage(chart, all_stems)
+    start_age = _compute_dayun_stage(chart, gender="男")
+    _compute_dayun_modulation_stage(chart, start_age)
+    _, branch_labels = _compute_interactions_stage(chart, all_branches)
+    _compute_spirits_stage(chart, branch_labels)
+    _compute_liunian_stage(
+        chart,
+        gender="男",
+        start_age=start_age,
+        liunian_range=(2023, 2024),
+        known_events=None,
+        favorable=None,
+    )
+
+    _compute_changsheng_stage(chart)
+
+    assert len(chart.changsheng_states) == 14
+    assert [
+        (
+            state.subject,
+            state.stem.value,
+            state.branch.value,
+            state.state,
+            state.pillar_label,
+            state.year,
+        )
+        for state in chart.changsheng_states[:5]
+    ] == [
+        ("日主", "壬", "亥", "临官", "年柱", None),
+        ("日主", "壬", "申", "长生", "月柱", None),
+        ("日主", "壬", "辰", "墓", "日柱", None),
+        ("日主", "壬", "戌", "冠带", "时柱", None),
+        ("大运", "壬", "未", "养", "大运", None),
+    ]
+    assert [
+        (state.subject, state.branch.value, state.state, state.year)
+        for state in chart.changsheng_states[-2:]
+    ] == [
+        ("流年", "卯", "死", 2023),
+        ("流年", "辰", "墓", 2024),
+    ]

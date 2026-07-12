@@ -644,6 +644,21 @@ def _compute_liunian_stage(
     )
 
 
+def _compute_changsheng_stage(chart: BaziChart) -> None:
+    if getattr(chart, 'annual_scans', None):
+        try:
+            from .changsheng_analysis import find_all_changsheng_states
+            chart.changsheng_states = find_all_changsheng_states(
+                chart.day_master,
+                chart.year.branch, chart.month.branch,
+                chart.day.branch, chart.hour.branch,
+                chart.luck_pillars,
+                chart.annual_scans,
+            )
+        except Exception as e:
+            chart.warnings.append(f"十二长生分析失败: {e}")
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -758,18 +773,7 @@ def build_chart(
         )
 
     # ── 11b. 十二长生参断 ──
-    if getattr(chart, 'annual_scans', None):
-        try:
-            from .changsheng_analysis import find_all_changsheng_states
-            chart.changsheng_states = find_all_changsheng_states(
-                chart.day_master,
-                chart.year.branch, chart.month.branch,
-                chart.day.branch, chart.hour.branch,
-                chart.luck_pillars,
-                chart.annual_scans,
-            )
-        except Exception as e:
-            chart.warnings.append(f"十二长生分析失败: {e}")
+    _compute_changsheng_stage(chart)
 
     # ── 12. 人生阶段判定 ──
     if life_stage_override:
