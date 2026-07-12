@@ -469,6 +469,26 @@ def _compute_ten_gods_stage(chart: BaziChart) -> None:
             pillar.ten_gods_map[hs.stem] = get_ten_god(chart.day_master, hs.stem)
 
 
+def _compute_pattern_stage(chart: BaziChart) -> list[Tiangan]:
+    all_stems = [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem]
+    cong_ge = (chart._yongshen_result or {}).get("cong_ge")
+    chart.pattern, chart.pattern_notes = determine_pattern(
+        chart.month.branch, all_stems, chart.day_master, cong_ge=cong_ge
+    )
+
+    # 格局用神（陆致极: 格局用神 ≠ 有用之神）
+    if chart._yongshen_result:
+        try:
+            from .yongshen import _get_pattern_yongshen
+            pys = _get_pattern_yongshen(chart.pattern, chart.day_master)
+            if pys:
+                chart._yongshen_result["pattern_yongshen"] = pys
+        except Exception:
+            pass
+
+    return all_stems
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -552,21 +572,7 @@ def build_chart(
     _compute_ten_gods_stage(chart)
 
     # ── 7. 格局 ──
-    all_stems = [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem]
-    cong_ge = (chart._yongshen_result or {}).get("cong_ge")
-    chart.pattern, chart.pattern_notes = determine_pattern(
-        chart.month.branch, all_stems, chart.day_master, cong_ge=cong_ge
-    )
-
-    # 格局用神（陆致极: 格局用神 ≠ 有用之神）
-    if chart._yongshen_result:
-        try:
-            from .yongshen import _get_pattern_yongshen
-            pys = _get_pattern_yongshen(chart.pattern, chart.day_master)
-            if pys:
-                chart._yongshen_result["pattern_yongshen"] = pys
-        except Exception:
-            pass
+    all_stems = _compute_pattern_stage(chart)
 
     # ── 7b. 藏干虚神 ──
     try:

@@ -7,6 +7,7 @@ from bazi_engine.chart import (
     _compute_four_pillars,
     _compute_nayin_relations,
     _compute_palace_origins,
+    _compute_pattern_stage,
     _compute_tiaohou_health_stage,
     _compute_ten_gods_stage,
     _compute_yongshen_stage,
@@ -252,4 +253,34 @@ def test_compute_ten_gods_stage_sets_visible_and_hidden_ten_gods():
         "戊": "偏官",
         "辛": "正印",
         "丁": "正财",
+    }
+
+
+def test_compute_pattern_stage_sets_pattern_and_pattern_yongshen():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _compute_yongshen_stage(chart, favorable=None)
+
+    all_stems = _compute_pattern_stage(chart)
+
+    assert all_stems == [Tiangan.丁, Tiangan.戊, Tiangan.壬, Tiangan.庚]
+    assert chart.pattern == "偏印格"
+    assert chart.pattern_notes == ["月支申 本气庚透干"]
+    assert chart._yongshen_result["pattern_yongshen"] == {
+        "method": "逆用→喜财制枭",
+        "needs": ["正财", "偏财"],
+        "avoid": ["食神"],
+        "note": "格局偏印格逆用→喜财制枭。格局用神推荐：正财/偏财；忌：食神。",
     }
