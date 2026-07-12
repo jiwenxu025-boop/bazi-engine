@@ -8,6 +8,7 @@ from bazi_engine.chart import (
     _compute_nayin_relations,
     _compute_palace_origins,
     _compute_tiaohou_health_stage,
+    _compute_ten_gods_stage,
     _compute_yongshen_stage,
     _init_chart_shell,
 )
@@ -208,3 +209,47 @@ def test_compute_tiaohou_health_stage_sets_known_case_results():
     assert chart.health_profile["tiaohou_risks"] == []
     assert chart.health_profile["tiaohou_advice"] == "无特殊偏颇，保持均衡饮食和适度运动即可"
     assert [risk["wuxing"] for risk in chart.health_profile["wuxing_risks"]] == ["木", "火"]
+
+
+def test_compute_ten_gods_stage_sets_visible_and_hidden_ten_gods():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+
+    _compute_ten_gods_stage(chart)
+
+    assert chart.year.ten_god.value == "正财"
+    assert chart.month.ten_god.value == "偏官"
+    assert chart.day.ten_god is None
+    assert chart.hour.ten_god.value == "偏印"
+    assert {k.value: v.value for k, v in chart.year.ten_gods_map.items()} == {
+        "壬": "比肩",
+        "甲": "食神",
+    }
+    assert {k.value: v.value for k, v in chart.month.ten_gods_map.items()} == {
+        "庚": "偏印",
+        "壬": "比肩",
+        "戊": "偏官",
+    }
+    assert {k.value: v.value for k, v in chart.day.ten_gods_map.items()} == {
+        "戊": "偏官",
+        "乙": "伤官",
+        "癸": "劫财",
+    }
+    assert {k.value: v.value for k, v in chart.hour.ten_gods_map.items()} == {
+        "戊": "偏官",
+        "辛": "正印",
+        "丁": "正财",
+    }

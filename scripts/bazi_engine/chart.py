@@ -458,6 +458,17 @@ def _compute_tiaohou_health_stage(
         chart.warnings.append(f"健康画像生成失败: {e}")
 
 
+def _compute_ten_gods_stage(chart: BaziChart) -> None:
+    for pillar in [chart.year, chart.month, chart.day, chart.hour]:
+        if pillar.pillar_type == "日柱":
+            pillar.ten_god = None
+        else:
+            pillar.ten_god = get_ten_god(chart.day_master, pillar.stem)
+        pillar.ten_gods_map = {}
+        for hs in pillar.hidden_stems:
+            pillar.ten_gods_map[hs.stem] = get_ten_god(chart.day_master, hs.stem)
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -538,14 +549,7 @@ def build_chart(
     _compute_tiaohou_health_stage(chart, all_stems, all_branches)
 
     # ── 6. 十神 ──
-    for pillar in [chart.year, chart.month, chart.day, chart.hour]:
-        if pillar.pillar_type == "日柱":
-            pillar.ten_god = None
-        else:
-            pillar.ten_god = get_ten_god(chart.day_master, pillar.stem)
-        pillar.ten_gods_map = {}
-        for hs in pillar.hidden_stems:
-            pillar.ten_gods_map[hs.stem] = get_ten_god(chart.day_master, hs.stem)
+    _compute_ten_gods_stage(chart)
 
     # ── 7. 格局 ──
     all_stems = [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem]
