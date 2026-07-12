@@ -10,6 +10,7 @@ from bazi_engine.chart import (
     _compute_pattern_stage,
     _compute_tiaohou_health_stage,
     _compute_ten_gods_stage,
+    _compute_void_gods_stage,
     _compute_yongshen_stage,
     _init_chart_shell,
 )
@@ -284,3 +285,35 @@ def test_compute_pattern_stage_sets_pattern_and_pattern_yongshen():
         "avoid": ["食神"],
         "note": "格局偏印格逆用→喜财制枭。格局用神推荐：正财/偏财；忌：食神。",
     }
+
+
+def test_compute_void_gods_stage_sets_month_hidden_unrevealed_gods():
+    chart = _init_chart_shell(
+        name="test",
+        gender="男",
+        year=1990,
+        month=6,
+        day=15,
+        hour=12,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 1990, 6, 15, 12, None)
+    _compute_yongshen_stage(chart, favorable=None)
+    all_stems = _compute_pattern_stage(chart)
+
+    _compute_void_gods_stage(chart, all_stems)
+
+    void_gods = [vg.to_dict() for vg in chart.void_gods]
+    assert [
+        (vg["hidden_stem"], vg["source_branch"], vg["level"], vg["ten_god"], vg["is_favorable"])
+        for vg in void_gods
+    ] == [
+        ("丁", "午", "本气", "偏官", False),
+        ("己", "午", "中气", "偏印", False),
+    ]
+    assert "月支午藏丁" in void_gods[0]["interpretation"]
+    assert "月支午藏己" in void_gods[1]["interpretation"]

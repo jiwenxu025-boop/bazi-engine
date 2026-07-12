@@ -489,6 +489,18 @@ def _compute_pattern_stage(chart: BaziChart) -> list[Tiangan]:
     return all_stems
 
 
+def _compute_void_gods_stage(chart: BaziChart, all_stems: list[Tiangan]) -> None:
+    try:
+        from .void_god import find_all_void_gods
+        fav = set(chart._yongshen_result.get("favorable", [])) if chart._yongshen_result else None
+        chart.void_gods = find_all_void_gods(
+            chart.day_master, chart.month.branch, all_stems,
+            favorable_shishen=fav,
+        )
+    except Exception as e:
+        chart.warnings.append(f"虚神检测失败: {e}")
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -575,15 +587,7 @@ def build_chart(
     all_stems = _compute_pattern_stage(chart)
 
     # ── 7b. 藏干虚神 ──
-    try:
-        from .void_god import find_all_void_gods
-        fav = set(chart._yongshen_result.get("favorable", [])) if chart._yongshen_result else None
-        chart.void_gods = find_all_void_gods(
-            chart.day_master, chart.month.branch, all_stems,
-            favorable_shishen=fav,
-        )
-    except Exception as e:
-        chart.warnings.append(f"虚神检测失败: {e}")
+    _compute_void_gods_stage(chart, all_stems)
 
     # ── 8. 大运 ──
     chart.dayun_direction_str = dayun_direction(chart.year.stem, gender)
