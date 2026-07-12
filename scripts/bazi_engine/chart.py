@@ -801,6 +801,17 @@ def _compute_palace_star_stage(chart: BaziChart, pd) -> None:
             chart.warnings.append(f"宫位叠象分析失败: {e}")
 
 
+def _compute_body_use_stage(chart: BaziChart, pd, interactions_dict: dict | None) -> None:
+    try:
+        from .body_use import analyze_body_use
+        if pd is not None and interactions_dict is not None:
+            chart.body_use_result = analyze_body_use(
+                pd, interactions_dict, chart.luck_pillars, chart.annual_scans
+            ).to_dict()
+    except Exception as e:
+        chart.warnings.append(f"宾主体用分析失败: {e}")
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -927,13 +938,6 @@ def build_chart(
     _compute_palace_star_stage(chart, pd)
 
     # ── 13c. 宾主体用 + 墓库应期 ──
-    try:
-        from .body_use import analyze_body_use
-        if pd is not None and interactions_dict is not None:
-            chart.body_use_result = analyze_body_use(
-                pd, interactions_dict, chart.luck_pillars, chart.annual_scans
-            ).to_dict()
-    except Exception as e:
-        chart.warnings.append(f"宾主体用分析失败: {e}")
+    _compute_body_use_stage(chart, pd, interactions_dict)
 
     return chart
