@@ -7,6 +7,7 @@ from bazi_engine.chart import (
     _compute_four_pillars,
     _compute_nayin_relations,
     _compute_palace_origins,
+    _compute_tiaohou_health_stage,
     _compute_yongshen_stage,
     _init_chart_shell,
 )
@@ -174,3 +175,36 @@ def test_compute_yongshen_stage_sets_result_and_returns_pillar_lists():
     assert chart._yongshen_result["score"] == 5.5
     assert chart._yongshen_result["favorable"] == ["正印"]
     assert chart._yongshen_result["harmful"] == ["偏印", "劫财", "正印", "比肩"]
+
+
+def test_compute_tiaohou_health_stage_sets_known_case_results():
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    all_stems, all_branches = _compute_yongshen_stage(chart, favorable=None)
+
+    _compute_tiaohou_health_stage(chart, all_stems, all_branches)
+
+    assert chart.tiaohou_result == {
+        "season": "秋",
+        "climate": "中和",
+        "is_fei_ju": False,
+        "tiaohou_wuxing": [],
+        "reason": "",
+        "priority_note": "原局寒暖燥湿适中，调候无忧。",
+    }
+    assert chart.health_profile["tiaohou_label"] == "寒暖适中（基础体质良好）"
+    assert chart.health_profile["tiaohou_risks"] == []
+    assert chart.health_profile["tiaohou_advice"] == "无特殊偏颇，保持均衡饮食和适度运动即可"
+    assert [risk["wuxing"] for risk in chart.health_profile["wuxing_risks"]] == ["木", "火"]

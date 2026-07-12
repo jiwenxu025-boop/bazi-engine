@@ -428,6 +428,36 @@ def _compute_yongshen_stage(
     return all_stems, all_branches
 
 
+def _compute_tiaohou_health_stage(
+    chart: BaziChart,
+    all_stems: list[Tiangan],
+    all_branches: list[Dizhi],
+) -> None:
+    try:
+        from .tiaohou import analyze_tiaohou
+        chart.tiaohou_result = analyze_tiaohou(
+            chart.day_master, chart.month.branch, chart.day.branch, all_branches,
+            all_stems=all_stems,
+        ).to_dict()
+    except Exception as e:
+        chart.warnings.append(f"调候分析失败: {e}")
+
+    chart.health_profile = None
+    try:
+        from .tiaohou import get_tiaohou_health_profile, get_wuxing_balance_health
+        tiaohou_health = get_tiaohou_health_profile(chart.tiaohou_result)
+        all_branches_list = list(all_branches) if not isinstance(all_branches, list) else all_branches
+        wuxing_risks = get_wuxing_balance_health(all_branches_list, chart.day_master)
+        chart.health_profile = {
+            "tiaohou_label": tiaohou_health["label"],
+            "tiaohou_risks": tiaohou_health["risks"],
+            "tiaohou_advice": tiaohou_health["advice"],
+            "wuxing_risks": wuxing_risks,
+        }
+    except Exception as e:
+        chart.warnings.append(f"健康画像生成失败: {e}")
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -504,31 +534,8 @@ def build_chart(
     # ── 5c. 用神自动推荐（始终运行以获取强弱数据，用户喜用可补充）──
     all_stems, all_branches = _compute_yongshen_stage(chart, favorable)
 
-    # ── 5e. 调候独立分析（陆致极"调候为先"）──
-    try:
-        from .tiaohou import analyze_tiaohou
-        chart.tiaohou_result = analyze_tiaohou(
-            chart.day_master, chart.month.branch, chart.day.branch, all_branches,
-            all_stems=all_stems,
-        ).to_dict()
-    except Exception as e:
-        chart.warnings.append(f"调候分析失败: {e}")
-
-    # ── 5e. 健康体质画像（v0.10.0: 调候×五行脏腑交叉筛查）──
-    chart.health_profile = None
-    try:
-        from .tiaohou import get_tiaohou_health_profile, get_wuxing_balance_health
-        tiaohou_health = get_tiaohou_health_profile(chart.tiaohou_result)
-        all_branches_list = list(all_branches) if not isinstance(all_branches, list) else all_branches
-        wuxing_risks = get_wuxing_balance_health(all_branches_list, chart.day_master)
-        chart.health_profile = {
-            "tiaohou_label": tiaohou_health["label"],
-            "tiaohou_risks": tiaohou_health["risks"],
-            "tiaohou_advice": tiaohou_health["advice"],
-            "wuxing_risks": wuxing_risks,
-        }
-    except Exception as e:
-        chart.warnings.append(f"健康画像生成失败: {e}")
+    # ── 5e. 调候 + 健康体质画像 ──
+    _compute_tiaohou_health_stage(chart, all_stems, all_branches)
 
     # ── 6. 十神 ──
     for pillar in [chart.year, chart.month, chart.day, chart.hour]:
