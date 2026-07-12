@@ -97,7 +97,7 @@ def validate_pattern(pattern: str, day_master,
         return (weighted_scores or {}).get(name, 0)
 
     shi_w = _w("食神"); shang_w = _w("伤官")
-    guan_w = _w("正官"); sha_w = _w("偏官") + _w("七杀")
+    _w("正官"); sha_w = _w("偏官") + _w("七杀")
     cai_w = _w("正财") + _w("偏财"); yin_w = _w("正印") + _w("偏印")
     bijie_w = _w("比肩") + _w("劫财")
 
@@ -115,9 +115,7 @@ def validate_pattern(pattern: str, day_master,
     yin_tg = any("印" in (p.get("ten_god") or "") and p.get("source") == "stem" for p in pillars_data)
     pian_yin_tg = any((p.get("ten_god") or "") == "偏印" and p.get("source") == "stem" for p in pillars_data)
 
-    has_shi = "食神" in all_shishen; has_shang = "伤官" in all_shishen
-    has_guan = "正官" in all_shishen; has_sha = "偏官" in all_shishen or "七杀" in all_shishen
-    has_yin = "正印" in all_shishen or "偏印" in all_shishen
+    has_guan = "正官" in all_shishen
 
     # 五行生克映射(印夺食/枭神夺食检测用)
     _STEM_WX = {"甲": "木", "乙": "木", "丙": "火", "丁": "火",

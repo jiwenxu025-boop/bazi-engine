@@ -99,7 +99,7 @@ def truncate_messages(messages: list[dict], model: str, max_output: int = 4096,
 
     # 计算 system prompt token
     system_tokens = 0
-    for i, msg in enumerate(messages):
+    for _i, msg in enumerate(messages):
         if msg.get("role") == "system":
             system_tokens = estimate_tokens(msg["content"])
             break

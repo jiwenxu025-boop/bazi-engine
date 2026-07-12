@@ -132,12 +132,6 @@ def detect_nayin_chain(year_nayin: str, month_nayin: str,
     if any(w is None for w in [year_wx, month_wx, day_wx, hour_wx]):
         return []
 
-    pillars = [
-        ("年柱", year_nayin, year_wx),
-        ("月柱", month_nayin, month_wx),
-        ("日柱", day_nayin, day_wx),
-        ("时柱", hour_nayin, hour_wx),
-    ]
 
     results: list[NayinRelation] = []
 
@@ -146,7 +140,7 @@ def detect_nayin_chain(year_nayin: str, month_nayin: str,
         """检查连续关系是否构成链。pairs: [(from_label, to_label, from_nayin, to_nayin, from_wx, to_wx)]"""
         chain_results: list[NayinRelation] = []
         rel_types = []
-        for from_lbl, to_lbl, f_nay, t_nay, f_wx, t_wx in pairs:
+        for _from_lbl, _to_lbl, _f_nay, _t_nay, f_wx, t_wx in pairs:
             rel = _wx_relation(f_wx, t_wx)
             rel_types.append(rel)
 

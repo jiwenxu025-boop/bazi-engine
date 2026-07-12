@@ -60,7 +60,7 @@ _STATE_ENERGY: dict[str, int] = {
 def get_state_interpretation(state: str, branch: Dizhi, day_master: Tiangan) -> str:
     """生成结合地支上下文的解读"""
     base = _STATE_INTERPRETATIONS.get(state, "")
-    energy = _STATE_ENERGY.get(state, 5)
+    _STATE_ENERGY.get(state, 5)
 
     # 特殊标注
     special = ""

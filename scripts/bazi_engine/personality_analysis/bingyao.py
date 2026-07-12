@@ -50,9 +50,9 @@ def detect_bingyao_combos(
     zheng_guan = scores.get("正官", 0)
     qi_sha = scores.get("偏官", scores.get("七杀", 0))
     pian_yin = scores.get("偏印", 0)
-    zheng_yin = scores.get("正印", 0)
-    zheng_cai = scores.get("正财", 0)
-    pian_cai = scores.get("偏财", 0)
+    scores.get("正印", 0)
+    scores.get("正财", 0)
+    scores.get("偏财", 0)
 
     cai_total = _sum_group(scores, CAI_STARS)
     guan_total = _sum_group(scores, GUAN_STARS)

@@ -63,7 +63,7 @@ def test_edge_birth_on_jie_day():
     # 2007 立秋: Aug 8 ~08:05 CST
     # 出生在立秋之前1小时
     birth_before = datetime(2007, 8, 8, 7, 0, 0)
-    days_prev, _ = distance_to_prev_jie(birth_before)
+    _days_prev, _ = distance_to_prev_jie(birth_before)
     # 上一个节是大暑...不，上一个节是小暑(Jul 7)
     # 下一个节是立秋，距离应该很小
     days_next, _ = distance_to_next_jie(birth_before)

@@ -72,7 +72,7 @@ def analyze_family(
     """
     result = FamilyResult()
     fav_wx = set(yongshen_result.get("favorable_wuxing", [])) if yongshen_result else set()
-    harm_wx = set(yongshen_result.get("harmful_wuxing", [])) if yongshen_result else set()
+    set(yongshen_result.get("harmful_wuxing", [])) if yongshen_result else set()
 
     def _wx_of_stem(s: str) -> str:
         try:
@@ -100,8 +100,8 @@ def analyze_family(
     year_branch = year_p.get("branch", "")
     month_stem = month_p.get("stem", "")
     month_branch = month_p.get("branch", "")
-    day_branch = day_p.get("branch", "")
-    hour_branch = hour_p.get("branch", "")
+    day_p.get("branch", "")
+    hour_p.get("branch", "")
 
     year_stem_wx = _wx_of_stem(year_stem)
     year_branch_wx = _wx_of_branch(year_branch)
@@ -109,9 +109,9 @@ def analyze_family(
     month_branch_wx = _wx_of_branch(month_branch)
 
     year_tg_fav = _is_wx_fav(year_stem_wx)
-    year_dz_fav = _is_wx_fav(year_branch_wx)
+    _is_wx_fav(year_branch_wx)
     month_tg_fav = _is_wx_fav(month_stem_wx)
-    month_dz_fav = _is_wx_fav(month_branch_wx)
+    _is_wx_fav(month_branch_wx)
 
     # ── 年月财官检查 ──
     year_tg = year_p.get("ten_god", "")
@@ -436,7 +436,7 @@ def analyze_family(
             return ""
 
     # 父星坐长生: 偏财五行
-    father_wx_map = {"偏财": _wx_of_stem(""), "正财": _wx_of_stem("")}
+    {"偏财": _wx_of_stem(""), "正财": _wx_of_stem("")}
     # 直接取父星所在柱的天干五行作为偏财五行
     for p in pillars_data:
         if p.get("ten_god") == father_star:
@@ -515,7 +515,7 @@ def analyze_family(
            "巳": ("午", "未"), "酉": ("午", "未"), "丑": ("午", "未"),
            "亥": ("申", "酉"), "卯": ("申", "酉"), "未": ("申", "酉")}
     yr_kw = kws.get(yr_cb, ("", ""))
-    mt_kw = kws.get(mt_cb, ("", ""))
+    kws.get(mt_cb, ("", ""))
     if mt_cb in yr_kw:
         childhood_notes.append("月柱空亡—《渊海子平》：父母无靠，童年动荡")
     # 年冲日

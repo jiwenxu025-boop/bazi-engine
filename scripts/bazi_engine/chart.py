@@ -907,7 +907,7 @@ def build_chart(
     _compute_dayun_modulation_stage(chart, start_age)
 
     # ── 9. 干支关系 + 贪生忘克 + 假生陷阱 ──
-    stem_labels, branch_labels = _compute_interactions_stage(chart, all_branches)
+    _stem_labels, branch_labels = _compute_interactions_stage(chart, all_branches)
 
     # ── 10. 神煞 ──
     _compute_spirits_stage(chart, branch_labels)

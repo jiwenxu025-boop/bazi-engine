@@ -76,7 +76,7 @@ def find_dizhi_sanhe(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Inter
     """检测三合局（含半合）"""
     results: list[Interaction] = []
     b_set = {b for b, _ in branches_and_labels}
-    all_branches = [b for b, _ in branches_and_labels]
+    [b for b, _ in branches_and_labels]
     labels_by_b = {b: lb for b, lb in branches_and_labels}
 
     for trio_set, wx in DIZHI_SANHE.items():

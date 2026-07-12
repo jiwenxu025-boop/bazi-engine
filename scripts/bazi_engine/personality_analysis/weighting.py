@@ -64,7 +64,7 @@ def _compute_weighted_shishen(
     # Step 1: 基础计分
     for p in pillars_data:
         tg = p.get("ten_god")
-        stem_wx = STEM_TO_WUXING.get(p.get("stem", ""), "")
+        STEM_TO_WUXING.get(p.get("stem", ""), "")
         hidden = p.get("hidden_stems", [])
         hidden_tgs = p.get("hidden_ten_gods", [])
 
@@ -156,7 +156,7 @@ def _find_dominant_shishen(pillars_data: list[dict],
     # 按加权分数降序排列
     sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     dominant = sorted_items[0][0]
-    dominant_score = sorted_items[0][1]
+    sorted_items[0][1]
 
     is_fav = dominant not in harmful_shishen
 

@@ -482,9 +482,8 @@ def scan_years(
                 events.extend(sui_yun_signals)
                 # 判断交战等级
                 is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
-                is_tianzhan = any("天战" in str(s.triggers) for s in sui_yun_signals)
-                is_ke_xishen = any("喜神" in str(s.triggers) for s in sui_yun_signals)
-                clash_level = "地战" if is_dizhan else ("天战" if is_tianzhan else "刑害")
+                any("天战" in str(s.triggers) for s in sui_yun_signals)
+                any("喜神" in str(s.triggers) for s in sui_yun_signals)
 
                 # v0.11.1: 岁运交战分方向处理——动荡加剧≠信号变弱
                 # 吉事打折(动荡中好事难落实)，凶事加码(动荡中坏事更易发生)

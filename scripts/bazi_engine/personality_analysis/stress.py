@@ -33,9 +33,6 @@ def analyze_stress_profile(
     has_zhengyin = "正印" in all_shishen
     has_pianyin = "偏印" in all_shishen
     has_shishen = "食神" in all_shishen
-    has_shangguan = "伤官" in all_shishen
-    has_bijian = "比肩" in all_shishen
-    has_jiecai = "劫财" in all_shishen
     has_zhengcai = "正财" in all_shishen
     has_piancai = "偏财" in all_shishen
 

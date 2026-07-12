@@ -68,7 +68,7 @@ def analyze_tiaohou(day_master: Tiangan, month_branch: Dizhi,
 
     fire_count = wx_counts["火"]
     water_count = wx_counts["水"]
-    metal_count = wx_counts["金"]
+    wx_counts["金"]
 
     # ── 调候规则（《穷通宝鉴》核心，陆致极系统化）──
     tiaohou_map = {
@@ -386,7 +386,7 @@ def get_tiaohou_health_profile(tiaohou_result: dict | None) -> dict:
         return {"label": "未知", "risks": [], "advice": ""}
 
     climate = tiaohou_result.get("climate", "中和")
-    is_fei_ju = tiaohou_result.get("is_fei_ju", False)
+    tiaohou_result.get("is_fei_ju", False)
     return CLIMATE_HEALTH_RISK.get(climate, CLIMATE_HEALTH_RISK["中和"])
 
 

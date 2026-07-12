@@ -250,7 +250,6 @@ class CalibrationStore:
             # 正面事件 + 负面方向 → MISMATCH
             positive_events = {"恋爱", "高考异地", "异性缘大增"}
             negative_events = {"分手", "感情困扰", "人际困扰", "内耗", "学业受阻"}
-            neutral_events = {"暂无健康问题"}
 
             is_positive_actual = actual in positive_events
             is_negative_actual = actual in negative_events

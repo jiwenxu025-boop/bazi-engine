@@ -123,8 +123,8 @@ def analyze_personality(
 
     # ── Step 6: 分领域性格（加权分数驱动，6维度）──
 
-    dm_core = dm_info["core"] if dm_info else ""
-    dm_neg = dm_info["negative"] if dm_info else ""
+    dm_info["core"] if dm_info else ""
+    dm_info["negative"] if dm_info else ""
     is_strong = "强" in strength
     is_weak = "弱" in strength
 
@@ -169,7 +169,7 @@ def analyze_personality(
     )
     cai_po_yin_flag = any("财破印" in c for c in result.special_combos)
     # 检查是否存在官杀混杂标签（病药检测已判断）
-    has_guansha_hunza = any(c["combo"] == "官杀混杂" for c in result.bingyao_combos)
+    any(c["combo"] == "官杀混杂" for c in result.bingyao_combos)
     # -- 病药组合 -> 维度信号调制器 --
     _bingyao_combo_names = {c["combo"] for c in result.bingyao_combos}
     _bingyao_modifiers = {}
@@ -467,7 +467,6 @@ def _apply_reality_check(result: PersonalityResult,
 
     is_weak = "弱" in strength
     is_strong = "强" in strength
-    is_neutral = "中和" in strength
 
     # 快速判断
     all_tg = set(p.get("ten_god", "") for p in pillars_data if p.get("source") == "stem")
@@ -481,8 +480,6 @@ def _apply_reality_check(result: PersonalityResult,
     has_yin_stem = any("印" in (p.get("ten_god") or "") and p.get("source") == "stem" for p in pillars_data)
     has_shang = "伤官" in all_combined
     has_guan = "正官" in all_combined
-    has_zhengcai = "正财" in all_combined
-    has_piancai = "偏财" in all_combined
     shang_jian_guan = has_shang and has_guan
     cai_po_yin = has_cai_stem and has_yin_stem
     bijie_count = sum(1 for p in pillars_data if p.get("ten_god") in ("比肩", "劫财"))

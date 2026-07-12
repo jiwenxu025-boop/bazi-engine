@@ -575,14 +575,14 @@ async def chat_api(request: Request):
 
     # 2. 权限检查
     if activation_code:
-        valid, remaining, msg = validate_code(activation_code)
+        valid, _remaining, msg = validate_code(activation_code)
         if not valid:
             async def invalid_gen():
                 yield f"data: {json.dumps({'token': msg})}\n\n"
                 yield "data: [DONE]\n\n"
             return StreamingResponse(invalid_gen(), media_type="text/event-stream")
     else:
-        can_use, remaining = check_free_quota(client_ip)
+        can_use, _remaining = check_free_quota(client_ip)
         if not can_use:
             async def quota_gen():
                 yield f"data: {json.dumps({'token': f'今日免费追问次数（{FREE_DAILY_LIMIT}次）已用完。点击"解锁追问"获取激活码。'})}\n\n"
@@ -719,7 +719,7 @@ async def chat_quota(request: Request):
     else:
         from .chat import check_free_quota
         client_ip = request.client.host if request.client else "unknown"
-        can_use, remaining = check_free_quota(client_ip)
+        _can_use, remaining = check_free_quota(client_ip)
         return {"has_code": False, "remaining": remaining}
 
 

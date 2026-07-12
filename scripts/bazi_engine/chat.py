@@ -58,7 +58,7 @@ def build_chat_context(chart_data: dict) -> str:
     base = extract_base_context(chart_data)
 
     personality = chart_data.get("personality", {})
-    family = chart_data.get("family", {})
+    chart_data.get("family", {})
 
     parts = []
 
@@ -155,7 +155,7 @@ SENSITIVE_RULES = [
 
 def filter_sensitive(text: str) -> tuple[bool, str]:
     """敏感词检测。返回 (通过?, 拒绝理由)"""
-    for pattern, category, reply in SENSITIVE_RULES:
+    for pattern, _category, reply in SENSITIVE_RULES:
         if re.search(pattern, text):
             return False, reply
     return True, ""

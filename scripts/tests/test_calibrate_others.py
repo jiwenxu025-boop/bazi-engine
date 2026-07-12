@@ -11,7 +11,7 @@ from calibration_others import CASES
 
 # Flatten CASES dict into list of cases
 ALL_OTHERS = []
-for category, cases in CASES.items():
+for _category, cases in CASES.items():
     ALL_OTHERS.extend(cases)
 
 _results, _stats = run_calibration(ALL_OTHERS)
