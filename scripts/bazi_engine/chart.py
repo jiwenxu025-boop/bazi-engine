@@ -659,6 +659,52 @@ def _compute_changsheng_stage(chart: BaziChart) -> None:
             chart.warnings.append(f"十二长生分析失败: {e}")
 
 
+def _compute_life_stage(chart: BaziChart, life_stage_override: str, start_age: int) -> None:
+    if life_stage_override:
+        chart.life_stage = life_stage_override
+    else:
+        try:
+            from .liunian import _life_stage
+            today = date.today()
+            current_age = today.year - chart.birth_dt.year
+            if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
+                current_age -= 1
+            # 当前大运十神
+            dayun_idx = max(0, min((current_age - start_age) // 10, len(chart.luck_pillars) - 1))
+            current_dn = chart.luck_pillars[dayun_idx] if chart.luck_pillars else (None, None)
+            dn_tg_name = get_ten_god(chart.day_master, current_dn[0]).value if current_dn[0] else None
+            # 是否有升学信号（仅检查当前年份 ± 1，避免跨年干扰）
+            has_xs = False
+            if chart.annual_scans:
+                for a in chart.annual_scans:
+                    if abs(a.year - today.year) <= 1:
+                        for e in a.events:
+                            if e.category == "升学":
+                                has_xs = True
+                                break
+            chart.life_stage = _life_stage(
+                current_age, dayun_ten_god=dn_tg_name,
+                pattern=chart.pattern, has_xuesheng_signal=has_xs,
+            )
+        except Exception:
+            # fallback: 纯年龄判断
+            chart.warnings.append("智能人生阶段判定失败，降级为纯年龄判断")
+            today = date.today()
+            current_age = today.year - chart.birth_dt.year
+            if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
+                current_age -= 1
+            if current_age < 18:
+                chart.life_stage = "中学"
+            elif current_age < 22:
+                chart.life_stage = "大学"
+            elif current_age < 29:
+                chart.life_stage = "深造"
+            elif current_age < 56:
+                chart.life_stage = "职场"
+            else:
+                chart.life_stage = "晚年"
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -776,49 +822,7 @@ def build_chart(
     _compute_changsheng_stage(chart)
 
     # ── 12. 人生阶段判定 ──
-    if life_stage_override:
-        chart.life_stage = life_stage_override
-    else:
-        try:
-            from .liunian import _life_stage
-            today = date.today()
-            current_age = today.year - chart.birth_dt.year
-            if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
-                current_age -= 1
-            # 当前大运十神
-            dayun_idx = max(0, min((current_age - start_age) // 10, len(chart.luck_pillars) - 1))
-            current_dn = chart.luck_pillars[dayun_idx] if chart.luck_pillars else (None, None)
-            dn_tg_name = get_ten_god(chart.day_master, current_dn[0]).value if current_dn[0] else None
-            # 是否有升学信号（仅检查当前年份 ± 1，避免跨年干扰）
-            has_xs = False
-            if chart.annual_scans:
-                for a in chart.annual_scans:
-                    if abs(a.year - today.year) <= 1:
-                        for e in a.events:
-                            if e.category == "升学":
-                                has_xs = True
-                                break
-            chart.life_stage = _life_stage(
-                current_age, dayun_ten_god=dn_tg_name,
-                pattern=chart.pattern, has_xuesheng_signal=has_xs,
-            )
-        except Exception:
-            # fallback: 纯年龄判断
-            chart.warnings.append("智能人生阶段判定失败，降级为纯年龄判断")
-            today = date.today()
-            current_age = today.year - chart.birth_dt.year
-            if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
-                current_age -= 1
-            if current_age < 18:
-                chart.life_stage = "中学"
-            elif current_age < 22:
-                chart.life_stage = "大学"
-            elif current_age < 29:
-                chart.life_stage = "深造"
-            elif current_age < 56:
-                chart.life_stage = "职场"
-            else:
-                chart.life_stage = "晚年"
+    _compute_life_stage(chart, life_stage_override, start_age)
 
     # ── 13. 性格与家境分析 ──
     pd = None

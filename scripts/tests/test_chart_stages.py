@@ -1,7 +1,8 @@
 """Chart build stage helper tests."""
 
-from datetime import datetime
+from datetime import date, datetime
 
+import bazi_engine.chart as chart_module
 from bazi_engine.chart import (
     _attach_hidden_stems_and_nayin,
     _compute_dayun_stage,
@@ -9,6 +10,7 @@ from bazi_engine.chart import (
     _compute_four_pillars,
     _compute_interactions_stage,
     _compute_changsheng_stage,
+    _compute_life_stage,
     _compute_liunian_stage,
     _compute_nayin_relations,
     _compute_palace_origins,
@@ -609,3 +611,70 @@ def test_compute_changsheng_stage_sets_pillar_dayun_and_liunian_states(monkeypat
         ("流年", "卯", "死", 2023),
         ("流年", "辰", "墓", 2024),
     ]
+
+
+def test_compute_life_stage_honors_manual_override():
+    chart = _init_chart_shell(
+        name="test",
+        gender="男",
+        year=1990,
+        month=6,
+        day=15,
+        hour=12,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+
+    _compute_life_stage(chart, life_stage_override="职场", start_age=0)
+
+    assert chart.life_stage == "职场"
+
+
+def test_compute_life_stage_uses_fixed_current_age_and_liunian_signal(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 12)
+
+    monkeypatch.setattr(chart_module, "date", FixedDate)
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
+    _compute_ten_gods_stage(chart)
+    all_stems = _compute_pattern_stage(chart)
+    _compute_void_gods_stage(chart, all_stems)
+    start_age = _compute_dayun_stage(chart, gender="男")
+    _compute_dayun_modulation_stage(chart, start_age)
+    _, branch_labels = _compute_interactions_stage(chart, all_branches)
+    _compute_spirits_stage(chart, branch_labels)
+    _compute_liunian_stage(
+        chart,
+        gender="男",
+        start_age=start_age,
+        liunian_range=(2025, 2026),
+        known_events=None,
+        favorable=None,
+    )
+
+    _compute_life_stage(chart, life_stage_override="", start_age=start_age)
+
+    assert chart.life_stage == "大学"
