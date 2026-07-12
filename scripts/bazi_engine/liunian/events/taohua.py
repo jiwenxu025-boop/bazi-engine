@@ -239,18 +239,10 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             notes.append("冲夫妻宫+七杀→感情危机加剧 (段建业: 夫宫冲穿必离婚)")
 
         # 冲夫妻宫 → 负面
-        if "冲夫妻宫" in _triggers_str or "分手" in _notes_str:
-            direction = "负面"
-        # 卯辰穿（校准 4/4 负面, 含命局卯辰穿）
-        elif "卯辰穿" in _triggers_str and "天喜伴生" not in _triggers_str:
-            direction = "负面"
-        # 自刑+伏吟 → 负面（无论前一年状态，自刑即内耗）
-        elif "自刑" in _triggers_str and "伏吟" in _triggers_str:
+        if "冲夫妻宫" in _triggers_str or "分手" in _notes_str or ("卯辰穿" in _triggers_str and "天喜伴生" not in _triggers_str) or ("自刑" in _triggers_str and "伏吟" in _triggers_str):
             direction = "负面"
         # 卯辰穿+天喜伴生 → 中性（校准 1/1: 可进入但根基不稳）
-        elif "卯辰穿" in _triggers_str and "天喜伴生" in _triggers_str:
-            direction = "中性"
-        elif "困扰" in _notes_str or "不稳" in _notes_str:
+        elif ("卯辰穿" in _triggers_str and "天喜伴生" in _triggers_str) or "困扰" in _notes_str or "不稳" in _notes_str:
             direction = "中性"
 
         # ── v0.11.2: 双场景标注——不猜状态，两种情况都说清楚 ──

@@ -284,9 +284,7 @@ def determine_qiangruo(
         if stem == day_master:
             continue
         ss = get_ten_god(day_master, stem)
-        if ss in (Shishen.比肩, Shishen.劫财):
-            score += 1.0
-        elif ss in (Shishen.正印, Shishen.偏印):
+        if ss in (Shishen.比肩, Shishen.劫财) or ss in (Shishen.正印, Shishen.偏印):
             score += 1.0
         elif ss in (Shishen.正官, Shishen.偏官):
             score -= 1.0

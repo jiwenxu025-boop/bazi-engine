@@ -88,9 +88,7 @@ def detect_zhuangtai_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             direction = "负面"
         elif "伏吟" in _trig_str:
             direction = "中性"
-        elif "枭神" in _trig_str:
-            direction = "负面"
-        elif ln_shishen == Shishen.偏官 and fav is not True:
+        elif "枭神" in _trig_str or (ln_shishen == Shishen.偏官 and fav is not True):
             direction = "负面"
         elif ln_shishen == Shishen.伤官:
             direction = "中性"

@@ -260,10 +260,7 @@ class CalibrationStore:
             elif ev.direction == "负面" and is_positive_actual:
                 match = False
                 note = f"引擎判为负面，实际正面({actual})"
-            elif ev.direction == "正面" and is_positive_actual:
-                match = True
-                note = "方向一致"
-            elif ev.direction == "负面" and is_negative_actual:
+            elif (ev.direction == "正面" and is_positive_actual) or (ev.direction == "负面" and is_negative_actual):
                 match = True
                 note = "方向一致"
             else:

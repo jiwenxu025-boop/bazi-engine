@@ -313,9 +313,7 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                 if isinstance(v, (int, float)) and (v >= 7 or v <= 3):
                     _hints.append(f"{k}={v}" + ("(偏高)" if v >= 7 else "(偏低)"))
             for k, v in raw.items():
-                if isinstance(v, list) and v:
-                    _hints.append(f"{k}={v}")
-                elif isinstance(v, str) and v and v not in ("平稳", "中和", "强", "弱"):
+                if (isinstance(v, list) and v) or (isinstance(v, str) and v and v not in ("平稳", "中和", "强", "弱")):
                     _hints.append(f"{k}={v}")
             _enriched[dim] = dict(raw)
             if _hints:

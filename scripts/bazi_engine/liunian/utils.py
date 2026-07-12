@@ -178,9 +178,7 @@ def _life_stage(age: int,
     # ── 第一层：年龄打底 ──
     if age >= 56:
         base = "晚年"
-    elif age >= 29:
-        base = "职场"
-    elif age >= 26:
+    elif age >= 29 or age >= 26:
         base = "职场"
     elif age >= 22:
         base = "职场"  # 22-25 多数人已工作，深造是少数
