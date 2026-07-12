@@ -705,6 +705,89 @@ def _compute_life_stage(chart: BaziChart, life_stage_override: str, start_age: i
                 chart.life_stage = "晚年"
 
 
+def _compute_personality_family_stage(chart: BaziChart, gender: str, family_context: str | None):
+    pd = None
+    interactions_dict = None
+    try:
+        from .personality_analysis import analyze_family, analyze_personality, build_pillars_data_for_analysis
+        pd = build_pillars_data_for_analysis(chart)
+
+        yongshen_data = chart._yongshen_result or {}
+        fav_shishen = yongshen_data.get("favorable", [])
+        harm_shishen = yongshen_data.get("harmful", [])
+
+        # Compute interactions directly (avoid circular to_dict call)
+        _sl = [(chart.year.stem, "年柱"), (chart.month.stem, "月柱"),
+               (chart.day.stem, "日柱"), (chart.hour.stem, "时柱")]
+        _bl = [(chart.year.branch, "年柱"), (chart.month.branch, "月柱"),
+               (chart.day.branch, "日柱"), (chart.hour.branch, "时柱")]
+        interactions_dict = {
+            "tiangan_wuhe": [w.to_dict() for w in find_tiangan_wuhe(_sl)],
+            "dizhi": [d.to_dict() for d in find_all_dizhi_interactions(_bl)],
+        }
+
+        # 性格分析
+        pr = analyze_personality(
+            day_master_stem=chart.day_master.value,
+            day_master_wuxing=chart.day_master.wuxing.value,
+            day_master_yinyang=chart.day_master.yinyang,
+            pattern=chart.pattern,
+            strength=yongshen_data.get("strength", "中和"),
+            score=yongshen_data.get("score", 0),
+            favorable_shishen=fav_shishen,
+            harmful_shishen=harm_shishen,
+            pillars_data=pd,
+            interactions=interactions_dict,
+            gender=gender,
+        )
+        chart.personality_result = pr.to_dict()
+
+        # 格局成格/破格验证
+        try:
+            from .pattern import validate_pattern
+            tiaohou = chart.tiaohou_result or {}
+            pattern_val = validate_pattern(
+                chart.pattern, chart.day_master, pd,
+                harmful_shishen=harm_shishen,
+                weighted_scores=pr.weighted_shishen.get("scores", {}),
+                strength=yongshen_data.get("strength", "中和"),
+                tiaohou_is_fei_ju=tiaohou.get("is_fei_ju", False),
+                interactions=interactions_dict,
+            )
+            chart.personality_result["pattern_validation"] = pattern_val
+        except Exception:
+            pass
+
+        # 家境分析
+        fr = analyze_family(
+            day_master_stem=chart.day_master.value,
+            day_master_wuxing=chart.day_master.wuxing.value,
+            gender=gender,
+            strength=yongshen_data.get("strength", "中和"),
+            yongshen_result=yongshen_data,
+            pillars_data=pd,
+            interactions=interactions_dict,
+            pattern=chart.pattern,
+            family_context=family_context,
+        )
+        chart.family_result = fr.to_dict()
+
+        # ── LLM 融合引擎 (v0.11.0) ──
+        try:
+            from .personality_fusion import FUSION_ENABLED
+            if FUSION_ENABLED:
+                chart.personality_result["_fusion_ready"] = True
+        except Exception:
+            pass
+
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        chart.warnings.append(f"性格家境分析失败: {e}\n{tb}")
+
+    return pd, interactions_dict
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -825,87 +908,12 @@ def build_chart(
     _compute_life_stage(chart, life_stage_override, start_age)
 
     # ── 13. 性格与家境分析 ──
-    pd = None
-    try:
-        from .personality_analysis import analyze_family, analyze_personality, build_pillars_data_for_analysis
-        pd = build_pillars_data_for_analysis(chart)
-
-        yongshen_data = chart._yongshen_result or {}
-        fav_shishen = yongshen_data.get("favorable", [])
-        harm_shishen = yongshen_data.get("harmful", [])
-
-        # Compute interactions directly (avoid circular to_dict call)
-        _sl = [(chart.year.stem, "年柱"), (chart.month.stem, "月柱"),
-               (chart.day.stem, "日柱"), (chart.hour.stem, "时柱")]
-        _bl = [(chart.year.branch, "年柱"), (chart.month.branch, "月柱"),
-               (chart.day.branch, "日柱"), (chart.hour.branch, "时柱")]
-        interactions_dict = {
-            "tiangan_wuhe": [w.to_dict() for w in find_tiangan_wuhe(_sl)],
-            "dizhi": [d.to_dict() for d in find_all_dizhi_interactions(_bl)],
-        }
-
-        # 性格分析
-        pr = analyze_personality(
-            day_master_stem=chart.day_master.value,
-            day_master_wuxing=chart.day_master.wuxing.value,
-            day_master_yinyang=chart.day_master.yinyang,
-            pattern=chart.pattern,
-            strength=yongshen_data.get("strength", "中和"),
-            score=yongshen_data.get("score", 0),
-            favorable_shishen=fav_shishen,
-            harmful_shishen=harm_shishen,
-            pillars_data=pd,
-            interactions=interactions_dict,
-            gender=gender,
-        )
-        chart.personality_result = pr.to_dict()
-
-        # 格局成格/破格验证
-        try:
-            from .pattern import validate_pattern
-            tiaohou = chart.tiaohou_result or {}
-            pattern_val = validate_pattern(
-                chart.pattern, chart.day_master, pd,
-                harmful_shishen=harm_shishen,
-                weighted_scores=pr.weighted_shishen.get("scores", {}),
-                strength=yongshen_data.get("strength", "中和"),
-                tiaohou_is_fei_ju=tiaohou.get("is_fei_ju", False),
-                interactions=interactions_dict,
-            )
-            chart.personality_result["pattern_validation"] = pattern_val
-        except Exception:
-            pass
-
-        # 家境分析
-        fr = analyze_family(
-            day_master_stem=chart.day_master.value,
-            day_master_wuxing=chart.day_master.wuxing.value,
-            gender=gender,
-            strength=yongshen_data.get("strength", "中和"),
-            yongshen_result=yongshen_data,
-            pillars_data=pd,
-            interactions=interactions_dict,
-            pattern=chart.pattern,
-            family_context=family_context,
-        )
-        chart.family_result = fr.to_dict()
-
-        # ── LLM 融合引擎 (v0.11.0) ──
-        try:
-            from .personality_fusion import FUSION_ENABLED
-            if FUSION_ENABLED:
-                chart.personality_result["_fusion_ready"] = True
-        except Exception:
-            pass
-
-    except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        chart.warnings.append(f"性格家境分析失败: {e}\n{tb}")
+    pd, interactions_dict = _compute_personality_family_stage(chart, gender, family_context)
 
     # ── 13b. 宫位叠象 ──
     if pd is not None:
         try:
+            from .personality_analysis import build_pillars_data_for_analysis
             from .palace_star import analyze_palace_stars
             pd_ps = build_pillars_data_for_analysis(chart)
             chart.palace_star_result = analyze_palace_stars(
@@ -917,7 +925,7 @@ def build_chart(
     # ── 13c. 宾主体用 + 墓库应期 ──
     try:
         from .body_use import analyze_body_use
-        if pd is not None:
+        if pd is not None and interactions_dict is not None:
             chart.body_use_result = analyze_body_use(
                 pd, interactions_dict, chart.luck_pillars, chart.annual_scans
             ).to_dict()

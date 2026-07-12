@@ -14,6 +14,7 @@ from bazi_engine.chart import (
     _compute_liunian_stage,
     _compute_nayin_relations,
     _compute_palace_origins,
+    _compute_personality_family_stage,
     _compute_pattern_stage,
     _compute_spirits_stage,
     _compute_tiaohou_health_stage,
@@ -678,3 +679,50 @@ def test_compute_life_stage_uses_fixed_current_age_and_liunian_signal(monkeypatc
     _compute_life_stage(chart, life_stage_override="", start_age=start_age)
 
     assert chart.life_stage == "大学"
+
+
+def test_compute_personality_family_stage_sets_analysis_and_returns_context(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
+    chart = _init_chart_shell(
+        name="案例A",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        day_pillar_override=None,
+        favorable=None,
+        life_stage_override="",
+        family_context=None,
+        hour_confirmed=True,
+    )
+    _compute_four_pillars(chart, 2007, 8, 26, 20, None)
+    _attach_hidden_stems_and_nayin(chart)
+    _, all_branches = _compute_yongshen_stage(chart, favorable=None)
+    _compute_tiaohou_health_stage(chart, [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem], all_branches)
+    _compute_ten_gods_stage(chart)
+    all_stems = _compute_pattern_stage(chart)
+    _compute_void_gods_stage(chart, all_stems)
+    start_age = _compute_dayun_stage(chart, gender="男")
+    _compute_dayun_modulation_stage(chart, start_age)
+    _, branch_labels = _compute_interactions_stage(chart, all_branches)
+    _compute_spirits_stage(chart, branch_labels)
+    _compute_liunian_stage(
+        chart,
+        gender="男",
+        start_age=start_age,
+        liunian_range=(2023, 2024),
+        known_events=None,
+        favorable=None,
+    )
+    _compute_changsheng_stage(chart)
+    _compute_life_stage(chart, life_stage_override="大学", start_age=start_age)
+
+    pd, interactions_dict = _compute_personality_family_stage(chart, gender="男", family_context=None)
+
+    assert pd is not None
+    assert set(interactions_dict) == {"tiangan_wuhe", "dizhi"}
+    assert chart.personality_result["strength_label"] == "强（5.5分）"
+    assert chart.personality_result["pattern_validation"]["status"] == "成格"
+    assert chart.family_result["level"] == "普通"
