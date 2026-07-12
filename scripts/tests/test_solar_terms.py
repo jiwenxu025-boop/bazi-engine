@@ -1,5 +1,6 @@
 """节气精确化验证 — ephem 天文计算 vs 已知数据"""
 import sys
+from itertools import pairwise
 
 sys.path.insert(0, "..")
 
@@ -24,7 +25,7 @@ def test_jie_datetime_ordering():
     """12 个节在年内必须按时间顺序排列"""
     for year in [2000, 2007, 2024, 2025]:
         dts = [get_jie_datetime(year, i) for i in range(12)]
-        for a, b in zip(dts, dts[1:], strict=False):
+        for a, b in pairwise(dts):
             assert a < b, f"{year}: 节顺序错误"
 
 
@@ -45,7 +46,7 @@ def test_xujiwen_start_age():
     assert len(warns) == 0, f"ephem 路径不应有警告: {warns}"
     # 18.49 天 → 18 整天 → 6 岁
     assert 18.0 < days < 19.0, f"距立秋天数异常: {days:.2f}"
-    total_days = int(round(days + 1e-9))
+    total_days = round(days + 1e-9)
     assert total_days // 3 == 6, f"起运年龄应为6岁，实际: {total_days // 3}"
 
 
@@ -54,7 +55,7 @@ def test_fangfeixiang_start_age():
     birth = datetime(2006, 8, 16, 7, 0, 0)
     days, warns = distance_to_next_jie(birth)
     assert len(warns) == 0, f"ephem 路径不应有警告: {warns}"
-    total_days = int(round(days + 1e-9))
+    total_days = round(days + 1e-9)
     assert total_days // 3 == 7, f"起运年龄应为7岁，实际: {total_days // 3}"
 
 

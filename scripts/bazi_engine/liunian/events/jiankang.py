@@ -188,7 +188,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # 地支藏七杀+日主临衰地 → 隐性七杀攻身
     # 注意：十二长生"病/死/绝/墓"是流年气数，不等于全局身强弱
-    if not (ln_shishen == Shishen.偏官):
+    if ln_shishen != Shishen.偏官:
         ln_canggan_sha = [get_ten_god(day_master, hs.stem) for hs in DIZHI_CANGGAN.get(ln_branch, [])]
         has_sha_in_branch = Shishen.偏官 in ln_canggan_sha
         cs_sha = _changsheng_status(day_master, ln_branch)

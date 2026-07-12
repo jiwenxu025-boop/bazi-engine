@@ -49,7 +49,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         triggers.append("桃花合入夫妻宫")
 
     # 红鸾/天喜叠临桃花
-    if (ln_branch == hongluan or ln_branch == tianxi) and ln_branch == taohua:
+    if ln_branch in (hongluan, tianxi) and ln_branch == taohua:
         strength = max(strength, 3)
         triggers.append("红鸾/天喜叠桃花")
 

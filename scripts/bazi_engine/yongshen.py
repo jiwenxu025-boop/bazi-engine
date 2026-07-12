@@ -5,6 +5,8 @@
 v0.8.0: +假生陷阱修正 + 十二长生修正
 """
 
+from contextlib import suppress
+
 from ._constants import CONG_GE_CHECKS, DIZHI_CANGGAN, SHIER_CHANGSHENG, TIANGAN_WUHE
 from .enums import Dizhi, Shishen, Tiangan, Wuxing
 from .ten_gods import get_ten_god, wuxing_ke, wuxing_sheng
@@ -375,16 +377,12 @@ def recommend_yongshen(
         # 从格喜忌颠覆常规
         favorable = set()
         for s_name in cong_ge["favorable"]:
-            try:
+            with suppress(ValueError):
                 favorable.add(Shishen(s_name))
-            except ValueError:
-                pass
         harmful = set()
         for s_name in cong_ge["harmful"]:
-            try:
+            with suppress(ValueError):
                 harmful.add(Shishen(s_name))
-            except ValueError:
-                pass
     elif strength == "强":
         favorable = {Shishen.正官, Shishen.偏官, Shishen.食神, Shishen.伤官,
                      Shishen.正财, Shishen.偏财}

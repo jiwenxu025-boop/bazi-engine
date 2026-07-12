@@ -14,6 +14,7 @@
 
 import json
 import os
+from contextlib import suppress
 
 from ._deepseek_config import (
     DEEPSEEK_API_URL,
@@ -398,10 +399,8 @@ def generate_fusion_report(
             with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp:
                 if resp.status_code != 200:
                     body = ""
-                    try:
+                    with suppress(Exception):
                         body = resp.read().decode("utf-8", errors="replace")[:300]
-                    except Exception:
-                        pass
                     raise RuntimeError(f"API返回{resp.status_code}: {body}")
 
                 for line in resp.iter_lines():

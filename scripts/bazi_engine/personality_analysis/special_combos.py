@@ -294,7 +294,7 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     five = {"木", "火", "土", "金", "水"}
     missing_wx = five - all_wuxing_set
     if len(missing_wx) == 1:
-        mx = list(missing_wx)[0]
+        mx = next(iter(missing_wx))
         # 五行缺一的现代解读（基于经典五行特质推断，非古籍原文）：
         # 木主仁→决断/条理 火主礼→热情/社交 土主信→稳定/责任
         # 金主义→原则/执行 水主智→灵动/适应

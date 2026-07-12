@@ -29,7 +29,7 @@ class ScoreAccumulator:
         if shishen and fav is False:
             trigger += " [忌]"
             if modulate_score and not fixed:
-                score = score - 1 if score > 0 else score - 1
+                score -= 1
         elif shishen and fav is True:
             trigger += " [喜]"
             if modulate_score and not fixed and score > 0:

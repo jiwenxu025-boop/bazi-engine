@@ -5,6 +5,7 @@ import os
 import re
 import time
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from pathlib import Path
 
 import httpx
@@ -252,10 +253,8 @@ def _load_codes() -> dict:
     # 环境变量注入（持久化，不受部署清空影响）
     env_codes = os.getenv("ACTIVATION_CODES", "")
     if env_codes:
-        try:
+        with suppress(json.JSONDecodeError):
             codes.update(json.loads(env_codes))
-        except json.JSONDecodeError:
-            pass
 
     return codes
 

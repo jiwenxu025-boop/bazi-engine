@@ -16,6 +16,7 @@ import concurrent.futures
 import json
 import os
 import threading
+from contextlib import suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
@@ -785,10 +786,8 @@ def admin_feedback(key: str = Query(""), days: int = Query(7, description="查�
             break
         with open(f, encoding="utf-8") as fh:
             for line in fh:
-                try:
+                with suppress(Exception):
                     records.append(json.loads(line.strip()))
-                except Exception:
-                    pass
 
     # 统计
     total = len(records)

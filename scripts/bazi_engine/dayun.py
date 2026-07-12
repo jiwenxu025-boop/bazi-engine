@@ -49,7 +49,7 @@ def compute_start_age(birth_dt: datetime, direction: str,
     warnings = list(w)
 
     # 浮点天→整数天（传统三天折一岁）
-    total_days = int(round(days_float + 1e-9))
+    total_days = round(days_float + 1e-9)
     age = total_days // 3
     remainder = total_days % 3
     # 余2天≈8个月，进位到下一岁
@@ -298,7 +298,7 @@ class DayunModulator:
             if match_count == 3:
                 inters.append(f"与原局三合{getattr(wx, 'value', str(wx))}局")
             elif match_count == 2:
-                other = [b for b in trio if b in all_set and b != dayun_branch][0]
+                other = next(b for b in trio if b in all_set and b != dayun_branch)
                 inters.append(f"与原局{other.value}半合{getattr(wx, 'value', str(wx))}")
 
         # 3. 三会: 三支齐聚方成局
