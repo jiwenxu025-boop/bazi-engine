@@ -223,26 +223,31 @@ async def stream_chart(    name, gender, year, month, day, hour,
                     )
                     fusion_queue: asyncio.Queue = asyncio.Queue()
 
-                    def on_token(tok: str):
+                    def on_token(tok: str, _fusion_queue=fusion_queue):
                         loop.call_soon_threadsafe(
-                            fusion_queue.put_nowait, ("token", tok))
+                            _fusion_queue.put_nowait, ("token", tok))
 
                     fusion_done_flag = {"done": False}
 
-                    def run_fusion():
+                    def run_fusion(
+                        _fusion_key=fusion_key,
+                        _fusion_queue=fusion_queue,
+                        _pkg=pkg,
+                        _fusion_done_flag=fusion_done_flag,
+                    ):
                         try:
-                            if not fusion_key:
-                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
+                            if not _fusion_key:
+                                loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
                                 return
-                            full = generate_fusion_report(pkg, on_chunk=on_token)
+                            full = generate_fusion_report(_pkg, on_chunk=on_token)
                             if full:
-                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_done", full))
+                                loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_done", full))
                             else:
-                                loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", "API返回空"))
-                            fusion_done_flag["done"] = True
+                                loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", "API返回空"))
+                            _fusion_done_flag["done"] = True
                         except Exception as e:
-                            loop.call_soon_threadsafe(fusion_queue.put_nowait, ("fusion_error", str(e)))
-                            fusion_done_flag["done"] = True
+                            loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", str(e)))
+                            _fusion_done_flag["done"] = True
 
                     fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                     loop.run_in_executor(fusion_ex, run_fusion)
@@ -288,13 +293,18 @@ async def stream_chart(    name, gender, year, month, day, hour,
                 dy_queue: asyncio.Queue = asyncio.Queue()
                 dy_error: list = []
 
-                def _run_dayun():
+                def _run_dayun(
+                    _chart=chart,
+                    _loop_dy=loop_dy,
+                    _dy_queue=dy_queue,
+                    _dy_error=dy_error,
+                ):
                     try:
-                        result = enrich_dayun_interpretations(chart) if chart else []
-                        loop_dy.call_soon_threadsafe(dy_queue.put_nowait, result)
+                        result = enrich_dayun_interpretations(_chart) if _chart else []
+                        _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, result)
                     except Exception as e:
-                        dy_error.append(str(e))
-                        loop_dy.call_soon_threadsafe(dy_queue.put_nowait, [])
+                        _dy_error.append(str(e))
+                        _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, [])
 
                 executor.submit(_run_dayun)
                 while True:
