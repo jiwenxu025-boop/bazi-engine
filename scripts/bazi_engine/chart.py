@@ -301,6 +301,133 @@ def _build_llm_context(chart) -> dict:
     }
 
 
+def _init_chart_shell(
+    name: str,
+    gender: str,
+    year: int,
+    month: int,
+    day: int,
+    hour: int,
+    day_pillar_override: tuple[str, str] | None,
+    favorable: set[str] | None,
+    life_stage_override: str,
+    family_context: dict | None,
+    hour_confirmed: bool,
+) -> BaziChart:
+    chart = BaziChart.__new__(BaziChart)
+    chart.name = name
+    chart.gender = gender
+    chart.birth_dt = datetime(year, month, day, hour)
+    chart.day_pillar_source = "override" if day_pillar_override else "formula"
+    chart.favorable_tags = favorable or set()
+    chart.warnings = []
+    chart.life_stage_override = life_stage_override
+    chart._life_stage_override = life_stage_override  # 供 scan_years 内部使用
+    chart.family_context = family_context
+    chart.hour_confirmed = hour_confirmed
+
+    if not hour_confirmed:
+        chart.warnings.append(
+            "⚠ 出生时辰未确认（使用默认值）→ 格局判定、大运起运年龄、时柱神煞仅供参考，"
+            "可能因时辰偏差而不准。年柱/月柱/日柱及家境分析不受影响。"
+        )
+
+    return chart
+
+
+def _compute_four_pillars(
+    chart: BaziChart,
+    year: int,
+    month: int,
+    day: int,
+    hour: int,
+    day_pillar_override: tuple[str, str] | None,
+) -> tuple[Tiangan, Tiangan, Dizhi, Dizhi]:
+    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour)
+    chart.warnings.extend(y_w)
+    chart.year = PillarData("年柱", y_tg, y_dz)
+
+    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour, gregorian_year=year)
+    chart.warnings.extend(m_w)
+    chart.month = PillarData("月柱", m_tg, m_dz)
+
+    if day_pillar_override:
+        d_tg = Tiangan(day_pillar_override[0])
+        d_dz = Dizhi(day_pillar_override[1])
+    else:
+        d_tg, d_dz, d_w = compute_day_pillar(year, month, day)
+        chart.warnings.extend(d_w)
+    chart.day = PillarData("日柱", d_tg, d_dz)
+    chart.day_master = d_tg
+
+    h_tg, h_dz, h_w, zi_flag = compute_hour_pillar(d_tg, hour)
+    chart.warnings.extend(h_w)
+    chart.hour = PillarData("时柱", h_tg, h_dz)
+    chart.hour_zi_flag = zi_flag
+
+    return y_tg, m_tg, m_dz, h_dz
+
+
+def _attach_hidden_stems_and_nayin(chart: BaziChart) -> None:
+    for pillar in [chart.year, chart.month, chart.day, chart.hour]:
+        pillar.hidden_stems = DIZHI_CANGGAN.get(pillar.branch, [])
+        pillar.nayin = get_nayin(pillar.stem, pillar.branch)
+
+
+def _compute_palace_origins(
+    chart: BaziChart,
+    year_stem: Tiangan,
+    month_stem: Tiangan,
+    month_branch: Dizhi,
+    hour_branch: Dizhi,
+) -> None:
+    mg_s, mg_b, mg_n = compute_minggong_full(year_stem, month_branch, hour_branch)
+    chart.minggong_stem = mg_s
+    chart.minggong_branch = mg_b
+    chart.minggong_nayin = mg_n
+
+    sg_s, sg_b, sg_n = compute_shengong_full(year_stem, month_branch, hour_branch)
+    chart.shengong_stem = sg_s
+    chart.shengong_branch = sg_b
+    chart.shengong_nayin = sg_n
+
+    ty_s, ty_b, ty_n = compute_taiyuan(month_stem, month_branch)
+    chart.taiyuan_stem = ty_s
+    chart.taiyuan_branch = ty_b
+    chart.taiyuan_nayin = ty_n
+
+
+def _compute_nayin_relations(chart: BaziChart) -> None:
+    try:
+        from .nayin_chain import find_all_nayin_relations
+        chart.nayin_relations = find_all_nayin_relations(
+            chart.year.nayin, chart.month.nayin, chart.day.nayin, chart.hour.nayin,
+        )
+    except Exception as e:
+        chart.warnings.append(f"纳音生克链分析失败: {e}")
+
+
+def _compute_yongshen_stage(
+    chart: BaziChart,
+    favorable: set[str] | None,
+) -> tuple[list[Tiangan], list[Dizhi]]:
+    all_stems = [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem]
+    all_branches = [chart.year.branch, chart.month.branch, chart.day.branch, chart.hour.branch]
+
+    try:
+        from .yongshen import recommend_yongshen
+        chart._yongshen_result = recommend_yongshen(
+            chart.day_master, chart.month.branch, all_stems, all_branches
+        )
+        # 若用户提供了喜用神，合并覆盖自动推荐
+        if favorable:
+            chart._yongshen_result["favorable"] = sorted(favorable)
+    except Exception as e:
+        chart.warnings.append(f"用神推荐失败: {e}")
+
+    return all_stems, all_branches
+
+
 def build_chart(
     name: str,
     gender: str,
@@ -333,23 +460,19 @@ def build_chart(
     Returns:
         BaziChart: 完整命盘
     """
-    chart = BaziChart.__new__(BaziChart)
-    chart.name = name
-    chart.gender = gender
-    chart.birth_dt = datetime(year, month, day, hour)
-    chart.day_pillar_source = "override" if day_pillar_override else "formula"
-    chart.favorable_tags = favorable or set()
-    chart.warnings = []
-    chart.life_stage_override = life_stage_override
-    chart._life_stage_override = life_stage_override  # 供 scan_years 内部使用
-    chart.family_context = family_context
-    chart.hour_confirmed = hour_confirmed
-
-    if not hour_confirmed:
-        chart.warnings.append(
-            "⚠ 出生时辰未确认（使用默认值）→ 格局判定、大运起运年龄、时柱神煞仅供参考，"
-            "可能因时辰偏差而不准。年柱/月柱/日柱及家境分析不受影响。"
-        )
+    chart = _init_chart_shell(
+        name=name,
+        gender=gender,
+        year=year,
+        month=month,
+        day=day,
+        hour=hour,
+        day_pillar_override=day_pillar_override,
+        favorable=favorable,
+        life_stage_override=life_stage_override,
+        family_context=family_context,
+        hour_confirmed=hour_confirmed,
+    )
 
     # 校准数据库自动加载
     if calibrate:
@@ -364,75 +487,22 @@ def build_chart(
         except Exception:
             chart.warnings.append("校准数据加载失败，跳过已知事件注入")
 
-    # ── 1. 年柱 ──
-    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour)
-    chart.warnings.extend(y_w)
-    chart.year = PillarData("年柱", y_tg, y_dz)
-
-    # ── 2. 月柱 ──
-    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour, gregorian_year=year)
-    chart.warnings.extend(m_w)
-    chart.month = PillarData("月柱", m_tg, m_dz)
-
-    # ── 3. 日柱 ──
-    if day_pillar_override:
-        d_tg = Tiangan(day_pillar_override[0])
-        d_dz = Dizhi(day_pillar_override[1])
-    else:
-        d_tg, d_dz, d_w = compute_day_pillar(year, month, day)
-        chart.warnings.extend(d_w)
-    chart.day = PillarData("日柱", d_tg, d_dz)
-    chart.day_master = d_tg
-
-    # ── 4. 时柱 ──
-    h_tg, h_dz, h_w, zi_flag = compute_hour_pillar(d_tg, hour)
-    chart.warnings.extend(h_w)
-    chart.hour = PillarData("时柱", h_tg, h_dz)
-    chart.hour_zi_flag = zi_flag
+    # ── 1-4. 四柱 ──
+    y_tg, m_tg, m_dz, h_dz = _compute_four_pillars(
+        chart, year, month, day, hour, day_pillar_override
+    )
 
     # ── 5. 藏干 + 纳音 ──
-    for pillar in [chart.year, chart.month, chart.day, chart.hour]:
-        pillar.hidden_stems = DIZHI_CANGGAN.get(pillar.branch, [])
-        pillar.nayin = get_nayin(pillar.stem, pillar.branch)
+    _attach_hidden_stems_and_nayin(chart)
 
     # ── 5b. 命宫 + 身宫 + 胎元 ──
-    mg_s, mg_b, mg_n = compute_minggong_full(y_tg, m_dz, h_dz)
-    chart.minggong_stem = mg_s
-    chart.minggong_branch = mg_b
-    chart.minggong_nayin = mg_n
-
-    sg_s, sg_b, sg_n = compute_shengong_full(y_tg, m_dz, h_dz)
-    chart.shengong_stem = sg_s
-    chart.shengong_branch = sg_b
-    chart.shengong_nayin = sg_n
-
-    ty_s, ty_b, ty_n = compute_taiyuan(m_tg, m_dz)
-    chart.taiyuan_stem = ty_s
-    chart.taiyuan_branch = ty_b
-    chart.taiyuan_nayin = ty_n
+    _compute_palace_origins(chart, y_tg, m_tg, m_dz, h_dz)
 
     # ── 5d. 纳音生克链 ──
-    try:
-        from .nayin_chain import find_all_nayin_relations
-        chart.nayin_relations = find_all_nayin_relations(
-            chart.year.nayin, chart.month.nayin, chart.day.nayin, chart.hour.nayin,
-        )
-    except Exception as e:
-        chart.warnings.append(f"纳音生克链分析失败: {e}")
+    _compute_nayin_relations(chart)
 
     # ── 5c. 用神自动推荐（始终运行以获取强弱数据，用户喜用可补充）──
-    try:
-        from .yongshen import recommend_yongshen
-        all_stems = [chart.year.stem, chart.month.stem, chart.day.stem, chart.hour.stem]
-        all_branches = [chart.year.branch, chart.month.branch, chart.day.branch, chart.hour.branch]
-        chart._yongshen_result = recommend_yongshen(
-            chart.day_master, chart.month.branch, all_stems, all_branches
-        )
-        # 若用户提供了喜用神，合并覆盖自动推荐
-        if favorable:
-            chart._yongshen_result["favorable"] = sorted(favorable)
-    except Exception as e:
-        chart.warnings.append(f"用神推荐失败: {e}")
+    all_stems, all_branches = _compute_yongshen_stage(chart, favorable)
 
     # ── 5e. 调候独立分析（陆致极"调候为先"）──
     try:

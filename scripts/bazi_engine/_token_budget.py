@@ -2,10 +2,11 @@
 
 使用简单的中文 token 估算（中文约 1 字 ≈ 1 token，英文约 1 词 ≈ 1.3 token）。
 误差约 ±20%，但对于预算控制足够了。
-import re
 """
 
 # DeepSeek 模型上下文窗口
+import re
+
 MODEL_CONTEXT_WINDOWS = {
     "deepseek-chat": 64000,
     "deepseek-v4-flash": 64000,

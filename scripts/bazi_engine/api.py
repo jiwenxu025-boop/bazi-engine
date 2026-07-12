@@ -15,6 +15,7 @@ import asyncio
 import concurrent.futures
 import json
 import os
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
@@ -845,7 +846,6 @@ fetch('/api/admin/codes?key=' + new URLSearchParams(location.search).get('key'))
 # ═══════════════════════════════════════════════════════════════
 
 _FEEDBACK_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "feedback"
-_FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
 _FEEDBACK_LOCK = threading.Lock()
 
 
@@ -898,6 +898,7 @@ async def feedback_api(request: Request):
     date_str = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
     feedback_file = _FEEDBACK_DIR / f"feedback_{date_str}.jsonl"
 
+    _FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
     with open(feedback_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 

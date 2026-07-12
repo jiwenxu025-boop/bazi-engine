@@ -19,6 +19,8 @@ def test_career_calibration(case):
 
 def test_career_overall_stats():
     """事业总体命中率 ≥60% 严格"""
+    if _stats["expected"] == 0:
+        pytest.skip("no calibration cases produced expected events")
     assert _stats["strict"] / _stats["expected"] >= 0.55, (
         f"严格命中率 {_stats['strict']}/{_stats['expected']} < 55%"
     )

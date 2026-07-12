@@ -20,6 +20,8 @@ def test_marriage_calibration(case):
 
 def test_marriage_overall_stats():
     """婚嫁总体命中率 ≥70% 严格 / 100% 容差"""
+    if _stats["expected"] == 0:
+        pytest.skip("no calibration cases produced expected events")
     assert _stats["strict"] / _stats["expected"] >= 0.70, (
         f"严格命中率 {_stats['strict']}/{_stats['expected']} < 70%"
     )

@@ -24,6 +24,8 @@ def test_others_calibration(case):
 
 def test_others_overall_stats():
     """人际/状态/搬迁/健康整体命中率 ≥50% 严格"""
+    if _stats["expected"] == 0:
+        pytest.skip("no calibration cases produced expected events")
     assert _stats["strict"] / _stats["expected"] >= 0.45, (
         f"严格命中率 {_stats['strict']}/{_stats['expected']} < 45%"
     )

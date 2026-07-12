@@ -48,7 +48,8 @@ import sys; sys.path.insert(0, '.')
 from bazi_engine.chart import build_chart
 c = build_chart('test', '\u7537', 1990, 6, 15, 12)
 d = c.to_dict()
-assert d.get('year_pillar'), 'Missing year pillar'
-print(f'Chart built: {d.get(\"year_pillar\")}')
+assert d.get('four_pillars', {}).get('year'), 'Missing year pillar'
+year_pillar = d['four_pillars']['year']
+print(f'Chart built: {year_pillar.get(\"stem\")}{year_pillar.get(\"branch\")}')
 print('Integration test OK')
 "

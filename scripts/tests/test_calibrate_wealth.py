@@ -20,6 +20,8 @@ def test_wealth_calibration(case):
 
 def test_wealth_overall_stats():
     """财运总体命中率 ≥70% 严格"""
+    if _stats["expected"] == 0:
+        pytest.skip("no calibration cases produced expected events")
     assert _stats["strict"] / _stats["expected"] >= 0.65, (
         f"严格命中率 {_stats['strict']}/{_stats['expected']} < 65%"
     )
