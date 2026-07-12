@@ -1,6 +1,8 @@
 """财运验证集 — 区分巨富/破财/普通财运
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 WEALTH_CASES = [

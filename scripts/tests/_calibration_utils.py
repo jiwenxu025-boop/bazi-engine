@@ -7,7 +7,8 @@
   L4: ±1年+跨类别容差
   L5: 同类别弱信号（★1）
 """
-import sys, os
+import os
+import sys
 
 # 确保 bazi_engine 可导入
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

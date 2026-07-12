@@ -5,7 +5,6 @@ v0.8.0: +墓库相冲核爆检测（辰戌/丑未冲 → 土气激增 + 杂气�
 
 from dataclasses import dataclass, field
 
-from .ten_gods import wuxing_ke, wuxing_sheng
 from ._constants import (
     DIZHI_BANHE,
     DIZHI_LIUCHONG,
@@ -18,6 +17,7 @@ from ._constants import (
     TIANGAN_WUHE,
 )
 from .enums import Dizhi, Tiangan, Wuxing
+from .ten_gods import wuxing_ke
 
 
 @dataclass

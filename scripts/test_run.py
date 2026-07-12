@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
-from bazi_engine.chart import build_chart
 import os
+
+from bazi_engine.chart import build_chart
 
 os.environ['BAZI_FUSION_ENGINE'] = '1'
 os.environ['BAZI_LLM_REVIEW'] = '0'

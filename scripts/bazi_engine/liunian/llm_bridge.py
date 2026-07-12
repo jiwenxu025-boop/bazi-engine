@@ -15,6 +15,7 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
         return _execute_batch_streaming(results, llm_tasks, on_llm_result, on_llm_token)
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from ..llm_review import call_llm_review
 
     def _do_review(idx, year, ctx):
@@ -56,6 +57,7 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
         return _execute_batch_parallel(results, llm_tasks)
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from ..llm_review import call_llm_review
 
     with ThreadPoolExecutor(max_workers=min(5, len(llm_tasks))) as executor:

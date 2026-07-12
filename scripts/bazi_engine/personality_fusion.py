@@ -15,13 +15,12 @@
 import json
 import os
 
-import httpx
-from ._http import shared_client
-
 from ._deepseek_config import (
-    DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL,
-    FUSION_ENABLED, get_timeout, is_available,
+    DEEPSEEK_API_URL,
+    DEEPSEEK_KEY,
+    DEEPSEEK_MODEL,
 )
+from ._http import shared_client
 
 # ═══════════════════════════════════════════════════════════════
 # 系统提示词

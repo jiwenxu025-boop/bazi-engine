@@ -6,10 +6,12 @@
 """
 from typing import TYPE_CHECKING
 
-from .enums import Tiangan, Dizhi, Shishen
 from ._constants import (
-    TIANGAN_WUHE, DIZHI_LIUHE, DIZHI_LIUCHONG, DIZHI_XIANGHAI,
-    DIZHI_SANHE, DIZHI_XIANGXING,
+    DIZHI_LIUCHONG,
+    DIZHI_LIUHE,
+    DIZHI_SANHE,
+    DIZHI_XIANGHAI,
+    TIANGAN_WUHE,
 )
 
 if TYPE_CHECKING:

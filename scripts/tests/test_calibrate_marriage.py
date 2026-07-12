@@ -1,10 +1,13 @@
 """婚姻/桃花校准 — pytest 参数化测试"""
+import os
+import sys
+
 import pytest
-import sys, os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from calibration_marriage import MARRIAGE_CASES
 from _calibration_utils import run_calibration
+from calibration_marriage import MARRIAGE_CASES
 
 _results, _stats = run_calibration(MARRIAGE_CASES)
 

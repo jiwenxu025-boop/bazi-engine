@@ -1,8 +1,7 @@
 """家境分析"""
-from ..enums import Tiangan, Dizhi, Shishen, Wuxing
-from .._constants import DIZHI_CANGGAN, SHIER_CHANGSHENG
-from .dataclasses import FamilyResult
+from ..enums import Dizhi, Tiangan, Wuxing
 from .constants import FAMILY_LEVELS
+from .dataclasses import FamilyResult
 from .special_combos import _yangren_branch
 
 

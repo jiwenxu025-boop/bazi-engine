@@ -1,7 +1,8 @@
 """婚姻/桃花验证集 — 基于公开命例
 每个案例包含: 出生日期、事件年、期望信号类别和方向
 """
-import json, sys, os
+import os
+import sys
 
 # 添加 bazi_engine 到 path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

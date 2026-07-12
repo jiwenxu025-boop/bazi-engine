@@ -1,12 +1,4 @@
 """特殊组合检测 — 十神+地支+神煞联动"""
-from ..enums import Tiangan, Dizhi, Wuxing, Shishen
-from .._constants import (
-    TAOHUA, HUAGAI, DIZHI_LIUHE, DIZHI_LIUCHONG,
-    DIZHI_XIANGHAI, DIZHI_XIANGXING, DIZHI_SANHE, DIZHI_CANGGAN,
-)
-from ..enums import TIANGAN_YANGREN
-from ..ten_gods import get_ten_god
-from .constants import SHISHEN_PERSONALITY
 
 
 def _taohua_branch(day_branch_str: str) -> str | None:

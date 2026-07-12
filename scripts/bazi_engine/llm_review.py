@@ -9,9 +9,7 @@
 集成: DeepSeek API (同步调用，非流式)
 """
 
-from ._http import shared_client
 import json
-import os
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,9 +17,14 @@ from typing import Any
 import httpx
 
 from ._deepseek_config import (
-    DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL,
-    LLM_REVIEW_ENABLED, get_timeout, is_available,
+    DEEPSEEK_API_URL,
+    DEEPSEEK_KEY,
+    DEEPSEEK_MODEL,
+    LLM_REVIEW_ENABLED,
+    get_timeout,
+    is_available,
 )
+from ._http import shared_client
 
 
 @dataclass
@@ -577,7 +580,6 @@ def interpret_dayun(natal: dict, dayun_modulations: list[dict],
     }
 
     try:
-        import httpx
         with shared_client(60.0) as client:
             resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
             if resp.status_code != 200:
@@ -856,8 +858,8 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
 
 def _parse_batch_response(content: str, ctxs: list[dict]) -> list[list[LLMReviewResult]]:
     """解析批量审查的 JSON 响应，按年份分发结果。"""
-    import re as _re
     import json as _json
+    import re as _re
 
     results_per_year: list[list[LLMReviewResult]] = [[] for _ in ctxs]
 

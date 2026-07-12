@@ -508,7 +508,7 @@ def scan_years(
         # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
         if chart_data:
             try:
-                from ..llm_review import build_review_context, should_invoke_llm, LLM_REVIEW_ENABLED, DEEPSEEK_KEY
+                from ..llm_review import DEEPSEEK_KEY, LLM_REVIEW_ENABLED, build_review_context, should_invoke_llm
                 yr_features = _extract_year_features(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,
@@ -630,7 +630,7 @@ def scan_years(
             _execute_llm_reviews_parallel(results, llm_tasks)
     else:
         import sys
-        print(f"[llm_review] 无LLM任务(should_invoke_llm全部返回False或chart_data为空)", file=sys.stderr)
+        print("[llm_review] 无LLM任务(should_invoke_llm全部返回False或chart_data为空)", file=sys.stderr)
 
     # ── v0.15.2: 婚嫁回溯—强信号前一年检测前奏 ──
     results = _backtrack_hunjia_prelude(results)

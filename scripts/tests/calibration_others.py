@@ -1,5 +1,7 @@
 """人际/状态/搬迁/健康 综合验证集"""
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 CASES = {

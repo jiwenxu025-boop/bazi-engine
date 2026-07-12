@@ -1,21 +1,23 @@
 """性格分析主函数"""
-from ..enums import Tiangan, Dizhi, Shishen
-from .._constants import DIZHI_CANGGAN, DIZHI_LIUHE, DIZHI_SANHE
-from ..ten_gods import get_ten_god
-from .dataclasses import PersonalityResult
-from .constants import DAY_MASTER_PERSONALITY, PATTERN_PERSONALITY, SHISHEN_PERSONALITY
-from .weighting import (
-    get_weighted_shishen_report, _compute_weighted_shishen,
-    _find_dominant_shishen, _count_ten_gods, _get_hidden_ten_gods_flat,
-)
 from .bingyao import detect_bingyao_combos
+from .constants import DAY_MASTER_PERSONALITY, PATTERN_PERSONALITY
+from .dataclasses import PersonalityResult
 from .special_combos import (
-    _check_special_combos, _huagai_branch, _has_branch_in_pillars, _taohua_branch,
+    _check_special_combos,
+    _has_branch_in_pillars,
+    _huagai_branch,
+    _taohua_branch,
 )
 from .stress import analyze_stress_profile
 from .traits import (
-    _compute_shishen_sub_traits, _compute_shishen_combo_traits,
-    _compute_dizhi_traits, _compute_hidden_stem_personality,
+    _compute_dizhi_traits,
+    _compute_hidden_stem_personality,
+    _compute_shishen_combo_traits,
+    _compute_shishen_sub_traits,
+)
+from .weighting import (
+    _find_dominant_shishen,
+    get_weighted_shishen_report,
 )
 
 
@@ -167,7 +169,7 @@ def analyze_personality(
     )
     cai_po_yin_flag = any("财破印" in c for c in result.special_combos)
     # 检查是否存在官杀混杂标签（病药检测已判断）
-    has_guansha_hunza = any("官杀混杂" == c["combo"] for c in result.bingyao_combos)
+    has_guansha_hunza = any(c["combo"] == "官杀混杂" for c in result.bingyao_combos)
     # -- 病药组合 -> 维度信号调制器 --
     _bingyao_combo_names = {c["combo"] for c in result.bingyao_combos}
     _bingyao_modifiers = {}

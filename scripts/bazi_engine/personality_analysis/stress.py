@@ -1,5 +1,4 @@
 """抗压画像分析"""
-from ..enums import Tiangan, Dizhi, Shishen
 
 
 def analyze_stress_profile(

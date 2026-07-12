@@ -1,9 +1,10 @@
 """八字引擎验证测试 — 用已知命例对账（JDN 精确日柱 v0.4.2+）"""
 import sys
+
 sys.path.insert(0, "..")
 
 from bazi_engine.chart import build_chart
-from bazi_engine.enums import Tiangan, Dizhi
+from bazi_engine.enums import Dizhi, Tiangan
 
 
 def test_xujiwen():

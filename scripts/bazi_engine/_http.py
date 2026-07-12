@@ -1,6 +1,7 @@
 """共享 HTTP 客户端 — 复用连接池，避免每个模块各自创建"""
-import httpx
 from contextlib import contextmanager
+
+import httpx
 
 _client: httpx.Client | None = None
 

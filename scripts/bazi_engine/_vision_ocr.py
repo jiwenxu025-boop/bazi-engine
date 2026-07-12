@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+
 from ._http import shared_client
 
 VISION_API_URL = os.getenv("VISION_API_URL", "https://api.mimo.xiaomi.com/v1/chat/completions")

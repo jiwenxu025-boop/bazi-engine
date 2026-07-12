@@ -1,6 +1,4 @@
 """数据构建器 — 将 BaziChart 转为分析所需的结构化数据"""
-from ..enums import Tiangan, Dizhi, Shishen
-from .._constants import DIZHI_CANGGAN
 
 
 def build_pillars_data_for_analysis(chart) -> list[dict]:

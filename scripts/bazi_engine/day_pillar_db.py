@@ -8,7 +8,6 @@
     stem, branch = lookup_day_pillar(2007, 8, 26)  # -> ('壬', '辰')
 """
 
-from datetime import date
 
 # 天干地支索引表
 _TIANGAN = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]

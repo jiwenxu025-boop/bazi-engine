@@ -382,7 +382,7 @@ _MONTH_PATTERN_BASE: dict[Dizhi, dict[Tiangan, str]] = {
 
 def hour_to_dizhi(hour: int) -> tuple[Dizhi, str | None]:
     """返回 (时辰地支, 子时标记) — 标记: "早子时" | "夜子时" | None"""
-    if 23 <= hour or hour < 1:
+    if hour >= 23 or hour < 1:
         return Dizhi.子, "夜子时" if hour >= 23 else "早子时"
     elif 1 <= hour < 3:
         return Dizhi.丑, None

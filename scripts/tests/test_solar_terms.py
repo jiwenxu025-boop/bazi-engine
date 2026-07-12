@@ -1,13 +1,18 @@
 """节气精确化验证 — ephem 天文计算 vs 已知数据"""
 import sys
+
 sys.path.insert(0, "..")
 
-from bazi_engine.solar_terms import (
-    distance_to_next_jie, distance_to_prev_jie,
-    get_jie_datetime, get_all_jie_datetimes,
-    get_jieqi_near_birth, WARNING_APPROXIMATE, _HAS_EPHEM,
-)
 from datetime import datetime
+
+from bazi_engine.solar_terms import (
+    _HAS_EPHEM,
+    WARNING_APPROXIMATE,
+    distance_to_next_jie,
+    distance_to_prev_jie,
+    get_jie_datetime,
+    get_jieqi_near_birth,
+)
 
 
 def test_ephem_available():

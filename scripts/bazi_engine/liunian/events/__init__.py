@@ -11,9 +11,14 @@ from .xuesheng import detect_xuesheng_signals
 from .zhuangtai import detect_zhuangtai_signals
 
 __all__ = [
-    'detect_taohua_signals', 'detect_xuesheng_signals',
-    'detect_hunjia_signals', 'detect_shiye_signals',
-    'detect_caiyun_signals', 'detect_jiankang_signals',
-    'detect_banqian_signals', 'detect_zhuangtai_signals',
-    'detect_renji_signals', 'detect_guanfei_signals',
+    'detect_banqian_signals',
+    'detect_caiyun_signals',
+    'detect_guanfei_signals',
+    'detect_hunjia_signals',
+    'detect_jiankang_signals',
+    'detect_renji_signals',
+    'detect_shiye_signals',
+    'detect_taohua_signals',
+    'detect_xuesheng_signals',
+    'detect_zhuangtai_signals',
 ]

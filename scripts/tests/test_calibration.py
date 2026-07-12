@@ -1,6 +1,7 @@
 """校准数据库验证"""
-from pathlib import Path
 import sys
+from pathlib import Path
+
 sys.path.insert(0, "..")
 
 import pytest

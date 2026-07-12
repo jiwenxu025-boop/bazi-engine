@@ -168,7 +168,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
     while True:
         try:
             msg_type, msg_data = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
             continue
         if msg_type == "error":
@@ -256,7 +256,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                     while True:
                         try:
                             ft, fd = await asyncio.wait_for(fusion_queue.get(), timeout=15.0)
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             if fusion_done_flag["done"]:
                                 break  # thread finished but queue empty
                             elapsed = loop.time() - _fusion_start
@@ -311,7 +311,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                     try:
                         dayun_result = await asyncio.wait_for(dy_queue.get(), timeout=_HEARTBEAT_INTERVAL)
                         break
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
                         continue
                 if dayun_result:
@@ -360,8 +360,6 @@ async def chart_stream(
       data: {"phase":"personality_done","full":"..."}    — 性格报告完成
       data: {"phase":"done"}                             — 全流程结束
     """
-    import asyncio
-    import concurrent.futures
 
     ln_range = None
     if liunian_from and liunian_to:
@@ -777,7 +775,7 @@ def admin_feedback(key: str = Query(""), days: int = Query(7, description="查�
 
         if len(records) >= 1000:
             break
-        with open(f, "r", encoding="utf-8") as fh:
+        with open(f, encoding="utf-8") as fh:
             for line in fh:
                 try:
                     records.append(json.loads(line.strip()))

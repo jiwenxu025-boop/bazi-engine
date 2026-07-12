@@ -107,7 +107,7 @@ class CalibrationStore:
         if self._loaded:
             return
         if self.path.exists():
-            with open(self.path, "r", encoding="utf-8") as f:
+            with open(self.path, encoding="utf-8") as f:
                 data = json.load(f)
             for case_d in data.get("cases", []):
                 case = CaseRecord.from_dict(case_d)

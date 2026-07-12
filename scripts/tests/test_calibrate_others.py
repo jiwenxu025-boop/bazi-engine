@@ -1,10 +1,13 @@
 """人际/状态/搬迁/健康校准 — pytest 参数化测试"""
+import os
+import sys
+
 import pytest
-import sys, os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from calibration_others import CASES
 from _calibration_utils import run_calibration
+from calibration_others import CASES
 
 # Flatten CASES dict into list of cases
 ALL_OTHERS = []

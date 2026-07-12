@@ -4,16 +4,15 @@ import json
 import os
 import re
 import time
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator
 
 import httpx
 
 # ═══════════════════════════════════════════════════════════════
 # 配置
 # ═══════════════════════════════════════════════════════════════
-
-from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL, get_timeout
+from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL
 
 _ACTIVATION_FILE = Path(__file__).resolve().parent / "activation_codes.json"
 
@@ -169,7 +168,7 @@ def filter_sensitive(text: str) -> tuple[bool, str]:
 DISCLAIMER_SUFFIX = "\n\n（以上内容由 AI 生成，基于传统命理文化，仅供娱乐参考，不替代专业建议）"
 
 
-async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
+async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
     """调用 DeepSeek API，流式返回"""
     if not DEEPSEEK_KEY:
         yield "data: [ERROR] DeepSeek API Key 未配置\n\n"
@@ -242,7 +241,7 @@ def _load_codes() -> dict:
     # 本地文件（首次自动创建，gitignore 保护）
     if _ACTIVATION_FILE.exists():
         try:
-            with open(_ACTIVATION_FILE, "r", encoding="utf-8") as f:
+            with open(_ACTIVATION_FILE, encoding="utf-8") as f:
                 file_codes = json.load(f)
                 codes.update(file_codes)
         except (json.JSONDecodeError, OSError):
@@ -306,7 +305,7 @@ def _load_free_usage() -> dict:
     """从文件加载免费使用记录"""
     if _FREE_USAGE_FILE.exists():
         try:
-            with open(_FREE_USAGE_FILE, "r", encoding="utf-8") as f:
+            with open(_FREE_USAGE_FILE, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass

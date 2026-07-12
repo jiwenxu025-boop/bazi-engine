@@ -1,6 +1,8 @@
 """事业验证集 — 晋升/跳槽/创业/离职
 """
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 CAREER_CASES = [

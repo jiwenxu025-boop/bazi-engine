@@ -791,8 +791,8 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
 def _compute_palace_star_stage(chart: BaziChart, pd) -> None:
     if pd is not None:
         try:
-            from .personality_analysis import build_pillars_data_for_analysis
             from .palace_star import analyze_palace_stars
+            from .personality_analysis import build_pillars_data_for_analysis
             pd_ps = build_pillars_data_for_analysis(chart)
             chart.palace_star_result = analyze_palace_stars(
                 pd_ps, chart.spirits, chart.day_master

@@ -1,5 +1,4 @@
 """常量：权重表、日主性格库、格局性格库、十神性格库、病药阈值"""
-from ..enums import Tiangan, Dizhi, Wuxing, Shishen
 
 
 TOUGAN_WEIGHT = 3.0            # 天干透出 — 全局可见，力量最强

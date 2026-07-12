@@ -1,11 +1,12 @@
 """八字排盘引擎核心测试"""
 import sys
+
 sys.path.insert(0, '.')
 
-from bazi_engine.enums import Tiangan, Dizhi, Wuxing, Shishen
-from bazi_engine.ten_gods import wuxing_sheng, wuxing_ke, wuxing_relation, get_ten_god
-from bazi_engine.nayin_chain import find_all_nayin_relations
 from bazi_engine.day_pillar_db import lookup_day_pillar, verify_known_cases
+from bazi_engine.enums import Shishen, Tiangan, Wuxing
+from bazi_engine.nayin_chain import find_all_nayin_relations
+from bazi_engine.ten_gods import get_ten_god, wuxing_ke, wuxing_relation, wuxing_sheng
 
 
 class TestWuxing:

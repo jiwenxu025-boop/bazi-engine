@@ -1,15 +1,19 @@
 """流年事件检测核心测试 — ScoreAccumulator / 婚嫁 / 桃花 / 穿害 / 岁运交战"""
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from bazi_engine.liunian import (
-    ScoreAccumulator, EventSignal, Factor,
-    detect_hunjia_signals, detect_taohua_signals,
-    _process_suiyun_clash, _has_branch_interaction,
-)
-from bazi_engine.enums import Tiangan, Dizhi, Shishen
 from bazi_engine.chart import build_chart
-
+from bazi_engine.enums import Dizhi, Tiangan
+from bazi_engine.liunian import (
+    EventSignal,
+    ScoreAccumulator,
+    _has_branch_interaction,
+    _process_suiyun_clash,
+    detect_hunjia_signals,
+    detect_taohua_signals,
+)
 
 # ═══════════════════════════════════════════════════════════════
 # ScoreAccumulator 单元测试
@@ -206,7 +210,7 @@ def test_hunjia_xujiwen_2025():
     # 学生年龄≤21, 婚嫁降级为桃花
     for sig in signals:
         assert sig.category == "桃花", f"学生婚嫁应降级为桃花, 实际: {sig.category}"
-        assert sig.strength < 3, f"学生不应有3★婚嫁"
+        assert sig.strength < 3, "学生不应有3★婚嫁"
 
 
 def test_hunjia_chuanhai_day_branch():

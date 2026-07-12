@@ -1,10 +1,13 @@
 """财运校准 — pytest 参数化测试"""
+import os
+import sys
+
 import pytest
-import sys, os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from calibration_wealth import WEALTH_CASES, CELEB_WEALTH
 from _calibration_utils import run_calibration
+from calibration_wealth import CELEB_WEALTH, WEALTH_CASES
 
 ALL_WEALTH = WEALTH_CASES + CELEB_WEALTH
 _results, _stats = run_calibration(ALL_WEALTH)
