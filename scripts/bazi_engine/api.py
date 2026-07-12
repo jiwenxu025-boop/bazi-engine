@@ -29,6 +29,7 @@ from .chart import build_chart
 _IS_PUBLIC = os.getenv("BAZI_PUBLIC", "").lower() in ("1", "true", "yes")
 _AI_ENABLED = os.getenv("BAZI_AI_ENABLED", "").lower() in ("1", "true", "yes")
 _ADMIN_KEY = os.getenv("BAZI_ADMIN_KEY", "")
+_FAVORABLE_QUERY = Query(None)
 
 app = FastAPI(title="八字排盘引擎", version=__version__)
 
@@ -62,7 +63,7 @@ def chart_api(
     hour: int = Query(..., ge=0, le=23),
     liunian_from: int | None = Query(None),
     liunian_to: int | None = Query(None),
-    favorable: list[str] | None = Query(None),
+    favorable: list[str] | None = _FAVORABLE_QUERY,
     calibrate: bool = Query(False),
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
     family_level: str = Query("", description="用户已知家境: 宽裕/普通/紧张"),
@@ -343,7 +344,7 @@ async def chart_stream(
     hour: int = Query(..., ge=0, le=23),
     liunian_from: int | None = Query(None),
     liunian_to: int | None = Query(None),
-    favorable: list[str] | None = Query(None),
+    favorable: list[str] | None = _FAVORABLE_QUERY,
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
     hour_confirmed: bool = Query(False),
     practical: bool = Query(False),

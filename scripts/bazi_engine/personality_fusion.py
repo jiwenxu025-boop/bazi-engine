@@ -432,7 +432,7 @@ def generate_fusion_report(
     except Exception as e:
         if isinstance(e, RuntimeError):
             raise
-        raise RuntimeError(f"API调用异常: {e}")
+        raise RuntimeError(f"API调用异常: {e}") from e
 
 
 def generate_fusion_report_sync(data_package: dict) -> str | None:

@@ -24,7 +24,7 @@ def test_jie_datetime_ordering():
     """12 个节在年内必须按时间顺序排列"""
     for year in [2000, 2007, 2024, 2025]:
         dts = [get_jie_datetime(year, i) for i in range(12)]
-        for a, b in zip(dts, dts[1:]):
+        for a, b in zip(dts, dts[1:], strict=False):
             assert a < b, f"{year}: 节顺序错误"
 
 

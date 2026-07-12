@@ -129,10 +129,10 @@ def ocr_birth_info(
                 raise RuntimeError(f"Vision API {resp.status_code}: {resp.text[:200]}")
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-    except httpx.TimeoutException:
-        raise RuntimeError("Vision API 超时")
+    except httpx.TimeoutException as e:
+        raise RuntimeError("Vision API 超时") from e
     except Exception as e:
-        raise RuntimeError(f"Vision API 调用失败: {e}")
+        raise RuntimeError(f"Vision API 调用失败: {e}") from e
 
     if not content:
         raise RuntimeError("Vision API 返回空")

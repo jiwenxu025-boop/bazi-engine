@@ -166,7 +166,7 @@ class BaziChart:
                 "start_age": self.start_age,
                 "periods": [
                     {"stem": tg.value, "branch": dz.value, "age": lp["年龄"], "order": i + 1}
-                    for i, ((tg, dz), lp) in enumerate(zip(self.luck_pillars, self.luck_periods))
+                    for i, ((tg, dz), lp) in enumerate(zip(self.luck_pillars, self.luck_periods, strict=False))
                 ],
                 "modulations": self.dayun_modulations,
                 "interpretations": self.dayun_interpretations,
