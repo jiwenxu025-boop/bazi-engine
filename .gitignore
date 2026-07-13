@@ -3,6 +3,8 @@ __pycache__/
 *.pyo
 .DS_Store
 node_modules/
+venv/
+.venv/
 .env
 activation_codes.json
 scripts/data/free_usage.json
