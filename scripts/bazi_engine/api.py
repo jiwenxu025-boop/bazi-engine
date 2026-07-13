@@ -15,6 +15,7 @@ import asyncio
 import concurrent.futures
 import json
 import os
+import re
 import threading
 from contextlib import suppress
 from pathlib import Path
@@ -382,7 +383,6 @@ async def chart_stream(
 
 def _strip_technical(data: dict):
     """去除经典引用，不暴露技术推导。保留其他所有内容。"""
-    import re
 
     def _clean_text(text):
         # 去除古典引用标注，如"《渊海子平》：「...」"、《滴天髓》等

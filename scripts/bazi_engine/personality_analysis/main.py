@@ -212,7 +212,7 @@ def analyze_personality(
         _pattern_modifiers["决策"] = {"审慎_格局": +0.5}
     if "正印" in pattern or "偏印" in pattern:
         _pattern_modifiers["事业"] = {"学术_格局": +1.5}
-        _pattern_modifiers["社交"] = {"内敻度_格局": +0.5}
+        _pattern_modifiers["社交"] = {"内敛度_格局": +0.5}
     if "杀" in pattern:
         _pattern_modifiers["决策"] = {"果断_格局": +1.5}
         _pattern_modifiers["事业"] = {"创业_格局": +1.0}

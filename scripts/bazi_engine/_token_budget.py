@@ -4,8 +4,9 @@
 误差约 ±20%，但对于预算控制足够了。
 """
 
-# DeepSeek 模型上下文窗口
 import re
+
+# DeepSeek 模型上下文窗口
 
 MODEL_CONTEXT_WINDOWS = {
     "deepseek-chat": 64000,
