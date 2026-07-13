@@ -58,6 +58,75 @@ def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     assert "data: [DONE]" in body
 
 
+def test_chart_api_returns_public_contract_shape(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_AI_ENABLED", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
+    from bazi_engine.api import app
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/chart",
+        params={
+            "name": "test",
+            "gender": "男",
+            "year": 2007,
+            "month": 8,
+            "day": 26,
+            "hour": 20,
+            "liunian_from": 2023,
+            "liunian_to": 2024,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    expected_top_level_keys = {
+        "name",
+        "gender",
+        "birth",
+        "day_pillar_source",
+        "four_pillars",
+        "minggong",
+        "shengong",
+        "taiyuan",
+        "day_master",
+        "pattern",
+        "pattern_notes",
+        "favorable",
+        "yongshen",
+        "dayun",
+        "interactions",
+        "spirits",
+        "annual_scans",
+        "warnings",
+        "personality",
+        "family",
+        "life_stage",
+        "void_gods",
+        "nayin_relations",
+        "changsheng",
+        "palace_star",
+        "tiaohou",
+        "health_profile",
+        "body_use",
+    }
+    assert expected_top_level_keys <= data.keys()
+    assert "pillars" not in data
+    assert "family_result" not in data
+    assert "personality_result" not in data
+
+    assert set(data["four_pillars"]) == {"year", "month", "day", "hour"}
+    assert {"stem", "branch", "nayin", "hidden_stems", "ten_god", "ten_gods_map"} <= data["four_pillars"]["day"].keys()
+    assert {"direction", "start_age", "periods", "modulations", "interpretations"} <= data["dayun"].keys()
+    assert {"tiangan", "dizhi"} <= data["interactions"].keys()
+    assert len(data["annual_scans"]) == 2
+    assert data["personality"]
+    assert data["family"]
+    assert data["palace_star"]
+    assert data["body_use"]
+
+
 def test_feedback_reads_public_family_output(monkeypatch, tmp_path):
     import bazi_engine.api as api_module
     from bazi_engine.api import app
