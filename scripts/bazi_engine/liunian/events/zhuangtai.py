@@ -72,12 +72,11 @@ def detect_zhuangtai_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         notes.append("日柱伏吟→个人状态转折点/情绪波动 (textbook)")
 
     # 枭神夺食（偏印年+日主食神受制）
-    if ln_shishen == Shishen.偏印:
+    if ln_shishen == Shishen.偏印 and fav is False:
         # 简化: 偏印年本身就压抑
-        if fav is False:
-            strength = max(strength, 2)
-            triggers.append("枭神夺食→思维受限")
-            notes.append("偏印为忌→思虑过度/钻牛角尖/情绪压抑")
+        strength = max(strength, 2)
+        triggers.append("枭神夺食→思维受限")
+        notes.append("偏印为忌→思虑过度/钻牛角尖/情绪压抑")
 
     if triggers:
         # 方向判断

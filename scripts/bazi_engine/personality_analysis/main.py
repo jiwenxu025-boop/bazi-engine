@@ -486,22 +486,21 @@ def _apply_reality_check(result: PersonalityResult,
     yin_count = sum(1 for p in pillars_data if p.get("ten_god") in ("正印", "偏印"))
 
     # ── 规则 1: 财破印 —— 现实利益与学业/理想的冲突 ──
-    if cai_po_yin:
-        if "正印" in pattern or "偏印" in pattern:
-            corrections.append(
-                "财破印——虽为印格，但现实中对利益的兴趣 ≥ 对学问的兴趣。"
-                "不是不爱学习，是更爱能变现的东西。若做学术，需是自己真心热爱的领域，"
-                "否则坚持不下去。"
-            )
-            # 修正 pattern_influence
-            result.pattern_influence = result.pattern_influence.replace(
-                "好学深思", "有学习潜力但需要内在动机驱动"
-            ).replace("淡泊名利", "内心有清高的一面，但现实诱惑常拉扯")
-            # 修正 dominant_ten_god if 正印
-            if result.dominant_ten_god and "正印" in result.dominant_ten_god:
-                result.dominant_ten_god = result.dominant_ten_god.replace(
-                    "爱读书思考", "有学习天赋，但需自发兴趣驱动，被动灌输无效"
-                ).replace("淡泊名利", "精神追求与物质欲望并存")
+    if cai_po_yin and ("正印" in pattern or "偏印" in pattern):
+        corrections.append(
+            "财破印——虽为印格，但现实中对利益的兴趣 ≥ 对学问的兴趣。"
+            "不是不爱学习，是更爱能变现的东西。若做学术，需是自己真心热爱的领域，"
+            "否则坚持不下去。"
+        )
+        # 修正 pattern_influence
+        result.pattern_influence = result.pattern_influence.replace(
+            "好学深思", "有学习潜力但需要内在动机驱动"
+        ).replace("淡泊名利", "内心有清高的一面，但现实诱惑常拉扯")
+        # 修正 dominant_ten_god if 正印
+        if result.dominant_ten_god and "正印" in result.dominant_ten_god:
+            result.dominant_ten_god = result.dominant_ten_god.replace(
+                "爱读书思考", "有学习天赋，但需自发兴趣驱动，被动灌输无效"
+            ).replace("淡泊名利", "精神追求与物质欲望并存")
 
     # ── 规则 2: 身弱 —— 所有正面特质打折扣 ──
     if is_weak and score < 1.0:

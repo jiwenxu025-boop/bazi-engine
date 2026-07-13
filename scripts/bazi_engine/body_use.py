@@ -79,11 +79,10 @@ def analyze_body_use(pillars_data: list[dict], interactions: dict,
     for scan in annual_scans:
         ln_b = scan.liunian_branch.value
         dn_b = scan.dayun_branch.value if scan.dayun_branch else ""
-        if ln_b in mu_ku and dn_b and dn_b in mu_ku:
-            if ln_b != dn_b:
-                mu_ku_signals.append(
-                    f"{scan.year}年流年{ln_b}冲大运{dn_b}→墓库应期，关键转折年"
-                )
+        if ln_b in mu_ku and dn_b and dn_b in mu_ku and ln_b != dn_b:
+            mu_ku_signals.append(
+                f"{scan.year}年流年{ln_b}冲大运{dn_b}→墓库应期，关键转折年"
+            )
 
     return BodyUseResult(
         body_stars=body,

@@ -129,10 +129,9 @@ def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
     for r in results:
         if r.year in year_to_note:
             for e in r.events:
-                if e.category == "桃花" and e.direction == "正面":
+                if e.category == "桃花" and e.direction == "正面" and year_to_note[r.year] not in str(e.notes):
                     # 避免重复添加
-                    if year_to_note[r.year] not in str(e.notes):
-                        e.notes.insert(0, year_to_note[r.year])
+                    e.notes.insert(0, year_to_note[r.year])
 
     return results
 
@@ -546,17 +545,15 @@ def scan_years(
                     # 健康: 七杀攻身信号降级
                     if e.category == "健康":
                         sha_triggers = [t for t in e.triggers if "七杀" in t or "偏官" in t]
-                        if sha_triggers:
-                            if e.strength >= 2:
-                                e.strength -= 1
-                                e.notes.append("贪生忘克化解：杀印相生→压力转化动力，七杀凶性大减")
+                        if sha_triggers and e.strength >= 2:
+                            e.strength -= 1
+                            e.notes.append("贪生忘克化解：杀印相生→压力转化动力，七杀凶性大减")
                     # 事业: 官杀混杂信号降级
                     if e.category == "事业":
                         guansha_triggers = [t for t in e.triggers if "官杀混杂" in t]
-                        if guansha_triggers:
-                            if e.strength >= 2:
-                                e.strength -= 1
-                                e.notes.append("贪生忘克化解：印星通关→官杀混杂压力可控")
+                        if guansha_triggers and e.strength >= 2:
+                            e.strength -= 1
+                            e.notes.append("贪生忘克化解：印星通关→官杀混杂压力可控")
                     # 女命伤官见官 → 有印制伤则减凶
                     if e.category in ("桃花", "婚嫁") and gender == "女":
                         shang_triggers = [t for t in e.triggers if "伤官" in t]

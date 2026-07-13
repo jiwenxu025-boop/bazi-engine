@@ -186,19 +186,17 @@ def _detect_cong_ge(day_master: Tiangan, month_branch: Dizhi,
 
         # 非日主阵营碾压：日主所在阵营≤40%且另一阵营≥60%
         total_power = sum(camp_power.values())
-        if total_power > 0 and dm_camp_power <= total_power * 0.4:
-            # 识别从势格/专旺格
-            if dominant_camp != dm_wx.value and dominant_power >= total_power * 0.5:
-                # 非日主五行成为全局主导 → 从势格
-                result_type = f"从势({dominant_camp}旺)"
-                fav_wx = _get_following_favorable(dominant_camp, dm_wx)
-                return {
-                    "type": result_type,
-                    "description": f"全局{dominant_camp}气势成局（三合/三会/聚众），"
-                                   f"日主{dm_wx.value}无力抗衡→以从{dominant_camp}之势为用。",
-                    "favorable": fav_wx["favorable"],
-                    "harmful": fav_wx["harmful"],
-                }
+        if total_power > 0 and dm_camp_power <= total_power * 0.4 and dominant_camp != dm_wx.value and dominant_power >= total_power * 0.5:
+            # 非日主五行成为全局主导 → 从势格
+            result_type = f"从势({dominant_camp}旺)"
+            fav_wx = _get_following_favorable(dominant_camp, dm_wx)
+            return {
+                "type": result_type,
+                "description": f"全局{dominant_camp}气势成局（三合/三会/聚众），"
+                               f"日主{dm_wx.value}无力抗衡→以从{dominant_camp}之势为用。",
+                "favorable": fav_wx["favorable"],
+                "harmful": fav_wx["harmful"],
+            }
 
     # 从旺：生扶者≥75%
     if strength == "强" and score >= 6.0 and support_count >= total_count * 0.75:

@@ -346,11 +346,10 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
             break
 
     # 辰戌丑未全 + 日主土 = 稼穑格
-    if siku.issubset(branches_set) and day_master_wuxing == "土":
+    if siku.issubset(branches_set) and day_master_wuxing == "土" and not any("稼穑格" in c for c in combos):
         # 避免重复（已在上面的四库全中检测）
-        if not any("稼穑格" in c for c in combos):
-            combos.append("稼穑格（土专旺）→ 稳重诚信，敦厚至诚，如大地承载万物。"
-                          "《渊海子平》：稼穑格，外十八格之一")
+        combos.append("稼穑格（土专旺）→ 稳重诚信，敦厚至诚，如大地承载万物。"
+                      "《渊海子平》：稼穑格，外十八格之一")
 
     # ── 35-37. 从格检测 ──
     # 来源：《渊海子平》"弃命从财/从杀"

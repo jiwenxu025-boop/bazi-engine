@@ -153,9 +153,8 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # ── ★ 级别 ──
     # 空亡：降星+加备注（升级：统一降强度）
     kw = _kongwang_branches(day_master, day_branch)
-    if _is_kongwang(ln_branch, kw):
-        if triggers:
-            notes.append("流年落空亡→机会真实但结果虚浮不实（《三命通会》：吉神空亡则吉减半，非无吉也）")
+    if _is_kongwang(ln_branch, kw) and triggers:
+        notes.append("流年落空亡→机会真实但结果虚浮不实（《三命通会》：吉神空亡则吉减半，非无吉也）")
 
     if ln_branch == hongluan:
         strength = max(strength, 1)
@@ -228,10 +227,9 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             notes.append("伤官见官→克夫/婚姻危机 (段建业: 伤官运找不到老公)")
 
         # 伤官见官(男命+妻宫引动) → 负面（克妻信号）v0.9.1
-        if gender == "男" and ln_shishen == Shishen.伤官:
-            if any("夫妻宫" in t or "妻宫" in t or "婚灾" in t for t in triggers):
-                direction = "负面"
-                notes.append("伤官克正官+妻宫引动→克妻/婚姻高危 (《渊海子平》: 伤官见官为祸百端)")
+        if gender == "男" and ln_shishen == Shishen.伤官 and any("夫妻宫" in t or "妻宫" in t or "婚灾" in t for t in triggers):
+            direction = "负面"
+            notes.append("伤官克正官+妻宫引动→克妻/婚姻高危 (《渊海子平》: 伤官见官为祸百端)")
 
         # 夫妻宫逢冲+七杀 → 负面
         if "冲夫妻宫" in _triggers_str and ln_shishen == Shishen.偏官:

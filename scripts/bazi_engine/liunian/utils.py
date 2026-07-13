@@ -191,16 +191,13 @@ def _life_stage(age: int,
         return base
 
     # ── 第三层：大运十神修正 ──
-    if dayun_ten_god:
+    if dayun_ten_god and dayun_ten_god in ("正印", "偏印", "食神", "伤官") and base == "职场" and age <= 25:
         # 印星/食伤大运 + 年龄≤25 → 倾向深造
-        if dayun_ten_god in ("正印", "偏印", "食神", "伤官"):
-            if base == "职场" and age <= 25:
-                base = "深造"
+        base = "深造"
 
     # ── 第四层：格局修正 ──
-    if ("印" in pattern or "食神" in pattern or "伤官" in pattern):
-        if base == "职场" and age <= 25 and not dayun_ten_god:
-            base = "深造"  # 印/食伤格+年轻+无明确工作信号→深造
+    if ("印" in pattern or "食神" in pattern or "伤官" in pattern) and base == "职场" and age <= 25 and not dayun_ten_god:
+        base = "深造"  # 印/食伤格+年轻+无明确工作信号→深造
 
     return base
 

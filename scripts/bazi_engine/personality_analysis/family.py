@@ -337,10 +337,9 @@ def analyze_family(
             for p2 in pillars_data:
                 if p2.get("ten_god", "") in ("正印", "偏印"):
                     yin_wx = p2.get("stem_wuxing", "")
-                    if p["pillar_type"] != p2["pillar_type"] and cai_wx and yin_wx:
-                        if _wx_ke_map.get(cai_wx) == yin_wx:
-                            has_cai_ke_yin = True
-                            break
+                    if p["pillar_type"] != p2["pillar_type"] and cai_wx and yin_wx and _wx_ke_map.get(cai_wx) == yin_wx:
+                        has_cai_ke_yin = True
+                        break
             if has_cai_ke_yin:
                 break
     if has_cai_ke_yin:
@@ -377,13 +376,12 @@ def analyze_family(
     for inter in interactions.get("tiangan", []):
         if inter["type"] == "天干五合" and day_master_stem in inter["participants"]:
             for p in pillars_data:
-                if p["stem"] in inter["participants"] and p["stem"] != day_master_stem:
-                    if p.get("ten_god") in ("正财", "偏财"):
-                        result.inheritance += (
-                            f" {p['stem']}{day_master_stem}合，正财合身→"
-                            "家庭资源向命主倾斜，家里愿意在命主身上投入"
-                        )
-                        break
+                if p["stem"] in inter["participants"] and p["stem"] != day_master_stem and p.get("ten_god") in ("正财", "偏财"):
+                    result.inheritance += (
+                        f" {p['stem']}{day_master_stem}合，正财合身→"
+                        "家庭资源向命主倾斜，家里愿意在命主身上投入"
+                    )
+                    break
             break
 
     # ═══ 双亲寿元提示（来源：《滴天髓·六亲论》）═══
@@ -398,13 +396,11 @@ def analyze_family(
     # 父母星入墓库
     for p in pillars_data:
         for hs in p.get("hidden_ten_gods", []):
-            if hs == father_star:
+            if hs == father_star and p.get("branch") in ("辰", "戌", "丑", "未"):
                 # 父星在墓库支（辰戌丑未）
-                if p.get("branch") in ("辰", "戌", "丑", "未"):
-                    health_notes.append(f"父星入{p['pillar_type']}墓库—古籍提示宜关注父亲健康")
-            if hs == mother_star:
-                if p.get("branch") in ("辰", "戌", "丑", "未"):
-                    health_notes.append(f"母星入{p['pillar_type']}墓库—古籍提示宜关注母亲健康")
+                health_notes.append(f"父星入{p['pillar_type']}墓库—古籍提示宜关注父亲健康")
+            if hs == mother_star and p.get("branch") in ("辰", "戌", "丑", "未"):
+                health_notes.append(f"母星入{p['pillar_type']}墓库—古籍提示宜关注母亲健康")
     # 财星坐羊刃
     yr = _yangren_branch(day_master_stem)
     for p in pillars_data:

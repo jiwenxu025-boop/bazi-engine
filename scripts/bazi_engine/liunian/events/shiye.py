@@ -48,9 +48,8 @@ def detect_shiye_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         s.add(4, "财官双美→加薪+晋升同现", "财生官 (textbook)")
 
     # 官印相生
-    if is_guan and dayun_stem:
-        if get_ten_god(day_master, dayun_stem) in (Shishen.正印, Shishen.偏印):
-            s.add(3, "大运印+流年官→官印相生晋升")
+    if is_guan and dayun_stem and get_ten_god(day_master, dayun_stem) in (Shishen.正印, Shishen.偏印):
+        s.add(3, "大运印+流年官→官印相生晋升")
 
     # 禄神到位（固定: 临官总是好事）
     if ln_branch == lu:
@@ -69,10 +68,9 @@ def detect_shiye_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         s.add(2, "偏官+偏印→杀印相生", "压力转化动力")
 
     # 地支藏官
-    if not is_guan:
-        if any(c in (Shishen.正官, Shishen.偏官) for c in ln_cg):
-            guan_l = "正官" if Shishen.正官 in ln_cg else "偏官"
-            s.add(2, f"地支藏{guan_l}→隐性晋升机会")
+    if not is_guan and any(c in (Shishen.正官, Shishen.偏官) for c in ln_cg):
+        guan_l = "正官" if Shishen.正官 in ln_cg else "偏官"
+        s.add(2, f"地支藏{guan_l}→隐性晋升机会")
 
     # 驿马+官/食伤/财 → 工作变动
     if ln_branch == yima:

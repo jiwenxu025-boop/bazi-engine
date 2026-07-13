@@ -174,11 +174,10 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # 日主入流年死/绝/病/墓（十二长生）— 仅叠加，需至少2个其他信号
     cs = _changsheng_status(day_master, ln_branch)
-    if cs in ("死", "绝", "病", "墓"):
-        if strength >= 2:
-            strength = max(strength, 2)
-            triggers.append(f"日主入流年{cs}地→叠加")
-            notes.append(f"日主临{cs}→健康低谷/精力不足 (textbook)")
+    if cs in ("死", "绝", "病", "墓") and strength >= 2:
+        strength = max(strength, 2)
+        triggers.append(f"日主入流年{cs}地→叠加")
+        notes.append(f"日主临{cs}→健康低谷/精力不足 (textbook)")
 
     # 官杀攻身（七杀旺+无制）
     if ln_shishen == Shishen.偏官 and fav is False:
@@ -233,21 +232,18 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     zaisha_target = ZAISHA.get(year_branch)
     sangmen_target = SANGMEN.get(year_branch)
     diaoke_target = DIAOKE.get(year_branch)
-    if zaisha_target and ln_branch == zaisha_target:
-        if strength >= 2:
-            strength = max(strength, 2)
-            triggers.append("流年逢灾煞→叠加")
-            notes.append("灾煞(白虎)→防意外血光")
-    if sangmen_target and ln_branch == sangmen_target:
-        if strength >= 2:
-            strength = max(strength, 2)
-            triggers.append("流年逢丧门→叠加")
-            notes.append("丧门→注意家人健康/白事")
-    if diaoke_target and ln_branch == diaoke_target:
-        if strength >= 2:
-            strength = max(strength, 2)
-            triggers.append("流年逢吊客→叠加")
-            notes.append("吊客→注意六亲孝服")
+    if zaisha_target and ln_branch == zaisha_target and strength >= 2:
+        strength = max(strength, 2)
+        triggers.append("流年逢灾煞→叠加")
+        notes.append("灾煞(白虎)→防意外血光")
+    if sangmen_target and ln_branch == sangmen_target and strength >= 2:
+        strength = max(strength, 2)
+        triggers.append("流年逢丧门→叠加")
+        notes.append("丧门→注意家人健康/白事")
+    if diaoke_target and ln_branch == diaoke_target and strength >= 2:
+        strength = max(strength, 2)
+        triggers.append("流年逢吊客→叠加")
+        notes.append("吊客→注意六亲孝服")
 
     # 七杀透干
     if ln_shishen == Shishen.偏官:
