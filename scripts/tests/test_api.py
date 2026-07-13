@@ -56,3 +56,29 @@ def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     assert response.status_code == 200
     assert '"phase": "rules_done"' in body or '"phase":"rules_done"' in body
     assert "data: [DONE]" in body
+
+
+def test_feedback_reads_public_family_output(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_FEEDBACK_DIR", tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/feedback",
+        json={
+            "chart_data": {
+                "name": "case",
+                "family": {"level": "宽裕"},
+            },
+            "family_level": "普通",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["discrepancy"] == "引擎推断: 宽裕, 用户反馈: 普通"
+
+    feedback_files = list(tmp_path.glob("feedback_*.jsonl"))
+    assert len(feedback_files) == 1
+    assert '"engine_level": "宽裕"' in feedback_files[0].read_text(encoding="utf-8")

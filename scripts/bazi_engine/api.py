@@ -887,7 +887,7 @@ async def feedback_api(request: Request):
 
     # 引擎推断的家境（从 chart_data 中提取）
     engine_level = ""
-    family_section = chart_data.get("family_result", {})
+    family_section = chart_data.get("family") or chart_data.get("family_result", {})
     if family_section:
         engine_level = family_section.get("level", "")
 

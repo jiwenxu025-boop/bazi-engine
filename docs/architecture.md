@@ -124,7 +124,7 @@ LLM calls should remain optional. Core chart calculation, four pillars, dayun, p
 - Calibration tests exercise known-case accuracy thresholds when cases execute successfully.
 - Tests that depend on a local calibration store should skip when `scripts/data/calibration_store.json` is absent, but core engine tests must continue to run.
 - Local `ruff` requires `PYTHONUTF8=1` on Windows when installing `requirements-dev.txt`, because the requirements file contains UTF-8 comments.
-- Current lint baseline is not clean. `RUF001`, `RUF002`, and `RUF003` are ignored because Chinese punctuation is intentional in user-facing strings, docstrings, and comments. Remaining lint debt should be handled separately from rule refactors.
+- Current lint baseline is clean with `python -m ruff check scripts --statistics`. `RUF001`, `RUF002`, and `RUF003` are ignored because Chinese punctuation is intentional in user-facing strings, docstrings, and comments. Any new lint cleanup should stay separate from prediction-rule refactors.
 
 Useful commands:
 
