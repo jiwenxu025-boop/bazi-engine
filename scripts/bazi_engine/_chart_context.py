@@ -3,7 +3,7 @@
 用法:
     from ._chart_context import extract_base_context
     ctx = extract_base_context(chart_data)
-    # ctx 包含: natal_summary, pillars, yongshen, pattern, tiaohou, spirits, personality, family
+    # ctx 包含: natal_summary, four_pillars, yongshen, pattern, tiaohou, spirits, personality, family
 """
 from typing import Any
 
@@ -44,7 +44,7 @@ def extract_base_context(chart_data: dict) -> dict[str, Any]:
         }
 
     # ── 四柱 ──
-    pillars = chart_data.get("pillars", {})
+    pillars = chart_data.get("four_pillars") or chart_data.get("pillars", {})
     pillar_parts = []
     for key in ["year", "month", "day", "hour"]:
         p = pillars.get(key, {})
