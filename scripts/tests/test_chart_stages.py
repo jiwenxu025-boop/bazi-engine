@@ -651,6 +651,18 @@ def test_compute_personality_family_stage_sets_analysis_and_returns_context(monk
     assert chart.family_result["level"] == "普通"
 
 
+def test_compute_personality_family_stage_marks_fusion_ready_when_enabled(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "1")
+    chart, start_age = _prepare_case_a_through_liunian()
+    _compute_changsheng_stage(chart)
+    _compute_life_stage(chart, life_stage_override="", start_age=start_age)
+
+    _compute_personality_family_stage(chart, gender=chart.gender, family_context=None)
+
+    assert chart.personality_result["_fusion_ready"] is True
+
+
 def test_compute_palace_star_stage_sets_four_palace_entries(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")

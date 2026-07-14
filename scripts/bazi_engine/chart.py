@@ -773,12 +773,8 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
         chart.family_result = fr.to_dict()
 
         # ── LLM 融合引擎 (v0.11.0) ──
-        try:
-            from .personality_fusion import FUSION_ENABLED
-            if FUSION_ENABLED:
-                chart.personality_result["_fusion_ready"] = True
-        except Exception:
-            pass
+        if os.getenv("BAZI_FUSION_ENGINE", "0") == "1":
+            chart.personality_result["_fusion_ready"] = True
 
     except Exception as e:
         import traceback

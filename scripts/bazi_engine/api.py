@@ -637,14 +637,9 @@ async def fusion_stream(request: Request):
         const reader = resp.body.getReader();
         // ... 逐行解析 SSE
     """
-    from .personality_fusion import (
-        DEEPSEEK_KEY,
-        FUSION_ENABLED,
-        build_fusion_data_package,
-        generate_fusion_report,
-    )
+    from .personality_fusion import build_fusion_data_package, generate_fusion_report
 
-    if not FUSION_ENABLED or not DEEPSEEK_KEY:
+    if os.getenv("BAZI_FUSION_ENGINE", "0") != "1" or not os.getenv("DEEPSEEK_API_KEY", ""):
         async def err_gen():
             yield f"data: {json.dumps({'error': 'LLM 融合引擎未启用（设置 BAZI_FUSION_ENGINE=1 并配置 DEEPSEEK_API_KEY）'})}\n\n"
             yield "data: [DONE]\n\n"
