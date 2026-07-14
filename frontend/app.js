@@ -66,27 +66,30 @@ document.getElementById('formCard').addEventListener('keydown', function(e){
    ========================================== */
 document.getElementById('submitBtn').addEventListener('click', go);
 
-async function go(){
-  let btn = document.getElementById('submitBtn');
-  btn.disabled = true; btn.textContent = '计算中...';
-  let r = document.getElementById('result');
-  r.className = 'result visible';
-  r.innerHTML = '<div class=loading-state><div class=spinner></div><div>计算中&#x2026;</div></div>';
-  document.getElementById('copyBtn').style.display = 'none';
-
-  let api = document.getElementById('apiUrl').value.replace(/\/$/, '');
+function _buildChartParams(){
+  let lnFrom = document.getElementById('lnFrom').value;
+  let lnTo = document.getElementById('lnTo').value;
+  if (!lnFrom && !lnTo){
+    let currentYear = new Date().getFullYear();
+    lnFrom = String(currentYear);
+    lnTo = String(currentYear + 5);
+  } else if (lnFrom && !lnTo){
+    lnTo = lnFrom;
+  } else if (!lnFrom && lnTo){
+    lnFrom = lnTo;
+  }
   let params = new URLSearchParams({
     name: document.getElementById('name').value || '未知',
     gender: document.getElementById('gender').value,
     year: document.getElementById('year').value,
     month: document.getElementById('month').value,
     day: document.getElementById('day').value,
-    hour: document.getElementById('hour').value,
-    liunian_from: document.getElementById('lnFrom').value,
-    liunian_to: document.getElementById('lnTo').value,
+    hour: document.getElementById('hour').value || '12',
     hour_confirmed: document.getElementById('hourConfirmed').checked,
     practical: true,  // 公网只显示白话解读，不暴露技术推导
   });
+  if (lnFrom) params.set('liunian_from', lnFrom);
+  if (lnTo) params.set('liunian_to', lnTo);
   let fl = document.getElementById('familyLevel').value;
   if (fl) params.set('family_level', fl);
   let fj = document.getElementById('fatherJob').value.trim();
@@ -95,6 +98,20 @@ async function go(){
   if (mj) params.set('mother_job', mj);
   let lsOverride = sessionStorage.getItem('bazi-life-stage');
   if (lsOverride) params.set('life_stage', lsOverride);
+  return params;
+}
+
+async function go(){
+  let btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = '计算中...';
+  let r = document.getElementById('result');
+  r.className = 'result visible';
+  r.innerHTML = '<div class=loading-state><div class=spinner></div><div>计算中&#x2026;</div></div>';
+  document.getElementById('copyBtn').style.display = 'none';
+  document.getElementById('reportActions').classList.remove('active');
+
+  let api = document.getElementById('apiUrl').value.replace(/\/$/, '');
+  let params = _buildChartParams();
 
   try {
     // v0.11.2: 流式排盘——规则引擎立即渲染，LLM结果流式追加
@@ -188,20 +205,19 @@ async function go(){
             if (!personalityEl){
               personalityEl = document.querySelector('.personality-text');
             }
-            if (personalityEl){
-              personalityEl.innerHTML = '<div class=dayun-error>⚠ 性格分析融合失败：' + (msg.message || '未知错误') + '</div>';
-            }
+            showPersonalityRawFallback(msg.message || 'fusion error');
+            continue;
           } else if (msg.phase === 'dayun_done'){
             // 5. 大运解读完成——更新DOM
             if (msg.interpretations && msg.interpretations.length){
               d.dayun.interpretations = msg.interpretations;
-              let dyEl = document.querySelector('.dayun-interpretations');
-              if (dyEl) dyEl.innerHTML = _buildDayunInterpretations(d);
+              let dyEls = document.querySelectorAll('.dayun-interpretations');
+              for (let di = 0; di < dyEls.length; di++) dyEls[di].innerHTML = _buildDayunInterpretations(d);
             }
           } else if (msg.phase === 'dayun_error'){
             // 5b. 大运解读失败——显示原因
-            let dyEl2 = document.querySelector('.dayun-interpretations');
-            if (dyEl2) dyEl2.innerHTML = '<div class=dayun-error>⚠ 大运解读暂不可用：' + (msg.message || '未知错误') + '</div>';
+            let dyEls2 = document.querySelectorAll('.dayun-interpretations');
+            for (let de = 0; de < dyEls2.length; de++) dyEls2[de].innerHTML = '<div class=dayun-error>⚠ 大运解读暂不可用：' + (msg.message || '未知错误') + '</div>';
           } else if (msg.phase === 'done'){
             // 6. 全流程结束——清理LLM推理实时显示区
             let liveEl = document.querySelector('.llm-live-section');
@@ -213,7 +229,7 @@ async function go(){
   } catch(e) {
     r.innerHTML = '<div class=error-state>请求失败: ' + e.message + '<br><small style="color:' + (document.documentElement.classList.contains('dark') ? '#a0a0b0' : '#78716c') + '">请确认 API 地址可访问</small></div>';
   }
-  btn.disabled = false; btn.textContent = '排盘';
+  btn.disabled = false; btn.textContent = '生成解读';
 }
 
 /* ==========================================
@@ -269,20 +285,247 @@ function _buildShishenRank(scores){
   return h;
 }
 
-function togglePersonalityMode(){
+function setPersonalityMode(mode){
   let body = document.getElementById('personalityBody');
   let raw = document.getElementById('personalityRaw');
   let btn = document.querySelector('.toggle-btn');
   if (!body || !raw) return;
-  if (raw.style.display === 'none'){
+  if (mode === 'raw'){
     raw.style.display = 'block';
     body.style.display = 'none';
-    btn.textContent = '返回融合报告';
+    if (btn){
+      btn.dataset.personalityMode = 'raw';
+      btn.textContent = '\u8fd4\u56deAI\u878d\u5408\u62a5\u544a';
+    }
   } else {
     raw.style.display = 'none';
     body.style.display = 'block';
-    btn.textContent = '查看原始数据';
+    if (btn){
+      btn.dataset.personalityMode = 'fusion';
+      btn.textContent = '\u67e5\u770b\u539f\u59cb\u6570\u636e';
+    }
   }
+}
+
+function showPersonalityRawFallback(message){
+  let body = document.getElementById('personalityBody');
+  if (body && message) body.dataset.fusionError = message;
+  setPersonalityMode('raw');
+}
+
+function togglePersonalityMode(){
+  let rawForMode = document.getElementById('personalityRaw');
+  let btnForMode = document.querySelector('.toggle-btn');
+  let currentMode = btnForMode && btnForMode.dataset.personalityMode;
+  let isRaw = currentMode ? currentMode === 'raw' : rawForMode && rawForMode.style.display !== 'none';
+  setPersonalityMode(isRaw ? 'fusion' : 'raw');
+}
+
+function _buildReportOverview(d){
+  let dayMaster = d.day_master ? (d.day_master.stem || '') + (d.day_master.wuxing || '') : '';
+  let strength = d.yongshen && d.yongshen.strength ? d.yongshen.strength : '待判断';
+  let favorable = d.yongshen && d.yongshen.favorable_wuxing ? d.yongshen.favorable_wuxing.join('、') : '待判断';
+  let stage = d.life_stage || '未标记';
+  let pattern = d.pattern || '待判断';
+  let focusMap = {};
+  if (d.annual_scans && d.annual_scans.length){
+    for (let i = 0; i < d.annual_scans.length; i++){
+      let events = d.annual_scans[i].events || [];
+      for (let j = 0; j < events.length; j++){
+        if (events[j].strength >= 2 && events[j].category){
+          focusMap[events[j].category] = (focusMap[events[j].category] || 0) + events[j].strength;
+        }
+      }
+    }
+  }
+  let focus = Object.keys(focusMap).sort(function(a,b){return focusMap[b] - focusMap[a];}).slice(0, 3);
+  let focusText = focus.length ? focus.join('、') : '暂无明显高强度流年信号';
+  let headline = dayMaster ? dayMaster + '日主，' + pattern + '，' + strength : pattern + '，' + strength;
+
+  let h = '<section class=report-overview>';
+  h += '<div class=report-overview-copy>';
+  h += '<div class=report-eyebrow>命盘总览</div>';
+  h += '<div class=report-headline>' + esc(headline) + '</div>';
+  h += '<div class=report-subline>先看结论，再看依据。下面的四柱、流年和规则细节用于解释这些判断从哪里来。</div>';
+  h += '</div>';
+  h += '<div class=overview-grid>';
+  h += '<div class=overview-item><span>日主</span><b>' + esc(dayMaster || '待判断') + '</b></div>';
+  h += '<div class=overview-item><span>格局</span><b>' + esc(pattern) + '</b></div>';
+  h += '<div class=overview-item><span>强弱</span><b>' + esc(strength) + '</b></div>';
+  h += '<div class=overview-item><span>当前阶段</span><b>' + esc(stage) + '</b></div>';
+  h += '<div class=overview-item><span>喜用</span><b>' + esc(favorable) + '</b></div>';
+  h += '<div class=overview-item><span>近期重点</span><b>' + esc(focusText) + '</b></div>';
+  h += '</div>';
+  h += '</section>';
+  return h;
+}
+
+function _getStageInfo(d){
+  let stage = sessionStorage.getItem('bazi-life-stage') || d.life_stage || '未标记';
+  let labels = {中学:'中学时期',大学:'大学时期',深造:'深造时期',职场:'职场时期',晚年:'晚年时期'};
+  let isStudent = stage === '中学' || stage === '大学' || stage === '深造';
+  return {
+    value: stage,
+    label: labels[stage] || stage,
+    isStudent: isStudent
+  };
+}
+
+function _summarizeAnnualScan(scan, d){
+  if (!scan || !scan.events) return ['运势平稳'];
+  let significant = scan.events.filter(function(e){return e.strength >= 2});
+  let cats = significant.map(function(e){return e.category});
+  let dirs = significant.map(function(e){return e.direction});
+  let stageInfo = _getStageInfo(d || {});
+  let summary = [];
+  if (cats.indexOf('桃花') !== -1) summary.push(dirs[cats.indexOf('桃花')] === '负面' ? '感情波动' : '感情运升');
+  if (cats.indexOf('事业') !== -1) summary.push(dirs[cats.indexOf('事业')] === '负面' ? (stageInfo.isStudent ? '学业压力' : '事业有压') : (stageInfo.isStudent ? '校园活跃' : '事业有进'));
+  if (cats.indexOf('学业') !== -1) summary.push(dirs[cats.indexOf('学业')] === '负面' ? '学业压力' : '校园活跃');
+  if (cats.indexOf('财运') !== -1) summary.push(dirs[cats.indexOf('财运')] === '负面' ? (stageInfo.isStudent ? '手头偏紧' : '注意财务') : (stageInfo.isStudent ? '经济宽松' : '财运关注'));
+  if (cats.indexOf('健康') !== -1) summary.push('留意健康');
+  if (cats.indexOf('升学') !== -1) summary.push(stageInfo.isStudent ? '学业运佳' : '进修运佳');
+  if (cats.indexOf('进修') !== -1) summary.push('进修运佳');
+  if (cats.indexOf('搬迁') !== -1) summary.push('可能搬迁');
+  if (cats.indexOf('状态') !== -1) summary.push(dirs[cats.indexOf('状态')] === '负面' ? '状态低迷' : '状态良好');
+  if (cats.indexOf('人际') !== -1) summary.push(dirs[cats.indexOf('人际')] === '负面' ? '人际有摩擦' : '人际和谐');
+  if (!summary.length) summary.push('运势平稳');
+  return summary;
+}
+
+function _collectCategorySignals(d, wanted){
+  let counts = {};
+  if (!d.annual_scans) return [];
+  for (let i = 0; i < d.annual_scans.length; i++){
+    let events = d.annual_scans[i].events || [];
+    for (let j = 0; j < events.length; j++){
+      let ev = events[j];
+      if (ev.strength >= 2 && wanted.indexOf(ev.category) !== -1){
+        counts[ev.category] = (counts[ev.category] || 0) + ev.strength;
+      }
+    }
+  }
+  return Object.keys(counts).sort(function(a,b){return counts[b] - counts[a];}).slice(0, 4);
+}
+
+function _findCurrentDayun(d){
+  let currentYear = new Date().getFullYear();
+  let scan = null;
+  if (d.annual_scans && d.annual_scans.length){
+    for (let i = 0; i < d.annual_scans.length; i++){
+      if (d.annual_scans[i].year === currentYear){
+        scan = d.annual_scans[i];
+        break;
+      }
+    }
+    if (!scan) scan = d.annual_scans[0];
+  }
+
+  let label = scan && scan.dayun ? scan.dayun : '';
+  let age = scan && scan.age ? scan.age + '岁' : '';
+  let mod = null;
+  let mods = d.dayun && d.dayun.modulations ? d.dayun.modulations : [];
+  for (let m = 0; m < mods.length; m++){
+    let item = mods[m];
+    let itemLabel = (item.dayun_stem || '') + (item.dayun_branch || '');
+    if (label && itemLabel === label){
+      mod = item;
+      break;
+    }
+    if (!mod && scan && item.age_range){
+      let nums = String(item.age_range).match(/\d+/g) || [];
+      if (nums.length >= 2 && scan.age >= Number(nums[0]) && scan.age <= Number(nums[1])){
+        mod = item;
+      }
+    }
+  }
+  if (!label && d.dayun && d.dayun.periods && d.dayun.periods.length){
+    let p = d.dayun.periods[0];
+    label = (p.stem || '') + (p.branch || '');
+    age = p.age || '';
+  }
+  let offset = mod ? mod.baseline_offset || 0 : 0;
+  let offsetText = offset > 0 ? '基调偏顺' : offset < 0 ? '基调有压' : '基调平稳';
+  return {
+    label: label || '待判断',
+    age: age,
+    theme: mod && mod.theme ? mod.theme : '综合节奏',
+    offsetText: offsetText,
+    note: mod && mod.branch_interactions && mod.branch_interactions.length ? mod.branch_interactions[0] : ''
+  };
+}
+
+function _buildReportFocusSections(d){
+  let stageInfo = _getStageInfo(d);
+  let workSignals = _collectCategorySignals(d, ['事业','学业','升学','进修','财运']);
+  let relationSignals = _collectCategorySignals(d, ['桃花','人际','婚恋','家宅']);
+  let currentScan = null;
+  let currentYear = new Date().getFullYear();
+  if (d.annual_scans && d.annual_scans.length){
+    for (let i = 0; i < d.annual_scans.length; i++){
+      if (d.annual_scans[i].year === currentYear){
+        currentScan = d.annual_scans[i];
+        break;
+      }
+    }
+    if (!currentScan) currentScan = d.annual_scans[0];
+  }
+  let scanSummary = currentScan ? _summarizeAnnualScan(currentScan, d).slice(0, 3).join('、') : '暂无当前年份信号';
+  let dy = _findCurrentDayun(d);
+  let h = '';
+
+  h += '<section class="report-section report-focus-section" id=section-focus>';
+  h += '<div class=report-section-head><div><span>事业财运</span><h2>' + (stageInfo.isStudent ? '学业、进修与资源' : '事业、财务与资源') + '</h2></div><p>把命盘信息转成现实主题，先看当前阶段和未来高频信号。</p></div>';
+  h += _buildModulePrompts(stageInfo.isStudent ? '学业财运' : '事业财运', [stageInfo.isStudent ? '学业和进修重点是什么？' : '事业推进重点是什么？', '财运上应该注意什么？']);
+  h += '<div class=report-card-grid>';
+  h += '<div class=report-mini-card><span>当前阶段</span><b>' + esc(stageInfo.label) + '</b><p>' + (stageInfo.isStudent ? '默认把事业类信号转译为学业、考试、进修和资源支持。' : '默认按职场、项目、收入结构和资源调度来阅读。') + '</p></div>';
+  h += '<div class=report-mini-card><span>高频主题</span><b>' + esc(workSignals.length ? workSignals.join('、') : '暂无明显集中信号') + '</b><p>这里只汇总已有流年事件类别，不额外新增判断。</p></div>';
+  h += '<div class=report-mini-card><span>关系牵引</span><b>' + esc(relationSignals.length ? relationSignals.join('、') : '暂无明显集中信号') + '</b><p>关系和家庭信息保留在性格关系模块中阅读。</p></div>';
+  h += '<div class=report-mini-card><span>当前年份</span><b>' + esc(scanSummary) + '</b><p>' + (currentScan ? esc(currentScan.year + '年 ' + (currentScan.liunian || '')) : '生成流年后会显示年份主线。') + '</p></div>';
+  h += '</div>';
+  h += '</section>';
+
+  h += '<section class="report-section report-dayun-section" id=section-dayun>';
+  h += '<div class=report-section-head><div><span>当前大运</span><h2>十年背景节奏</h2></div><p>大运用于理解阶段背景，具体年份仍以流年卡片为主。</p></div>';
+  h += _buildModulePrompts('当前大运', ['当前大运对我影响最大的是什么？', '这步大运适合主动还是保守？']);
+  h += '<div class=dayun-focus-card>';
+  h += '<div><span>大运</span><b>' + esc(dy.label) + '</b><p>' + esc([dy.age, dy.theme, dy.offsetText].filter(Boolean).join(' · ')) + '</p></div>';
+  if (dy.note) h += '<div class=dayun-focus-note>' + esc(dy.note) + '</div>';
+  h += '<div class=dayun-interpretations>';
+  h += _buildDayunInterpretations(d) || '<div class=dayun-loading>⏳ 大运解读生成中...</div>';
+  h += '</div>';
+  h += '</div>';
+  h += '</section>';
+
+  return h;
+}
+
+function _buildReportNav(d){
+  let items = [
+  ];
+  if (d.personality || d.family) items.push({id:'section-personality', label:'性格关系'});
+  items.push({id:'section-focus', label:'事业财运'});
+  items.push({id:'section-dayun', label:'当前大运'});
+  if (d.annual_scans && d.annual_scans.length) items.push({id:'section-flow', label:'未来流年'});
+  items.push({id:'section-calendar', label:'择日'});
+  items.push({id:'section-foundation', label:'原始依据'});
+
+  let h = '<nav class=report-nav aria-label=报告导航>';
+  h += '<span class=report-nav-label>报告导航</span>';
+  for (let i = 0; i < items.length; i++){
+    h += '<a href="#' + items[i].id + '">' + items[i].label + '</a>';
+  }
+  h += '</nav>';
+  return h;
+}
+
+function _buildModulePrompts(contextLabel, prompts){
+  if (!prompts || !prompts.length) return '';
+  let h = '<div class=module-prompts>';
+  for (let i = 0; i < prompts.length; i++){
+    h += '<button type=button onclick="askModuleQuestion(\'' + esc(contextLabel) + '\', \'' + esc(prompts[i]) + '\')">' + esc(prompts[i]) + '</button>';
+  }
+  h += '</div>';
+  return h;
 }
 
 /* ==========================================
@@ -295,7 +538,15 @@ function render(d){
   let labels = {year:'年', month:'月', day:'日', hour:'时'};
   let h = '';
 
+  h += _buildReportOverview(d);
+  h += _buildReportNav(d);
+  h += _buildReportFocusSections(d);
+
   // Four pillars
+  h += '<section class=report-section id=section-foundation>';
+  h += '<div class=report-section-head><div><span>原始依据</span><h2>命盘与规则细节</h2></div><p>四柱、格局、喜忌和大运是后续报告的底层依据。</p></div>';
+  h += _buildModulePrompts('命盘', ['这个格局现实里意味着什么？', '这条判断依据是什么？']);
+  h += '<details class=evidence-details><summary>查看原始命盘与规则依据</summary><div class=evidence-body>';
   h += '<div class=section-title>四柱</div><div class=pillars>';
   for (let i = 0, keys = ['year','month','day','hour']; i < keys.length; i++){
     let k = keys[i], pv = ym[k];
@@ -419,7 +670,15 @@ function render(d){
   }
 
   // 性格与家境分析
+  h += '</div></details>';
+  h += '</section>';
+
   let fusionReady = d.personality && d.personality._fusion_ready;
+  if (d.personality || d.family){
+    h += '<section class=report-section id=section-personality>';
+    h += '<div class=report-section-head><div><span>性格关系</span><h2>行为模式与家庭背景</h2></div><p>默认阅读报告正文，需要核对时再展开规则依据。</p></div>';
+    h += _buildModulePrompts('性格', ['这段性格最需要注意什么？', '这会如何影响关系？', '这条判断依据是什么？']);
+  }
   if (d.personality){
     h += '<div class=section-title>' + (fusionReady ? '性格与家境' : '性格') + ' <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'性格\')">问AI</span></div>';
     h += '<div class=info-panel>';
@@ -459,7 +718,7 @@ function render(d){
 
     // ── 融合/原始切换 ──
     if (fusionReady){
-      h += '<div class=personality-toggle><button class=toggle-btn onclick="togglePersonalityMode()" title="查看规则引擎原始数据">查看原始数据</button></div>';
+      h += '<div class=personality-toggle><button class=toggle-btn data-personality-mode=fusion onclick="togglePersonalityMode()" title="查看规则引擎原始数据">查看原始数据</button></div>';
       h += '<div class=personality-raw id=personalityRaw style="display:none">';
       // 病药
       if (d.personality.bingyao_combos && d.personality.bingyao_combos.length){
@@ -495,6 +754,9 @@ function render(d){
     h += '<div class=family-text>' + ((d.family.profile || '').replace(/\n/g, '<br>')) + '</div>';
     h += '</div>';
   }
+  if (d.personality || d.family){
+    h += '</section>';
+  }
 
   // Store day_master data for modal
   let dmData = {
@@ -512,10 +774,16 @@ function render(d){
   document.getElementById('result').dataset.dm = JSON.stringify(dmData);
 
   // ── 择日月历 ──
+  h += '<section class=report-section id=section-calendar>';
+  h += '<div class=report-section-head><div><span>择日</span><h2>近期可用日历</h2></div><p>用于快速查看近期开启行动的日期参考。</p></div>';
   h += _buildCalendar(d);
+  h += '</section>';
 
   // Flow years
   if (d.annual_scans && d.annual_scans.length){
+    h += '<section class=report-section id=section-flow>';
+    h += '<div class=report-section-head><div><span>流年</span><h2>年份趋势时间线</h2></div><p>优先看年份主线，展开后再看触发依据和详细事件。</p></div>';
+    h += _buildModulePrompts('流年', ['未来三年重点注意哪一年？', '这些流年信号怎么理解？', '哪一年适合主动推进？']);
     h += '<div class=section-title>流年</div>';
 
     // Collect unique categories for filter
@@ -544,23 +812,7 @@ function render(d){
       if (!significant.length) continue;
       hasAny = true;
 
-      let cats2 = significant.map(function(e){return e.category});
-      let dirs2 = significant.map(function(e){return e.direction});
-      let summary = [];
-      // 获取当前人生阶段（优先用用户手动切换的）
-      let curStage = sessionStorage.getItem('bazi-life-stage') || d.life_stage || '职场';
-      let isStudent = curStage === '中学' || curStage === '大学' || curStage === '深造';
-      if (cats2.indexOf('桃花') !== -1) summary.push(dirs2[cats2.indexOf('桃花')] === '负面' ? '感情波动' : '感情运升');
-      if (cats2.indexOf('事业') !== -1) summary.push(dirs2[cats2.indexOf('事业')] === '负面' ? (isStudent ? '学业压力' : '事业有压') : (isStudent ? '校园活跃' : '事业有进'));
-      if (cats2.indexOf('学业') !== -1) summary.push(dirs2[cats2.indexOf('学业')] === '负面' ? '学业压力' : '校园活跃');
-      if (cats2.indexOf('财运') !== -1) summary.push(dirs2[cats2.indexOf('财运')] === '负面' ? (isStudent ? '手头偏紧' : '注意财务') : (isStudent ? '经济宽松' : '财运关注'));
-      if (cats2.indexOf('健康') !== -1) summary.push('留意健康');
-      if (cats2.indexOf('升学') !== -1) summary.push(isStudent ? '学业运佳' : '进修运佳');
-      if (cats2.indexOf('进修') !== -1) summary.push('进修运佳');
-      if (cats2.indexOf('搬迁') !== -1) summary.push('可能搬迁');
-      if (cats2.indexOf('状态') !== -1) summary.push(dirs2[cats2.indexOf('状态')] === '负面' ? '状态低迷' : '状态良好');
-      if (cats2.indexOf('人际') !== -1) summary.push(dirs2[cats2.indexOf('人际')] === '负面' ? '人际有摩擦' : '人际和谐');
-      if (!summary.length) summary.push('运势平稳');
+      let summary = _summarizeAnnualScan(scan, d);
 
       // 构建顶栏标签: 类别 + 方向
       let tagBadges = [];
@@ -578,6 +830,7 @@ function render(d){
       h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
       h += '<span class=chevron>▶</span>';
       h += '</div>';
+      h += '<div class=event-summary-line>' + esc(summary.slice(0, 3).join('、')) + '</div>';
       // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
       h += '<div class=event-body>';
       for (let e = 0; e < significant.length; e++){
@@ -615,11 +868,12 @@ function render(d){
     }
     if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
     h += '</div>'; // /events-section
+    h += '</section>';
   }
 
   // 时辰未确认警告
   if (d.warnings && d.warnings.length){
-    h += '<div style="background:var(--error-bg);border:1px solid var(--gold);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--gold);line-height:1.7">';
+    h += '<div class=report-warning style="background:var(--error-bg);border:1px solid var(--gold);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--gold);line-height:1.7">';
     for (let wi = 0; wi < d.warnings.length; wi++){
       h += esc(d.warnings[wi]) + '<br>';
     }
@@ -628,6 +882,7 @@ function render(d){
 
   document.getElementById('result').innerHTML = h;
   document.getElementById('copyBtn').style.display = 'inline-block';
+  document.getElementById('reportActions').classList.add('active');
 
   // 如果用户填写了家境信息，自动提交反馈
   let fl = document.getElementById('familyLevel').value;
@@ -761,21 +1016,7 @@ function refreshFlowSection(d){
     let significant = scan.events.filter(function(e){return e.strength >= 2});
     if (!significant.length) continue;
     hasAny = true;
-    let cats2 = significant.map(function(e){return e.category});
-    let dirs2 = significant.map(function(e){return e.direction});
-    let curStage = sessionStorage.getItem('bazi-life-stage') || d.life_stage || '职场';
-    let isStudent = curStage === '中学' || curStage === '大学' || curStage === '深造';
-    let summary = [];
-    if (cats2.indexOf('桃花') !== -1) summary.push(dirs2[cats2.indexOf('桃花')] === '负面' ? '感情波动' : '感情运升');
-    if (cats2.indexOf('事业') !== -1) summary.push(dirs2[cats2.indexOf('事业')] === '负面' ? (isStudent ? '学业压力' : '事业有压') : (isStudent ? '校园活跃' : '事业有进'));
-    if (cats2.indexOf('学业') !== -1) summary.push(dirs2[cats2.indexOf('学业')] === '负面' ? '学业压力' : '校园活跃');
-    if (cats2.indexOf('财运') !== -1) summary.push(dirs2[cats2.indexOf('财运')] === '负面' ? (isStudent ? '手头偏紧' : '注意财务') : (isStudent ? '经济宽松' : '财运关注'));
-    if (cats2.indexOf('健康') !== -1) summary.push('留意健康');
-    if (cats2.indexOf('升学') !== -1) summary.push(isStudent ? '学业运佳' : '进修运佳');
-    if (cats2.indexOf('搬迁') !== -1) summary.push('可能搬迁');
-    if (cats2.indexOf('状态') !== -1) summary.push(dirs2[cats2.indexOf('状态')] === '负面' ? '状态低迷' : '状态良好');
-    if (cats2.indexOf('人际') !== -1) summary.push(dirs2[cats2.indexOf('人际')] === '负面' ? '人际有摩擦' : '人际和谐');
-    if (!summary.length) summary.push('运势平稳');
+    let summary = _summarizeAnnualScan(scan, d);
     let tagBadges = [];
     for (let e = 0; e < significant.length; e++){
       let ev = significant[e];
@@ -790,6 +1031,7 @@ function refreshFlowSection(d){
     h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
     h += '<span class=chevron>▶</span>';
     h += '</div>';
+    h += '<div class=event-summary-line>' + esc(summary.slice(0, 3).join('、')) + '</div>';
     h += '<div class=event-body>';
     for (let e = 0; e < significant.length; e++){
       let ev2 = significant[e];
@@ -1296,10 +1538,21 @@ function closeChat(){
 }
 function toggleChat(){ CHAT.visible ? closeChat() : openChat(); }
 
+function askModuleQuestion(contextLabel, question){
+  if (contextLabel) setChatContext(contextLabel);
+  openChat(contextLabel);
+  useSuggestion(question);
+}
+
 function setChatContext(label){
   let input = document.getElementById('chatInput');
   input.placeholder = '追问' + label + '…';
   input.dataset.context = label;
+  let hint = document.getElementById('chatContextHint');
+  if (hint){
+    hint.textContent = '当前上下文：' + label + '。输入框内容不会自动发送。';
+    hint.classList.add('active');
+  }
 }
 
 /* ── 发送消息 ── */

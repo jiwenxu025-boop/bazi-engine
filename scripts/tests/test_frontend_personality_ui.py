@@ -1,0 +1,518 @@
+"""Frontend personality report behavior tests."""
+
+from __future__ import annotations
+
+import subprocess
+import textwrap
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+APP_JS = ROOT / "frontend" / "app.js"
+INDEX_HTML = ROOT / "frontend" / "index.html"
+
+
+def run_node(script: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["node", "-e", script],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+
+def test_personality_fusion_error_switches_to_raw_and_toggle_can_return():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+          scrollIntoView() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+          personalityBody: new Element('personalityBody'),
+          personalityRaw: new Element('personalityRaw'),
+          toggleBtn: new Element('toggleBtn'),
+        }};
+        elements.personalityRaw.style.display = 'none';
+        elements.personalityBody.style.display = 'block';
+
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{
+            matchMedia() {{ return {{ matches: false }}; }},
+            location: {{ origin: 'http://example.test' }},
+            addEventListener() {{}},
+          }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector(selector) {{
+              if (selector === '.toggle-btn') return elements.toggleBtn;
+              if (selector === '.personality-text') return new Element('personalityText');
+              return null;
+            }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        sandbox.showPersonalityRawFallback('api failed');
+        if (elements.personalityRaw.style.display !== 'block') {{
+          throw new Error('raw panel was not shown after fusion failure');
+        }}
+        if (elements.personalityBody.style.display !== 'none') {{
+          throw new Error('fusion panel was not hidden after fusion failure');
+        }}
+        if (elements.toggleBtn.dataset.personalityMode !== 'raw') {{
+          throw new Error('toggle mode was not marked raw after fusion failure');
+        }}
+
+        sandbox.togglePersonalityMode();
+        if (elements.personalityRaw.style.display !== 'none') {{
+          throw new Error('raw panel was not hidden after manual toggle');
+        }}
+        if (elements.personalityBody.style.display !== 'block') {{
+          throw new Error('fusion panel was not restored after manual toggle');
+        }}
+        if (elements.toggleBtn.dataset.personalityMode !== 'fusion') {{
+          throw new Error('toggle mode was not marked fusion after manual toggle');
+        }}
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_report_overview_summarizes_chart_for_reading_first_result_page():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+          scrollIntoView() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+        }};
+
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{
+            matchMedia() {{ return {{ matches: false }}; }},
+            location: {{ origin: 'http://example.test' }},
+            addEventListener() {{}},
+          }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const html = sandbox._buildReportOverview({{
+          day_master: {{ stem: '甲', wuxing: '木', yinyang: '阳' }},
+          pattern: '正官格',
+          yongshen: {{ strength: '身弱', favorable_wuxing: ['水', '木'] }},
+          life_stage: '职场',
+          annual_scans: [
+            {{ year: 2026, events: [{{ category: '事业', strength: 3 }}, {{ category: '财运', strength: 2 }}] }},
+            {{ year: 2027, events: [{{ category: '感情', strength: 3 }}] }}
+          ]
+        }});
+
+        if (!html.includes('命盘总览')) throw new Error('overview title missing');
+        if (!html.includes('甲木')) throw new Error('day master summary missing');
+        if (!html.includes('正官格')) throw new Error('pattern summary missing');
+        if (!html.includes('身弱')) throw new Error('strength summary missing');
+        if (!html.includes('职场')) throw new Error('life stage summary missing');
+        if (!html.includes('事业')) throw new Error('future focus summary missing');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_home_form_keeps_advanced_options_collapsed_and_uses_report_cta():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert "<title>八字解读</title>" in html
+    assert "<h1>八字解读</h1>" in html
+    assert "填写出生信息" in html
+    assert "生成命盘" in html
+    assert "阅读报告" in html
+    assert 'class="advanced-options"' in html
+    assert "流年范围" in html
+    assert html.index('class="advanced-options"') < html.index("流年范围")
+    assert 'id="submitBtn">生成解读</button>' in html
+
+
+def test_mobile_report_action_bar_contains_primary_reader_actions():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="reportActions"' in html
+    assert "openChat('报告')" in html
+    assert "copyBtn" in html
+    assert "scrollTo({top:0" in html
+
+
+def test_chart_params_use_default_flow_range_without_empty_optional_numbers():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id, value) {{
+            this.id = id;
+            this.value = value || '';
+            this.checked = false;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+          name: new Element('name', ''),
+          gender: new Element('gender', '男'),
+          year: new Element('year', '2000'),
+          month: new Element('month', '1'),
+          day: new Element('day', '1'),
+          hour: new Element('hour', ''),
+          lnFrom: new Element('lnFrom', ''),
+          lnTo: new Element('lnTo', ''),
+          hourConfirmed: new Element('hourConfirmed'),
+          familyLevel: new Element('familyLevel', ''),
+          fatherJob: new Element('fatherJob', ''),
+          motherJob: new Element('motherJob', ''),
+        }};
+        const sandbox = {{
+          console,
+          URLSearchParams,
+          Date,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{ matchMedia() {{ return {{ matches: false }}; }}, location: {{ origin: 'http://example.test' }}, addEventListener() {{}} }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const params = sandbox._buildChartParams();
+        const currentYear = String(new Date().getFullYear());
+        if (params.get('liunian_from') !== currentYear) throw new Error('default liunian_from missing');
+        if (params.get('liunian_to') !== String(Number(currentYear) + 5)) throw new Error('default liunian_to missing');
+        if (params.get('hour') !== '12') throw new Error('blank hour should fall back to 12');
+        if (params.get('name') !== '未知') throw new Error('blank name should use default');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_report_navigation_exposes_main_reading_sections():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+          scrollIntoView() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+        }};
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{ matchMedia() {{ return {{ matches: false }}; }}, location: {{ origin: 'http://example.test' }}, addEventListener() {{}} }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const html = sandbox._buildReportNav({{
+          personality: {{ profile: 'x' }},
+          annual_scans: [{{ year: 2026, events: [{{ category: '事业', strength: 3 }}] }}]
+        }});
+        if (!html.includes('href="#section-personality"')) throw new Error('personality nav missing');
+        if (!html.includes('href="#section-focus"')) throw new Error('focus nav missing');
+        if (!html.includes('href="#section-dayun"')) throw new Error('dayun nav missing');
+        if (!html.includes('href="#section-flow"')) throw new Error('flow nav missing');
+        if (!html.includes('href="#section-foundation"')) throw new Error('foundation nav missing');
+        if (!html.includes('原始依据')) throw new Error('foundation label missing');
+        if (!html.includes('报告导航')) throw new Error('nav label missing');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_foundation_rules_are_rendered_as_expandable_evidence():
+    js = APP_JS.read_text(encoding="utf-8")
+
+    assert "class=evidence-details" in js
+    assert "查看原始命盘与规则依据" in js
+
+
+def test_report_focus_sections_reuse_existing_signals_without_new_rules():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+          scrollIntoView() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+        }};
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          Date,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{ matchMedia() {{ return {{ matches: false }}; }}, location: {{ origin: 'http://example.test' }}, addEventListener() {{}} }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const chart = {{
+          life_stage: '职场',
+          annual_scans: [
+            {{ year: new Date().getFullYear(), liunian: '丙午', age: 26, dayun: '丁未', events: [
+              {{ category: '事业', direction: '正面', strength: 3 }},
+              {{ category: '财运', direction: '负面', strength: 2 }},
+              {{ category: '人际', direction: '正面', strength: 2 }}
+            ] }}
+          ],
+          dayun: {{
+            periods: [{{ stem: '丁', branch: '未', age: '26-35岁' }}],
+            modulations: [{{ dayun_stem: '丁', dayun_branch: '未', age_range: '26-35岁', theme: '财运', baseline_offset: 1, branch_interactions: ['与原局亥半合木'] }}],
+            interpretations: []
+          }}
+        }};
+        const html = sandbox._buildReportFocusSections(chart);
+        if (!html.includes('id=section-focus')) throw new Error('focus section missing');
+        if (!html.includes('事业、财运')) throw new Error('work signals missing');
+        if (!html.includes('人际')) throw new Error('relation signals missing');
+        if (!html.includes('id=section-dayun')) throw new Error('dayun section missing');
+        if (!html.includes('丁未')) throw new Error('current dayun missing');
+        if (!html.includes('基调偏顺')) throw new Error('dayun offset missing');
+
+        const summary = sandbox._summarizeAnnualScan(chart.annual_scans[0], chart).join('、');
+        if (!summary.includes('事业有进')) throw new Error('annual summary missing career line');
+        if (!summary.includes('注意财务')) throw new Error('annual summary missing wealth line');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_module_prompt_chips_fill_chat_with_contextual_question():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.value = '';
+            this.placeholder = '';
+          }}
+          addEventListener() {{}}
+          focus() {{ this.focused = true; }}
+          insertAdjacentHTML() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+          chatInput: new Element('chatInput'),
+          chatContextHint: new Element('chatContextHint'),
+          chatPanel: new Element('chatPanel'),
+          chatOverlay: new Element('chatOverlay'),
+          chatMessages: new Element('chatMessages'),
+        }};
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return '1'; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{ matchMedia() {{ return {{ matches: false }}; }}, location: {{ origin: 'http://example.test' }}, addEventListener() {{}} }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const chips = sandbox._buildModulePrompts('流年', ['未来三年重点注意哪一年？']);
+        if (!chips.includes('module-prompts')) throw new Error('prompt chip wrapper missing');
+        if (!chips.includes('askModuleQuestion')) throw new Error('prompt action missing');
+
+        vm.runInContext("CHAT.enabled = true; CHAT.chartData = true;", sandbox);
+        sandbox.askModuleQuestion('流年', '未来三年重点注意哪一年？');
+        if (elements.chatInput.value !== '未来三年重点注意哪一年？') throw new Error('question not filled');
+        if (!elements.chatInput.focused) throw new Error('input not focused');
+        if (!elements.chatContextHint.textContent.includes('当前上下文：流年')) throw new Error('context hint missing');
+
+        vm.runInContext("CHAT.enabled = false; CHAT.chartData = null;", sandbox);
+        sandbox.askModuleQuestion('命盘', '这个格局现实里意味着什么？');
+        if (!elements.chatContextHint.textContent.includes('当前上下文：命盘')) throw new Error('disabled chat context hint missing');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout

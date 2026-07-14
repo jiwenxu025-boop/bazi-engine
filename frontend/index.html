@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>八字排盘</title>
+<title>八字解读</title>
 <script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
 <link rel="stylesheet" href="style.css">
 <link rel=stylesheet href=chat.css>
@@ -15,13 +15,19 @@
 <!-- Header -->
 <header class="header">
   <button class="theme-toggle" id="themeToggle" title="切换深浅色" aria-label="切换深浅色">☀</button>
-  <h1>八字排盘</h1>
+  <h1>八字解读</h1>
   <p class="disclaimer">仅供娱乐参考，不构成任何决策依据 · <a href=/privacy target=_blank>隐私政策</a> · <a href=/terms target=_blank>服务协议</a></p>
   <div class="api-row">
     <label>API</label>
     <input id="apiUrl" type=hidden>
   </div>
 </header>
+
+<div class="start-steps" aria-label="生成流程">
+  <span>填写出生信息</span>
+  <span>生成命盘</span>
+  <span>阅读报告</span>
+</div>
 
 <!-- Form -->
 <div class="form-card" id="formCard">
@@ -35,10 +41,6 @@
     <label><span>日 (公历/阳历)</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
     <label><span>时 (24h制)</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
   </div>
-  <div class="form-row">
-    <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2023" min="1900" max="2100"></label>
-    <label><span>至</span><input id="lnTo" type="number" placeholder="2030" min="1900" max="2100"></label>
-  </div>
   <div class="form-row" style="margin-bottom:6px">
     <label style="flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
       <input type="checkbox" id="hourConfirmed" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
@@ -46,6 +48,13 @@
       <span id="hourHint" style="font-size:11px;color:var(--gold);margin-left:2px">⚠ 未确认，格局、起运、时柱神煞仅供参考</span>
     </label>
   </div>
+  <details class="advanced-options">
+    <summary>高级设置</summary>
+    <div class="form-row" style="margin-top:10px">
+      <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2026" min="1900" max="2100"></label>
+      <label><span>至</span><input id="lnTo" type="number" placeholder="2031" min="1900" max="2100"></label>
+    </div>
+  </details>
   <details style="margin-bottom:var(--space-md);font-size:13px;color:var(--text-secondary)">
     <summary style="cursor:pointer;user-select:none">📋 填写已知家境（可选，用于校准）</summary>
     <div class="form-row" style="margin-top:10px">
@@ -54,7 +63,7 @@
       <label><span>母亲职业</span><input id="motherJob" placeholder="可选"></label>
     </div>
   </details>
-  <button class="btn" id="submitBtn">排盘</button>
+  <button class="btn" id="submitBtn">生成解读</button>
 </div>
 
 <!-- Copy button -->
@@ -76,7 +85,13 @@
 <!-- Back to Top -->
 <button class="back-top" id="backTop" title="回到顶部">&#8593;</button>
 
-<script src="app.js?v=20260711"></script>
+<div class="report-mobile-actions" id="reportActions">
+  <button type="button" onclick="openChat('报告')">问 AI</button>
+  <button type="button" onclick="document.getElementById('copyBtn').click()">复制</button>
+  <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">顶部</button>
+</div>
+
+<script src="app.js?v=20260713"></script>
 
 <!-- ═══ Chat Toggle ═══ -->
 <button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问">💬<span class=badge id=chatBadge></span></button>
@@ -103,6 +118,7 @@
       </div>
     </div>
   </div>
+  <div class=chat-context-hint id=chatContextHint></div>
   <div class=chat-input-suggestions>
     <span onclick="useSuggestion('这个八字整体格局怎么样')">格局层次</span>
     <span onclick="useSuggestion('我最近几年感情运如何')">感情运势</span>
