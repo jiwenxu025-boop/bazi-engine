@@ -1018,6 +1018,25 @@ html.dark .calendar-legend .dot.bad{background:#c53030}
 .calendar-export-btn:hover{opacity:.85}
 
 /* ==========================================
+   Chat context
+   ========================================== */
+.chat-context-hint{
+  display:none;
+  margin:10px 14px 0;
+  padding:8px 10px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--tag-bg);
+  color:var(--text-secondary);
+  font-size:12px;
+  line-height:1.6;
+  overflow-wrap:anywhere;
+}
+.chat-context-hint.active{
+  display:block;
+}
+
+/* ==========================================
    States
    ========================================== */
 .no-signal-msg{

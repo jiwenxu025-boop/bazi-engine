@@ -66,6 +66,80 @@ document.getElementById('formCard').addEventListener('keydown', function(e){
    ========================================== */
 document.getElementById('submitBtn').addEventListener('click', go);
 
+/* ==========================================
+   Shared app state
+   ========================================== */
+let AppState = {
+  chart: null,
+  currentContext: null,
+  streamStatus: 'idle',
+  lifeStageOverride: null,
+};
+
+function setChartData(chart){
+  AppState.chart = chart || null;
+  AppState.currentContext = AppState.chart && AppState.chart.current_context ? AppState.chart.current_context : null;
+  try { CHAT.chartData = AppState.chart; } catch(e) {}
+  if (typeof window !== 'undefined') window._calChart = AppState.chart;
+  return AppState.chart;
+}
+
+function getChartData(){
+  if (AppState.chart) return AppState.chart;
+  try { return CHAT.chartData || null; } catch(e) { return null; }
+}
+
+function getCurrentContext(){
+  if (AppState.currentContext) return AppState.currentContext;
+  let chart = getChartData();
+  return chart && chart.current_context ? chart.current_context : null;
+}
+
+function setStreamStatus(status){
+  AppState.streamStatus = status || 'idle';
+  return AppState.streamStatus;
+}
+
+function mergeAnnualSignals(year, signals){
+  let chart = getChartData();
+  if (!chart || !chart.annual_scans || !signals || !signals.length) return chart;
+  for (let si = 0; si < chart.annual_scans.length; si++){
+    if (chart.annual_scans[si].year === year){
+      if (!chart.annual_scans[si].events) chart.annual_scans[si].events = [];
+      for (let sj = 0; sj < signals.length; sj++){
+        chart.annual_scans[si].events.push(signals[sj]);
+      }
+      break;
+    }
+  }
+  setChartData(chart);
+  return chart;
+}
+
+function setDayunInterpretations(items){
+  let chart = getChartData();
+  if (!chart) return null;
+  if (!chart.dayun) chart.dayun = {};
+  chart.dayun.interpretations = items || [];
+  setChartData(chart);
+  return chart;
+}
+
+function _buildChatFactHint(){
+  let ctx = getCurrentContext() || {};
+  let parts = [];
+  if (ctx.current_dayun && ctx.current_dayun.ganzhi){
+    let ageRange = ctx.current_dayun.age_range ? '（' + ctx.current_dayun.age_range + '）' : '';
+    parts.push(ctx.current_dayun.ganzhi + '大运' + ageRange);
+  }
+  if (ctx.current_liunian && ctx.current_liunian.year && ctx.current_liunian.ganzhi){
+    parts.push(ctx.current_liunian.year + '年' + ctx.current_liunian.ganzhi + '流年');
+  }
+  if (ctx.solar_age !== undefined && ctx.solar_age !== null) parts.push('周岁' + ctx.solar_age);
+  if (ctx.liunian_age !== undefined && ctx.liunian_age !== null) parts.push('流年' + ctx.liunian_age);
+  return parts.join(' · ');
+}
+
 function _buildChartParams(){
   let lnFrom = document.getElementById('lnFrom').value;
   let lnTo = document.getElementById('lnTo').value;
@@ -150,7 +224,7 @@ async function go(){
             updateLlmTokenDisplay(msg.year, llmTokens[msg.year]);
           } else if (msg.phase === 'rules_done'){
             // 1. 规则引擎完成，立即渲染
-            d = msg.chart;
+            d = setChartData(msg.chart);
             render(d);
             setTimeout(function(){
               r.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -158,14 +232,7 @@ async function go(){
           } else if (msg.phase === 'llm_result'){
             // 2. LLM审查某年完成，合并信号到对应年份
             if (d && d.annual_scans){
-              for (let si = 0; si < d.annual_scans.length; si++){
-                if (d.annual_scans[si].year === msg.year){
-                  for (let sj = 0; sj < msg.signals.length; sj++){
-                    d.annual_scans[si].events.push(msg.signals[sj]);
-                  }
-                  break;
-                }
-              }
+              d = mergeAnnualSignals(msg.year, msg.signals) || d;
               // 局部刷新流年区域
               refreshFlowSection(d);
             }
@@ -210,7 +277,7 @@ async function go(){
           } else if (msg.phase === 'dayun_done'){
             // 5. 大运解读完成——更新DOM
             if (msg.interpretations && msg.interpretations.length){
-              d.dayun.interpretations = msg.interpretations;
+              d = setDayunInterpretations(msg.interpretations) || d;
               let dyEls = document.querySelectorAll('.dayun-interpretations');
               for (let di = 0; di < dyEls.length; di++) dyEls[di].innerHTML = _buildDayunInterpretations(d);
             }
@@ -392,6 +459,55 @@ function _summarizeAnnualScan(scan, d){
   return summary;
 }
 
+function _formatAgeText(age){
+  let text = String(age || '').trim();
+  if (!text) return '';
+  return text.indexOf('岁') === -1 ? text + '岁' : text;
+}
+
+function _getCurrentContext(d){
+  return d && d.current_context ? d.current_context : {};
+}
+
+function _getCurrentScan(d){
+  let ctx = _getCurrentContext(d);
+  if (ctx.current_liunian){
+    return {
+      year: ctx.current_liunian.year,
+      age: ctx.current_liunian.age,
+      liunian: ctx.current_liunian.ganzhi,
+      dayun: ctx.current_liunian.dayun,
+      events: (ctx.current_liunian.key_events || []).map(function(e){
+        return {
+          category: e.category,
+          direction: e.direction,
+          strength: e.strength,
+          prediction: e.prediction || ''
+        };
+      })
+    };
+  }
+
+  let currentYear = new Date().getFullYear();
+  if (d.annual_scans && d.annual_scans.length){
+    for (let i = 0; i < d.annual_scans.length; i++){
+      if (d.annual_scans[i].year === currentYear){
+        return d.annual_scans[i];
+      }
+    }
+    return d.annual_scans[0];
+  }
+  return null;
+}
+
+function _currentAgeNote(d){
+  let ctx = _getCurrentContext(d);
+  let parts = [];
+  if (ctx.solar_age !== undefined && ctx.solar_age !== null) parts.push('周岁' + ctx.solar_age);
+  if (ctx.liunian_age !== undefined && ctx.liunian_age !== null) parts.push('流年' + ctx.liunian_age);
+  return parts.join(' · ');
+}
+
 function _collectCategorySignals(d, wanted){
   let counts = {};
   if (!d.annual_scans) return [];
@@ -408,20 +524,10 @@ function _collectCategorySignals(d, wanted){
 }
 
 function _findCurrentDayun(d){
-  let currentYear = new Date().getFullYear();
-  let scan = null;
-  if (d.annual_scans && d.annual_scans.length){
-    for (let i = 0; i < d.annual_scans.length; i++){
-      if (d.annual_scans[i].year === currentYear){
-        scan = d.annual_scans[i];
-        break;
-      }
-    }
-    if (!scan) scan = d.annual_scans[0];
-  }
-
-  let label = scan && scan.dayun ? scan.dayun : '';
-  let age = scan && scan.age ? scan.age + '岁' : '';
+  let ctx = _getCurrentContext(d);
+  let scan = _getCurrentScan(d);
+  let label = ctx.current_dayun && ctx.current_dayun.ganzhi ? ctx.current_dayun.ganzhi : (scan && scan.dayun ? scan.dayun : '');
+  let age = ctx.current_dayun && ctx.current_dayun.age_range ? ctx.current_dayun.age_range : (scan && scan.age ? scan.age + '岁' : '');
   let mod = null;
   let mods = d.dayun && d.dayun.modulations ? d.dayun.modulations : [];
   for (let m = 0; m < mods.length; m++){
@@ -441,7 +547,7 @@ function _findCurrentDayun(d){
   if (!label && d.dayun && d.dayun.periods && d.dayun.periods.length){
     let p = d.dayun.periods[0];
     label = (p.stem || '') + (p.branch || '');
-    age = p.age || '';
+    age = _formatAgeText(p.age);
   }
   let offset = mod ? mod.baseline_offset || 0 : 0;
   let offsetText = offset > 0 ? '基调偏顺' : offset < 0 ? '基调有压' : '基调平稳';
@@ -458,18 +564,9 @@ function _buildReportFocusSections(d){
   let stageInfo = _getStageInfo(d);
   let workSignals = _collectCategorySignals(d, ['事业','学业','升学','进修','财运']);
   let relationSignals = _collectCategorySignals(d, ['桃花','人际','婚恋','家宅']);
-  let currentScan = null;
-  let currentYear = new Date().getFullYear();
-  if (d.annual_scans && d.annual_scans.length){
-    for (let i = 0; i < d.annual_scans.length; i++){
-      if (d.annual_scans[i].year === currentYear){
-        currentScan = d.annual_scans[i];
-        break;
-      }
-    }
-    if (!currentScan) currentScan = d.annual_scans[0];
-  }
+  let currentScan = _getCurrentScan(d);
   let scanSummary = currentScan ? _summarizeAnnualScan(currentScan, d).slice(0, 3).join('、') : '暂无当前年份信号';
+  let ageNote = _currentAgeNote(d);
   let dy = _findCurrentDayun(d);
   let h = '';
 
@@ -480,15 +577,15 @@ function _buildReportFocusSections(d){
   h += '<div class=report-mini-card><span>当前阶段</span><b>' + esc(stageInfo.label) + '</b><p>' + (stageInfo.isStudent ? '默认把事业类信号转译为学业、考试、进修和资源支持。' : '默认按职场、项目、收入结构和资源调度来阅读。') + '</p></div>';
   h += '<div class=report-mini-card><span>高频主题</span><b>' + esc(workSignals.length ? workSignals.join('、') : '暂无明显集中信号') + '</b><p>这里只汇总已有流年事件类别，不额外新增判断。</p></div>';
   h += '<div class=report-mini-card><span>关系牵引</span><b>' + esc(relationSignals.length ? relationSignals.join('、') : '暂无明显集中信号') + '</b><p>关系和家庭信息保留在性格关系模块中阅读。</p></div>';
-  h += '<div class=report-mini-card><span>当前年份</span><b>' + esc(scanSummary) + '</b><p>' + (currentScan ? esc(currentScan.year + '年 ' + (currentScan.liunian || '')) : '生成流年后会显示年份主线。') + '</p></div>';
+  h += '<div class=report-mini-card><span>当前年份</span><b>' + esc(scanSummary) + '</b><p>' + (currentScan ? esc([currentScan.year + '年 ' + (currentScan.liunian || ''), currentScan.dayun ? currentScan.dayun + '大运' : '', ageNote].filter(Boolean).join(' · ')) : '生成流年后会显示年份主线。') + '</p></div>';
   h += '</div>';
   h += '</section>';
 
   h += '<section class="report-section report-dayun-section" id=section-dayun>';
-  h += '<div class=report-section-head><div><span>当前大运</span><h2>十年背景节奏</h2></div><p>大运用于理解阶段背景，具体年份仍以流年卡片为主。</p></div>';
+  h += '<div class=report-section-head><div><span>当前大运</span><h2>十年背景节奏</h2></div><p>大运、流年和年龄为规则事实；下方 AI 解读只做解释翻译，若冲突以规则事实为准。</p></div>';
   h += _buildModulePrompts('当前大运', ['当前大运对我影响最大的是什么？', '这步大运适合主动还是保守？']);
   h += '<div class=dayun-focus-card>';
-  h += '<div><span>大运</span><b>' + esc(dy.label) + '</b><p>' + esc([dy.age, dy.theme, dy.offsetText].filter(Boolean).join(' · ')) + '</p></div>';
+  h += '<div><span>大运</span><b>' + esc(dy.label) + '</b><p>' + esc([dy.age, ageNote, dy.theme, dy.offsetText].filter(Boolean).join(' · ')) + '</p></div>';
   if (dy.note) h += '<div class=dayun-focus-note>' + esc(dy.note) + '</div>';
   h += '<div class=dayun-interpretations>';
   h += _buildDayunInterpretations(d) || '<div class=dayun-loading>⏳ 大运解读生成中...</div>';
@@ -533,7 +630,7 @@ function _buildModulePrompts(contextLabel, prompts){
    ========================================== */
 function render(d){
   // 存储命盘数据供 AI 追问用
-  CHAT.chartData = d;
+  d = setChartData(d);
   let ym = d.four_pillars;
   let labels = {year:'年', month:'月', day:'日', hour:'时'};
   let h = '';
@@ -544,7 +641,7 @@ function render(d){
 
   // Four pillars
   h += '<section class=report-section id=section-foundation>';
-  h += '<div class=report-section-head><div><span>原始依据</span><h2>命盘与规则细节</h2></div><p>四柱、格局、喜忌和大运是后续报告的底层依据。</p></div>';
+  h += '<div class=report-section-head><div><span>原始依据</span><h2>命盘与规则细节</h2></div><p>四柱、格局、喜忌和大运是规则事实来源；AI 解读只负责把这些事实转成白话。</p></div>';
   h += _buildModulePrompts('命盘', ['这个格局现实里意味着什么？', '这条判断依据是什么？']);
   h += '<details class=evidence-details><summary>查看原始命盘与规则依据</summary><div class=evidence-body>';
   h += '<div class=section-title>四柱</div><div class=pillars>';
@@ -610,7 +707,7 @@ function render(d){
   h += '<div class=dayun-scroll>';
   for (let j = 0; j < Math.min(d.dayun.periods.length, 8); j++){
     let p = d.dayun.periods[j];
-    h += '<span class=dayun-tag>' + p.stem + p.branch + ' <span style="color:var(--text-tertiary)">' + p.age + '岁</span></span>';
+    h += '<span class=dayun-tag>' + p.stem + p.branch + ' <span style="color:var(--text-tertiary)">' + _formatAgeText(p.age) + '</span></span>';
   }
   h += '</div></div>';
   // 大运 LLM 解读（v0.14.0: SSE 异步填充）
@@ -1284,7 +1381,7 @@ function _buildCalendar(d){
   // 存储当前年月，供翻页时使用
   window._calYear = yr;
   window._calMonth = mo;
-  window._calChart = d;  // 保存命盘数据供 API 请求用
+  setChartData(d);  // 保存命盘数据供 API 请求用
 
   // 异步加载当月吉凶标记
   setTimeout(function(){ _loadCalendarMarks(yr, mo); }, 100);
@@ -1321,7 +1418,7 @@ function _calendarNav(dir){
 
 function _loadCalendarMarks(yr, mo){
   let api = document.getElementById('apiUrl').value.replace(/\/$/, '') || window.location.origin;
-  let chartData = window._calChart;
+  let chartData = getChartData();
   if (!chartData) return;
 
   fetch(api + '/api/date-pick', {
@@ -1520,7 +1617,7 @@ function openChat(contextLabel){
     document.getElementById('disclaimerModal').classList.add('active');
     return;
   }
-  if (!CHAT.chartData){ showMsg('请先排盘');return; }
+  if (!getChartData()){ showMsg('请先排盘');return; }
   CHAT.visible = true;
   document.getElementById('chatPanel').classList.add('open');
   document.getElementById('chatOverlay').classList.add('active');
@@ -1550,7 +1647,10 @@ function setChatContext(label){
   input.dataset.context = label;
   let hint = document.getElementById('chatContextHint');
   if (hint){
-    hint.textContent = '当前上下文：' + label + '。输入框内容不会自动发送。';
+    let factHint = _buildChatFactHint();
+    hint.textContent = '当前上下文：' + label + '。'
+      + (factHint ? '当前事实：' + factHint + '。' : '')
+      + '输入框内容不会自动发送。';
     hint.classList.add('active');
   }
 }
@@ -1587,7 +1687,7 @@ async function sendChat(){
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         question: fullQ,
-        chart_data: CHAT.chartData,
+        chart_data: getChartData(),
         activation_code: CHAT.activationCode,
         history: CHAT.history
       })

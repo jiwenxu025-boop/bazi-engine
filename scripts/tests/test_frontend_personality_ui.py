@@ -6,7 +6,6 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 APP_JS = ROOT / "frontend" / "app.js"
 INDEX_HTML = ROOT / "frontend" / "index.html"
@@ -363,6 +362,21 @@ def test_foundation_rules_are_rendered_as_expandable_evidence():
     assert "查看原始命盘与规则依据" in js
 
 
+def test_report_text_marks_rule_facts_and_ai_explanations_boundary():
+    js = APP_JS.read_text(encoding="utf-8")
+
+    assert "规则事实" in js
+    assert "AI 解读" in js
+    assert "若冲突以规则事实为准" in js
+
+
+def test_chat_context_fact_hint_has_visible_active_style():
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+
+    assert ".chat-context-hint.active" in css
+    assert "overflow-wrap:anywhere" in css
+
+
 def test_report_focus_sections_reuse_existing_signals_without_new_rules():
     script = textwrap.dedent(
         f"""
@@ -445,6 +459,100 @@ def test_report_focus_sections_reuse_existing_signals_without_new_rules():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_report_focus_sections_prefer_backend_current_context():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+          scrollIntoView() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+        }};
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          Date,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{ matchMedia() {{ return {{ matches: false }}; }}, location: {{ origin: 'http://example.test' }}, addEventListener() {{}} }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const chart = {{
+          life_stage: '大学',
+          current_context: {{
+            current_date: '2026-07-14',
+            solar_age: 18,
+            liunian_age: 19,
+            life_stage: '大学',
+            current_dayun: {{ ganzhi: '丙午', age_range: '16-25岁' }},
+            current_liunian: {{
+              year: 2026,
+              age: 19,
+              ganzhi: '丙午',
+              dayun: '丙午',
+              key_events: [
+                {{ category: '学业', direction: '正面', strength: 3, marks: '★★★' }},
+                {{ category: '财运', direction: '正面', strength: 2, marks: '★★' }}
+              ]
+            }}
+          }},
+          annual_scans: [
+            {{ year: 2026, liunian: '丙午', age: 19, dayun: '甲辰', events: [
+              {{ category: '状态', direction: '负面', strength: 2 }}
+            ] }}
+          ],
+          dayun: {{
+            periods: [{{ stem: '甲', branch: '辰', age: '36-45岁' }}],
+            modulations: [],
+            interpretations: []
+          }}
+        }};
+
+        const html = sandbox._buildReportFocusSections(chart);
+        if (!html.includes('丙午')) throw new Error('backend current dayun missing');
+        if (!html.includes('16-25岁')) throw new Error('backend current dayun age range missing');
+        if (!html.includes('周岁18')) throw new Error('solar age note missing');
+        if (!html.includes('流年19')) throw new Error('liunian age note missing');
+        if (!html.includes('2026年 丙午')) throw new Error('backend current liunian missing');
+        if (html.includes('甲辰</b>')) throw new Error('frontend used stale dayun instead of current_context');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_module_prompt_chips_fill_chat_with_contextual_question():
     script = textwrap.dedent(
         f"""
@@ -501,18 +609,216 @@ def test_module_prompt_chips_fill_chat_with_contextual_question():
         if (!chips.includes('module-prompts')) throw new Error('prompt chip wrapper missing');
         if (!chips.includes('askModuleQuestion')) throw new Error('prompt action missing');
 
-        vm.runInContext("CHAT.enabled = true; CHAT.chartData = true;", sandbox);
+        sandbox.setChartData({{
+          current_context: {{
+            solar_age: 18,
+            liunian_age: 19,
+            current_dayun: {{ ganzhi: '丙午', age_range: '16-25岁' }},
+            current_liunian: {{ year: 2026, ganzhi: '丙午', dayun: '丙午', age: 19 }}
+          }}
+        }});
+        vm.runInContext("CHAT.enabled = true;", sandbox);
         sandbox.askModuleQuestion('流年', '未来三年重点注意哪一年？');
         if (elements.chatInput.value !== '未来三年重点注意哪一年？') throw new Error('question not filled');
         if (!elements.chatInput.focused) throw new Error('input not focused');
         if (!elements.chatContextHint.textContent.includes('当前上下文：流年')) throw new Error('context hint missing');
+        if (!elements.chatContextHint.textContent.includes('丙午大运')) throw new Error('current dayun hint missing');
+        if (!elements.chatContextHint.textContent.includes('16-25岁')) throw new Error('current dayun age range hint missing');
+        if (!elements.chatContextHint.textContent.includes('2026年丙午流年')) throw new Error('current liunian hint missing');
+        if (!elements.chatContextHint.textContent.includes('周岁18')) throw new Error('solar age hint missing');
+        if (!elements.chatContextHint.textContent.includes('流年19')) throw new Error('liunian age hint missing');
 
-        vm.runInContext("CHAT.enabled = false; CHAT.chartData = null;", sandbox);
+        vm.runInContext("CHAT.enabled = false;", sandbox);
         sandbox.askModuleQuestion('命盘', '这个格局现实里意味着什么？');
         if (!elements.chatContextHint.textContent.includes('当前上下文：命盘')) throw new Error('disabled chat context hint missing');
         """
     )
 
     result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_app_state_keeps_chart_context_for_chat_calendar_and_stream_merges():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.title = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          appendChild() {{}}
+          insertAdjacentHTML() {{}}
+          remove() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+        }};
+        elements.apiUrl.value = 'http://example.test';
+
+        const fetchBodies = [];
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          Date,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{
+            matchMedia() {{ return {{ matches: false }}; }},
+            location: {{ origin: 'http://example.test' }},
+            addEventListener() {{}},
+          }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+          fetch(url, options) {{
+            fetchBodies.push(JSON.parse(options.body));
+            return Promise.resolve({{ json() {{ return Promise.resolve({{ results: [] }}); }} }});
+          }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const chart = {{
+          id: 'fresh-chart',
+          current_context: {{ current_dayun: {{ ganzhi: 'bingwu' }} }},
+          annual_scans: [{{ year: 2026, events: [{{ category: 'base', strength: 2 }}] }}],
+          dayun: {{ interpretations: [] }}
+        }};
+
+        sandbox.setChartData(chart);
+        if (sandbox.getChartData() !== chart) throw new Error('getChartData did not return the active chart');
+        if (sandbox.getCurrentContext() !== chart.current_context) throw new Error('current_context was not cached');
+        if (!vm.runInContext('CHAT.chartData === getChartData()', sandbox)) throw new Error('legacy chat chart was not synchronized');
+        if (sandbox.window._calChart !== chart) throw new Error('legacy calendar chart was not synchronized');
+
+        sandbox.mergeAnnualSignals(2026, [{{ category: 'stream', strength: 3 }}]);
+        if (chart.current_context.current_dayun.ganzhi !== 'bingwu') throw new Error('current_context changed during annual merge');
+        if (chart.annual_scans[0].events.length !== 2) throw new Error('annual stream signal was not merged');
+
+        sandbox.setDayunInterpretations([{{ index: 0, text: 'ok' }}]);
+        if (chart.current_context.current_dayun.ganzhi !== 'bingwu') throw new Error('current_context changed during dayun merge');
+        if (chart.dayun.interpretations[0].text !== 'ok') throw new Error('dayun interpretations were not stored');
+
+        sandbox.window._calChart = {{ id: 'stale-calendar-chart' }};
+        sandbox._loadCalendarMarks(2026, 7);
+        await Promise.resolve();
+        await Promise.resolve();
+        if (fetchBodies[0].chart.id !== 'fresh-chart') throw new Error('calendar did not use AppState chart');
+        """
+    )
+
+    result = run_node(f"(async () => {{ {script} }})().catch(e => {{ console.error(e.stack || e); process.exit(1); }});")
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_chat_payload_uses_app_state_chart_instead_of_stale_legacy_field():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.innerHTML = '';
+            this.value = '';
+            this.disabled = false;
+            this.scrollTop = 0;
+            this.scrollHeight = 0;
+            this.children = [];
+          }}
+          addEventListener() {{}}
+          appendChild(el) {{ this.children.push(el); }}
+          focus() {{ this.focused = true; }}
+          insertAdjacentHTML() {{}}
+          remove() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+          chatInput: new Element('chatInput'),
+          chatMessages: new Element('chatMessages'),
+          chatSendBtn: new Element('chatSendBtn'),
+          quotaBadge: new Element('quotaBadge'),
+          copyBtn: new Element('copyBtn'),
+          result: new Element('result'),
+          backTop: new Element('backTop'),
+        }};
+        elements.chatInput.value = 'question';
+
+        const fetchBodies = [];
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          confirm() {{ return true; }},
+          localStorage: {{ getItem() {{ return '1'; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{
+            matchMedia() {{ return {{ matches: false }}; }},
+            location: {{ origin: 'http://example.test' }},
+            addEventListener() {{}},
+          }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            createElement(id) {{ return new Element(id); }},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+          fetch(url, options) {{
+            if (options && options.body) fetchBodies.push(JSON.parse(options.body));
+            return Promise.resolve({{
+              json() {{ return Promise.resolve({{ has_code: false, remaining: 3 }}); }},
+              body: {{ getReader() {{ return {{ read() {{ return Promise.resolve({{ done: true }}); }} }}; }} }}
+            }});
+          }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        sandbox.setChartData({{ id: 'fresh-chart', current_context: {{ solar_age: 18 }} }});
+        vm.runInContext("CHAT.chartData = {{id: 'stale-chart'}}; CHAT.enabled = true;", sandbox);
+        await sandbox.sendChat();
+
+        if (!fetchBodies.length) throw new Error('chat request was not sent');
+        if (fetchBodies[0].chart_data.id !== 'fresh-chart') throw new Error('chat did not use AppState chart');
+        if (fetchBodies[0].chart_data.current_context.solar_age !== 18) throw new Error('chat payload lost current_context');
+        """
+    )
+
+    result = run_node(f"(async () => {{ {script} }})().catch(e => {{ console.error(e.stack || e); process.exit(1); }});")
 
     assert result.returncode == 0, result.stderr or result.stdout

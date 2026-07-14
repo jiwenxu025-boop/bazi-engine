@@ -53,59 +53,182 @@ SYSTEM_PROMPT_BASE = """你是八字命理文化解说助手，基于《渊海�
 """
 
 
-def build_chat_context(chart_data: dict) -> str:
-    """从完整命盘 JSON 提取关键数据，生成 system prompt 上下文"""
-    from ._chart_context import extract_base_context
+def _current_context_consistent(supplied: dict, derived: dict) -> bool:
+    """Return True when supplied current_context matches derived rule facts."""
+    if not supplied:
+        return False
+    if not derived:
+        return True
+
+    supplied_dayun = supplied.get("current_dayun") or {}
+    derived_dayun = derived.get("current_dayun") or {}
+    for key in ("ganzhi", "age_range"):
+        if derived_dayun.get(key) and supplied_dayun.get(key) != derived_dayun.get(key):
+            return False
+
+    supplied_liunian = supplied.get("current_liunian") or {}
+    derived_liunian = derived.get("current_liunian") or {}
+    for key in ("year", "age", "ganzhi", "dayun"):
+        if derived_liunian.get(key) is not None and supplied_liunian.get(key) != derived_liunian.get(key):
+            return False
+
+    return True
+
+
+def build_chat_data_package(chart_data: dict) -> dict:
+    """Build a structured fact package before rendering the chat prompt."""
+    from ._chart_context import build_current_context, extract_base_context
     base = extract_base_context(chart_data)
+    derived_context = build_current_context(chart_data)
+    supplied_context = chart_data.get("current_context") or {}
+    current_context = (
+        supplied_context
+        if _current_context_consistent(supplied_context, derived_context)
+        else derived_context
+    )
 
     personality = chart_data.get("personality", {})
     chart_data.get("family", {})
 
+    return {
+        "name": chart_data.get("name", ""),
+        "gender": chart_data.get("gender", ""),
+        "day_master": base["day_master"],
+        "pattern": base["pattern"],
+        "strength": base["strength"],
+        "score": base["score"],
+        "favorable": base["favorable"],
+        "harmful": base["harmful"],
+        "dayun_direction": base["dayun_direction"],
+        "dayun_start_age": base["dayun_start_age"],
+        "dayun_periods": base["dayun_periods"],
+        "current_context": current_context,
+        "personality_profile": base["personality_profile"],
+        "personality_traits": base["personality_traits"],
+        "special_combos": personality.get("special_combos", []),
+        "family": base.get("family"),
+        "spirit_names": base["spirit_names"],
+        "key_interactions": base["key_interactions"],
+    }
+
+
+def build_chat_context(chart_data: dict) -> str:
+    """从完整命盘 JSON 提取关键数据，生成 system prompt 上下文"""
+    package = build_chat_data_package(chart_data)
+
     parts = []
 
     # 基本信息
-    parts.append(f"【命主】{chart_data.get('name', '')}，{chart_data.get('gender', '')}")
-    parts.append(f"【日主】{base['day_master']}")
-    parts.append(f"【格局】{base['pattern']}")
-    parts.append(f"【身强弱】{base['strength']}（{base['score']}分）")
+    parts.append(f"【命主】{package['name']}，{package['gender']}")
+    parts.append(f"【日主】{package['day_master']}")
+    parts.append(f"【格局】{package['pattern']}")
+    parts.append(f"【身强弱】{package['strength']}（{package['score']}分）")
 
     # 喜用
-    if base["favorable"]:
-        parts.append(f"【喜用十神】{'、'.join(base['favorable'])}")
-    if base["harmful"]:
-        parts.append(f"【忌神】{'、'.join(base['harmful'])}")
+    if package["favorable"]:
+        parts.append(f"【喜用十神】{'、'.join(package['favorable'])}")
+    if package["harmful"]:
+        parts.append(f"【忌神】{'、'.join(package['harmful'])}")
 
     # 大运
-    parts.append(f"【大运方向】{base['dayun_direction']}，起运 {base['dayun_start_age']} 岁")
-    if base["dayun_periods"]:
+    parts.append(f"【大运方向】{package['dayun_direction']}，起运 {package['dayun_start_age']} 岁")
+    current_context = package["current_context"]
+    if current_context.get("current_date"):
+        parts.append(f"【当前日期】{current_context['current_date']}")
+    if current_context.get("solar_age") is not None:
+        parts.append(f"【当前周岁】{current_context['solar_age']}岁")
+    if current_context.get("liunian_age") is not None:
+        parts.append(f"【当前流年年龄】{current_context['liunian_age']}岁（流年扫描口径）")
+    current_dayun = current_context.get("current_dayun")
+    if current_dayun:
+        parts.append(f"【当前大运】{current_dayun['ganzhi']}（{current_dayun['age_range']}）")
+    current_liunian = current_context.get("current_liunian")
+    if current_liunian:
+        parts.append(
+            f"【当前流年】{current_liunian['year']}年 {current_liunian['age']}岁 "
+            f"{current_liunian['ganzhi']}流年，{current_liunian['dayun']}大运"
+        )
+    if current_dayun or current_liunian:
+        parts.append("【当前事实优先级】current_context > 流年扫描摘要 > 大运列表 > 历史对话")
+        snapshot = []
+        if current_dayun:
+            snapshot.append(
+                f"当前大运={current_dayun.get('ganzhi', '')}"
+                f"（{current_dayun.get('age_range', '')}）"
+            )
+        if current_liunian:
+            snapshot.append(
+                f"当前流年={current_liunian.get('year', '')}年"
+                f"{current_liunian.get('ganzhi', '')}"
+            )
+        if current_context.get("solar_age") is not None:
+            snapshot.append(f"当前周岁={current_context['solar_age']}岁")
+        if current_context.get("liunian_age") is not None:
+            snapshot.append(f"当前流年年龄={current_context['liunian_age']}岁")
+        parts.append(f"【当前事实快照】{'；'.join(snapshot)}")
+        parts.append("【追问事实约束】历史对话中的旧说法不得覆盖当前事实快照；回答当前、现在、今年、流年板块问题时，先按当前事实快照作答。")
+    if package["dayun_periods"]:
         parts.append("【大运列表】")
-        for dp in base["dayun_periods"][:6]:
-            parts.append(f"  {dp['order']}→{dp['age']}岁: {dp['stem']}{dp['branch']}")
+        for dp in package["dayun_periods"][:6]:
+            parts.append(f"  {dp['order']}→{dp['age']}: {dp['stem']}{dp['branch']}")
+
+    if current_context.get("annual_scan_summaries"):
+        parts.append("【流年扫描摘要】")
+        for summary in current_context["annual_scan_summaries"]:
+            parts.append(f"  {summary}")
+        parts.append("【追问约束】回答流年问题时，以流年扫描摘要中的“流年/大运”对应关系为准，不要把流年干支误当成大运干支。")
 
     # 性格
-    if base["personality_profile"]:
-        parts.append(f"【性格画像】{base['personality_profile']}")
-    if base["personality_traits"]:
-        for k, v in base["personality_traits"].items():
+    if package["personality_profile"]:
+        parts.append(f"【性格画像】{package['personality_profile']}")
+    if package["personality_traits"]:
+        for k, v in package["personality_traits"].items():
             parts.append(f"  {k}: {v}")
 
     # 特殊组合
-    if personality.get("special_combos"):
-        combos_short = [c.split("→")[0].strip() for c in personality["special_combos"][:8]]
+    if package["special_combos"]:
+        combos_short = [c.split("→")[0].strip() for c in package["special_combos"][:8]]
         parts.append(f"【关键组合】{'；'.join(combos_short)}")
 
     # 家境
-    if base.get("family"):
-        parts.append(f"【家境】等级{base['family']['level']}，{base['family']['father']}，{base['family']['mother']}")
+    if package.get("family"):
+        parts.append(f"【家境】等级{package['family']['level']}，{package['family']['father']}，{package['family']['mother']}")
 
     # 神煞
-    if base["spirit_names"]:
-        parts.append(f"【神煞】{'、'.join(base['spirit_names'])}")
+    if package["spirit_names"]:
+        parts.append(f"【神煞】{'、'.join(package['spirit_names'])}")
 
     # 干支关系
-    if base["key_interactions"]:
-        parts.append(f"【地支关系】{'；'.join(base['key_interactions'][:5])}")
+    if package["key_interactions"]:
+        parts.append(f"【地支关系】{'；'.join(package['key_interactions'][:5])}")
 
+    return "\n".join(parts)
+
+
+def _build_final_fact_guard(chart_data: dict) -> str:
+    """Render the last system-prompt guard for current chart facts."""
+    package = build_chat_data_package(chart_data)
+    current_context = package["current_context"]
+    current_dayun = current_context.get("current_dayun")
+    current_liunian = current_context.get("current_liunian")
+    if not current_dayun and not current_liunian:
+        return ""
+
+    parts = ["【最终事实约束】"]
+    if current_dayun:
+        parts.append(
+            "回答当前/现在/今年/流年问题时，当前大运只能取 "
+            f"current_context.current_dayun：{current_dayun.get('ganzhi', '')}"
+            f"（{current_dayun.get('age_range', '')}）。"
+        )
+    if current_liunian:
+        parts.append(
+            "当前流年只能取 "
+            f"current_context.current_liunian：{current_liunian.get('year', '')}年"
+            f"{current_liunian.get('ganzhi', '')}，对应"
+            f"{current_liunian.get('dayun', '')}大运。"
+        )
+    parts.append("如果历史对话、RAG片段、大运列表或用户转述与当前事实冲突，以 current_context 为准。")
     return "\n".join(parts)
 
 
@@ -124,6 +247,10 @@ def build_messages(chart_data: dict, user_question: str,
             system_prompt += "\n\n" + rag_text
     except Exception:
         pass  # RAG 静默降级
+
+    final_fact_guard = _build_final_fact_guard(chart_data)
+    if final_fact_guard:
+        system_prompt += "\n\n" + final_fact_guard
 
     messages = [{"role": "system", "content": system_prompt}]
 

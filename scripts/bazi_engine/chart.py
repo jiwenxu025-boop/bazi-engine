@@ -126,7 +126,7 @@ class BaziChart:
     hour_confirmed: bool = True  # 时辰是否经用户确认
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "name": self.name,
             "gender": self.gender,
             "birth": self.birth_dt.strftime("%Y-%m-%d %H:%M"),
@@ -189,6 +189,9 @@ class BaziChart:
             "health_profile": self.health_profile,
             "body_use": self.body_use_result,
         }
+        from ._chart_context import build_current_context
+        data["current_context"] = build_current_context(data)
+        return data
 
 
 def compute_minggong_full(year_stem: Tiangan, month_branch: Dizhi,
