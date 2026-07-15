@@ -3,13 +3,72 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import textwrap
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_JS = ROOT / "frontend" / "app.js"
 INDEX_HTML = ROOT / "frontend" / "index.html"
+
+
+def extract_css_block(css: str, selector: str) -> str:
+    selector_start = css.index(selector)
+    opening_brace = css.index("{", selector_start + len(selector))
+    depth = 0
+    for index in range(opening_brace, len(css)):
+        if css[index] == "{":
+            depth += 1
+        elif css[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return css[opening_brace + 1 : index]
+    raise AssertionError(f"unclosed CSS block for {selector}")
+
+
+def css_rule_bodies(css: str, selector: str) -> list[str]:
+    pattern = re.compile(
+        rf"(?m)^[ \t]*{re.escape(selector)}[ \t]*\{{([^{{}}]*)\}}"
+    )
+    return ["".join(match.group(1).split()) for match in pattern.finditer(css)]
+
+
+def css_rule_body(css: str, selector: str) -> str:
+    bodies = css_rule_bodies(css, selector)
+    assert len(bodies) == 1, f"expected one {selector} rule, found {len(bodies)}"
+    return bodies[0]
+
+
+class GenderLuckPanelParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.panel_count = 0
+        self.nested_card_classes: list[str] = []
+        self._panel_depth = 0
+        self._panel_tags: list[bool] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        classes = next(
+            (value or "" for name, value in attrs if name == "class"), ""
+        ).split()
+        inside_panel = self._panel_depth > 0
+        is_panel = "gender-luck-panel" in classes
+        if is_panel:
+            self.panel_count += 1
+            self._panel_depth += 1
+        elif inside_panel:
+            self.nested_card_classes.extend(
+                class_name
+                for class_name in classes
+                if class_name == "card" or class_name.endswith("-card")
+            )
+        self._panel_tags.append(is_panel)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._panel_tags.pop():
+            self._panel_depth -= 1
 
 
 def run_node(script: str) -> subprocess.CompletedProcess[str]:
@@ -690,6 +749,9 @@ def test_gender_luck_section_is_integrated_and_responsive():
     js = APP_JS.read_text(encoding="utf-8")
     css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
     compact_css = "".join(css.split())
+    media_selector = "@media(max-width:480px)"
+    desktop_css = css[: css.index(media_selector)]
+    mobile_css = extract_css_block(css, media_selector)
 
     render_start = js.index("function render(d){")
     render_body = js[render_start:]
@@ -697,7 +759,31 @@ def test_gender_luck_section_is_integrated_and_responsive():
         "h += _buildReportFocusSections(d);\n"
         "  h += _buildGenderLuckSection(d);"
     ) in render_body
-    assert "<div class=gender-luck-panel>" in js
+
+    renderer_source = js[
+        js.index("function _buildGenderLuckSection(d){") :
+        js.index("function _buildReportFocusSections(d){")
+    ]
+    assert renderer_source.count("class=gender-luck-panel") == 1
+    panel_source = renderer_source.split("class=gender-luck-panel", 1)[1]
+    panel_source = panel_source.split("h += '</div></section>';", 1)[0]
+    assert "report-mini-card" not in panel_source
+    assert "class=card" not in panel_source
+    panel_html = render_gender_luck_section(
+        {
+            "dayun": {
+                "direction": "顺排",
+                "jiao_yun": {"reference": "下一节", "years": 6},
+            },
+            "kinship": {
+                "spouse": {"label": "夫星", "stars": ["正官", "七杀"]},
+            },
+        }
+    )
+    parser = GenderLuckPanelParser()
+    parser.feed(panel_html)
+    assert parser.panel_count == 1
+    assert parser.nested_card_classes == []
 
     for order_rule in (
         "#section-personality{order:3}",
@@ -711,26 +797,46 @@ def test_gender_luck_section_is_integrated_and_responsive():
     ):
         assert order_rule in compact_css
 
-    for selector in (
-        ".gender-luck-panel",
-        ".gender-luck-summary",
-        ".gender-luck-summary-row",
-        ".gender-luck-xiaoyun",
-        ".gender-luck-chips",
-        ".gender-luck-chip",
-        ".gender-luck-kinship",
-        ".gender-luck-kinship-row",
-        ".gender-luck-sensitive-note",
-    ):
-        assert selector in css
+    summary_rule = css_rule_body(desktop_css, ".gender-luck-summary")
+    assert "display:grid" in summary_rule
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in summary_rule
 
-    assert ".gender-luck-chips{display:flex" in compact_css
-    assert "overflow-x:auto" in compact_css[compact_css.index(".gender-luck-chips{") :]
+    summary_row_rule = css_rule_body(desktop_css, ".gender-luck-summary-row")
+    assert "min-width:0" in summary_row_rule
+    assert "border-right:1pxsolidvar(--border)" in summary_row_rule
+    assert "border-right:0" in css_rule_body(
+        desktop_css, ".gender-luck-summary-row:last-child"
+    )
 
-    mobile_css = compact_css[compact_css.index("@media(max-width:480px){") :]
-    assert ".gender-luck-summary{grid-template-columns:1fr}" in mobile_css
-    assert ".gender-luck-kinship{grid-template-columns:1fr}" in mobile_css
-    assert ".gender-luck-chips{overflow-x:auto" in mobile_css
+    chips_rule = css_rule_body(desktop_css, ".gender-luck-chips")
+    assert "display:flex" in chips_rule
+    assert "overflow-x:auto" in chips_rule
+
+    kinship_rule = ";".join(css_rule_bodies(desktop_css, ".gender-luck-kinship"))
+    assert "display:grid" in kinship_rule
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in kinship_rule
+
+    sensitive_note_rule = css_rule_body(desktop_css, ".gender-luck-sensitive-note")
+    assert (
+        "border-left:2pxsolidcolor-mix(insrgb,var(--bad)42%,var(--border))"
+        in sensitive_note_rule
+    )
+    assert (
+        "background:color-mix(insrgb,var(--bad)6%,var(--surface))"
+        in sensitive_note_rule
+    )
+
+    assert "grid-template-columns:1fr" in css_rule_body(
+        mobile_css, ".gender-luck-summary"
+    )
+    mobile_kinship_rules = ";".join(
+        css_rule_bodies(mobile_css, ".gender-luck-kinship")
+    )
+    assert "grid-template-columns:1fr" in mobile_kinship_rules
+    assert "70px" not in mobile_css
+    assert "margin:013px13px" in css_rule_body(
+        mobile_css, ".gender-luck-sensitive-note"
+    )
 
 
 def test_foundation_rules_are_rendered_as_expandable_evidence():
