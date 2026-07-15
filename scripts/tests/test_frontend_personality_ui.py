@@ -137,10 +137,9 @@ def test_gender_luck_section_renders_backend_facts_for_male_and_female():
                     "hours": 8,
                     "formula": "三天折一岁，余一天折四个月",
                 },
-                "periods": [{"stem": "辛", "branch": "亥", "age": "6-15岁"}],
             },
             "xiaoyun": {
-                "periods": [{"stem": "壬", "branch": "子", "age": "1岁"}],
+                "periods": [{"stem": "辛", "branch": "亥", "age": "1岁"}],
             },
             "kinship": {
                 "spouse": {"label": "夫星", "stars": ["正官", "七杀"]},
@@ -160,6 +159,39 @@ def test_gender_luck_section_renders_backend_facts_for_male_and_female():
         "寡宿",
     ):
         assert expected in female_html
+    assert '<span class=gender-luck-chip>1岁 · 辛亥</span>' in female_html
+
+
+def test_gender_luck_section_uses_xiaoyun_direction_fallback():
+    html = render_gender_luck_section(
+        {
+            "gender": "女",
+            "xiaoyun": {
+                "direction": "顺排",
+                "periods": [{"stem": "辛", "branch": "亥", "age": "1岁"}],
+            },
+        }
+    )
+
+    assert "女命 · 顺排" in html
+    assert "<span>排运方向</span><b>顺排</b>" in html
+    assert '<span class=gender-luck-chip>1岁 · 辛亥</span>' in html
+
+
+def test_gender_luck_section_omits_blank_xiaoyun_and_empty_summary():
+    html = render_gender_luck_section(
+        {
+            "gender": "女",
+            "xiaoyun": {"periods": [{}]},
+            "kinship": {
+                "spouse": {"label": "夫星", "stars": ["正官", "七杀"]},
+            },
+        }
+    )
+
+    assert "gender-luck-xiaoyun" not in html
+    assert "gender-luck-chip" not in html
+    assert "class=gender-luck-summary>" not in html
 
 
 def test_gender_luck_section_escapes_dynamic_text_and_hides_without_data():

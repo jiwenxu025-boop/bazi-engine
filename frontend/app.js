@@ -560,6 +560,16 @@ function _findCurrentDayun(d){
   };
 }
 
+function _getDisplayableXiaoyunPeriods(d){
+  let periods = d && d.xiaoyun && Array.isArray(d.xiaoyun.periods) ? d.xiaoyun.periods : [];
+  return periods.filter(function(period){
+    if (!period || typeof period !== 'object') return false;
+    return [period.stem, period.branch, period.age].some(function(value){
+      return value !== undefined && value !== null && String(value).trim();
+    });
+  });
+}
+
 function _hasGenderLuckData(d){
   if (!d) return false;
 
@@ -577,13 +587,7 @@ function _hasGenderLuckData(d){
     }
   }
 
-  let xiaoyunPeriods = d.xiaoyun && Array.isArray(d.xiaoyun.periods) ? d.xiaoyun.periods : [];
-  for (let i = 0; i < xiaoyunPeriods.length; i++){
-    let period = xiaoyunPeriods[i] || {};
-    if ([period.stem, period.branch, period.age].some(function(value){
-      return value !== undefined && value !== null && String(value).trim();
-    })) return true;
-  }
+  if (_getDisplayableXiaoyunPeriods(d).length) return true;
 
   let kinship = d.kinship || {};
   let kinshipKeys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
@@ -620,25 +624,27 @@ function _buildGenderLuckSection(d){
   if (!_hasGenderLuckData(d)) return '';
 
   let dayun = d.dayun || {};
-  let direction = dayun.direction || '';
+  let xiaoyun = d.xiaoyun || {};
+  let direction = dayun.direction || xiaoyun.direction || '';
   let genderLabel = d.gender ? String(d.gender) + '命' : '';
   let heading = [genderLabel, direction].filter(Boolean).join(' · ') || '运势起点与六亲';
   let periods = Array.isArray(dayun.periods) ? dayun.periods : [];
   let jiaoyun = dayun.jiao_yun || null;
+  let xiaoyunPeriods = _getDisplayableXiaoyunPeriods(d);
+  let summaryRows = '';
   let h = '';
 
   h += '<section id=section-gender-luck class="report-section gender-luck-section">';
   h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div><p>本节只展示后端返回的规则事实，前端不重新计算顺逆排、起运或六亲规则。</p></div>';
-  h += '<div class=gender-luck-summary>';
-  if (direction) h += '<div class=gender-luck-summary-row><span>排运方向</span><b>' + esc(direction) + '</b></div>';
+  if (direction) summaryRows += '<div class=gender-luck-summary-row><span>排运方向</span><b>' + esc(direction) + '</b></div>';
 
   if (periods.length){
     let firstPeriod = periods[0] || {};
     let firstGanzhi = String(firstPeriod.stem || '') + String(firstPeriod.branch || '');
     if (firstGanzhi || firstPeriod.age){
-      h += '<div class=gender-luck-summary-row><span>首步大运</span><b>' + esc(firstGanzhi || firstPeriod.age) + '</b>';
-      if (firstGanzhi && firstPeriod.age) h += '<p>' + esc(firstPeriod.age) + '</p>';
-      h += '</div>';
+      summaryRows += '<div class=gender-luck-summary-row><span>首步大运</span><b>' + esc(firstGanzhi || firstPeriod.age) + '</b>';
+      if (firstGanzhi && firstPeriod.age) summaryRows += '<p>' + esc(firstPeriod.age) + '</p>';
+      summaryRows += '</div>';
     }
   }
 
@@ -651,14 +657,13 @@ function _buildGenderLuckSection(d){
       let ageText = _formatJiaoyunAge(jiaoyun);
       let mainText = [jiaoyun.reference, ageText].filter(Boolean).join(' · ');
       let formula = jiaoyun.formula || '';
-      h += '<div class=gender-luck-summary-row><span>交运时间</span><b data-tip="' + esc(formula) + '">' + esc(mainText) + '</b>';
-      if (formula) h += '<p>' + esc(formula) + '</p>';
-      h += '</div>';
+      summaryRows += '<div class=gender-luck-summary-row><span>交运时间</span><b data-tip="' + esc(formula) + '">' + esc(mainText) + '</b>';
+      if (formula) summaryRows += '<p>' + esc(formula) + '</p>';
+      summaryRows += '</div>';
     }
   }
-  h += '</div>';
+  if (summaryRows) h += '<div class=gender-luck-summary>' + summaryRows + '</div>';
 
-  let xiaoyunPeriods = d.xiaoyun && Array.isArray(d.xiaoyun.periods) ? d.xiaoyun.periods : [];
   if (xiaoyunPeriods.length){
     h += '<div class=gender-luck-xiaoyun><h3>小运</h3><div class=gender-luck-chips>';
     for (let i = 0; i < xiaoyunPeriods.length; i++){
