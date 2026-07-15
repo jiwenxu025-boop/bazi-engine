@@ -560,6 +560,148 @@ function _findCurrentDayun(d){
   };
 }
 
+function _hasGenderLuckData(d){
+  if (!d) return false;
+
+  let jiaoyun = d.dayun && d.dayun.jiao_yun;
+  if (jiaoyun && typeof jiaoyun === 'object'){
+    let textFields = ['reference', 'formula'];
+    for (let i = 0; i < textFields.length; i++){
+      let value = jiaoyun[textFields[i]];
+      if (value !== undefined && value !== null && String(value).trim()) return true;
+    }
+    let ageFields = ['years', 'months', 'days', 'hours'];
+    for (let i = 0; i < ageFields.length; i++){
+      let value = jiaoyun[ageFields[i]];
+      if (value !== undefined && value !== null && String(value).trim() && Number.isFinite(Number(value)) && Number(value) >= 0) return true;
+    }
+  }
+
+  let xiaoyunPeriods = d.xiaoyun && Array.isArray(d.xiaoyun.periods) ? d.xiaoyun.periods : [];
+  for (let i = 0; i < xiaoyunPeriods.length; i++){
+    let period = xiaoyunPeriods[i] || {};
+    if ([period.stem, period.branch, period.age].some(function(value){
+      return value !== undefined && value !== null && String(value).trim();
+    })) return true;
+  }
+
+  let kinship = d.kinship || {};
+  let kinshipKeys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
+  for (let i = 0; i < kinshipKeys.length; i++){
+    let item = kinship[kinshipKeys[i]];
+    if (!item) continue;
+    if (item.label !== undefined && item.label !== null && String(item.label).trim()) return true;
+    let stars = Array.isArray(item.stars) ? item.stars : [item.stars];
+    if (stars.some(function(value){
+      return value !== undefined && value !== null && String(value).trim();
+    })) return true;
+  }
+
+  return false;
+}
+
+function _formatJiaoyunAge(detail){
+  detail = detail || {};
+  let units = [
+    ['years', '岁'],
+    ['months', '个月'],
+    ['days', '天'],
+    ['hours', '小时']
+  ];
+  let parts = [];
+  for (let i = 0; i < units.length; i++){
+    let value = Number(detail[units[i][0]]);
+    if (Number.isFinite(value) && value > 0) parts.push(value + units[i][1]);
+  }
+  return parts.length ? parts.join('') : '不足一月';
+}
+
+function _buildGenderLuckSection(d){
+  if (!_hasGenderLuckData(d)) return '';
+
+  let dayun = d.dayun || {};
+  let direction = dayun.direction || '';
+  let genderLabel = d.gender ? String(d.gender) + '命' : '';
+  let heading = [genderLabel, direction].filter(Boolean).join(' · ') || '运势起点与六亲';
+  let periods = Array.isArray(dayun.periods) ? dayun.periods : [];
+  let jiaoyun = dayun.jiao_yun || null;
+  let h = '';
+
+  h += '<section id=section-gender-luck class="report-section gender-luck-section">';
+  h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div><p>本节只展示后端返回的规则事实，前端不重新计算顺逆排、起运或六亲规则。</p></div>';
+  h += '<div class=gender-luck-summary>';
+  if (direction) h += '<div class=gender-luck-summary-row><span>排运方向</span><b>' + esc(direction) + '</b></div>';
+
+  if (periods.length){
+    let firstPeriod = periods[0] || {};
+    let firstGanzhi = String(firstPeriod.stem || '') + String(firstPeriod.branch || '');
+    if (firstGanzhi || firstPeriod.age){
+      h += '<div class=gender-luck-summary-row><span>首步大运</span><b>' + esc(firstGanzhi || firstPeriod.age) + '</b>';
+      if (firstGanzhi && firstPeriod.age) h += '<p>' + esc(firstPeriod.age) + '</p>';
+      h += '</div>';
+    }
+  }
+
+  if (jiaoyun){
+    let hasJiaoyun = ['years', 'months', 'days', 'hours'].some(function(key){
+      let value = jiaoyun[key];
+      return value !== undefined && value !== null && String(value).trim() && Number.isFinite(Number(value)) && Number(value) >= 0;
+    }) || Boolean(jiaoyun.reference) || Boolean(jiaoyun.formula);
+    if (hasJiaoyun){
+      let ageText = _formatJiaoyunAge(jiaoyun);
+      let mainText = [jiaoyun.reference, ageText].filter(Boolean).join(' · ');
+      let formula = jiaoyun.formula || '';
+      h += '<div class=gender-luck-summary-row><span>交运时间</span><b data-tip="' + esc(formula) + '">' + esc(mainText) + '</b>';
+      if (formula) h += '<p>' + esc(formula) + '</p>';
+      h += '</div>';
+    }
+  }
+  h += '</div>';
+
+  let xiaoyunPeriods = d.xiaoyun && Array.isArray(d.xiaoyun.periods) ? d.xiaoyun.periods : [];
+  if (xiaoyunPeriods.length){
+    h += '<div class=gender-luck-xiaoyun><h3>小运</h3><div class=gender-luck-chips>';
+    for (let i = 0; i < xiaoyunPeriods.length; i++){
+      let period = xiaoyunPeriods[i] || {};
+      let ganzhi = String(period.stem || '') + String(period.branch || '');
+      let chipText = [period.age, ganzhi].filter(Boolean).join(' · ');
+      h += '<span class=gender-luck-chip>' + esc(chipText) + '</span>';
+    }
+    h += '</div></div>';
+  }
+
+  let kinship = d.kinship || {};
+  let kinshipKeys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
+  let kinshipRows = '';
+  for (let i = 0; i < kinshipKeys.length; i++){
+    let item = kinship[kinshipKeys[i]];
+    if (!item) continue;
+    let stars = Array.isArray(item.stars) ? item.stars.join(' / ') : (item.stars || '');
+    if (!item.label && !stars) continue;
+    kinshipRows += '<div class=gender-luck-kinship-row><span>' + esc(item.label || '') + '</span><b>' + esc(stars) + '</b></div>';
+  }
+  if (kinshipRows) h += '<div class=gender-luck-kinship><h3>六亲对应</h3>' + kinshipRows + '</div>';
+
+  let sensitiveName = d.gender === '男' ? '孤辰' : d.gender === '女' ? '寡宿' : '';
+  let spirits = Array.isArray(d.spirits) ? d.spirits : [];
+  let sensitiveSpirit = null;
+  for (let i = 0; i < spirits.length; i++){
+    if (sensitiveName && spirits[i] && spirits[i].name === sensitiveName){
+      sensitiveSpirit = spirits[i];
+      break;
+    }
+  }
+  if (sensitiveSpirit){
+    let unfavorable = d.spirit_score && d.spirit_score.unfavorable;
+    h += '<div class=gender-luck-sensitive-note><b>' + esc(sensitiveSpirit.name) + '敏感提示</b><p>传统规则将此作为关系议题的敏感信号，不代表确定结果。';
+    if (unfavorable !== undefined && unfavorable !== null) h += ' 后端不利神煞分：' + esc(unfavorable) + '。';
+    h += '</p></div>';
+  }
+
+  h += '</section>';
+  return h;
+}
+
 function _buildReportFocusSections(d){
   let stageInfo = _getStageInfo(d);
   let workSignals = _collectCategorySignals(d, ['事业','学业','升学','进修','财运']);

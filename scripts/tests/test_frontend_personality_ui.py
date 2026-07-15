@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import textwrap
 from pathlib import Path
@@ -20,6 +21,160 @@ def run_node(script: str) -> subprocess.CompletedProcess[str]:
         encoding="utf-8",
         check=False,
     )
+
+
+def render_gender_luck_section(chart: dict) -> str:
+    payload = json.dumps(chart, ensure_ascii=False)
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor(id) {{
+            this.id = id;
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
+          insertAdjacentHTML() {{}}
+        }}
+
+        const elements = {{
+          themeToggle: new Element('themeToggle'),
+          apiUrl: new Element('apiUrl'),
+          formCard: new Element('formCard'),
+          submitBtn: new Element('submitBtn'),
+        }};
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{
+            matchMedia() {{ return {{ matches: false }}; }},
+            location: {{ origin: 'http://example.test' }},
+            addEventListener() {{}},
+          }},
+          document: {{
+            documentElement: elements.themeToggle,
+            addEventListener() {{}},
+            getElementById(id) {{ return elements[id] || new Element(id); }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const payload = {payload};
+        process.stdout.write(sandbox._buildGenderLuckSection(payload));
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    return result.stdout
+
+
+def test_gender_luck_section_renders_backend_facts_for_male_and_female():
+    male_html = render_gender_luck_section(
+        {
+            "gender": "男",
+            "dayun": {
+                "direction": "逆排",
+                "jiao_yun": {
+                    "reference": "上一节",
+                    "years": 6,
+                    "months": 4,
+                    "days": 0,
+                    "hours": 8,
+                    "formula": "三天折一岁，余一天折四个月",
+                },
+                "periods": [{"stem": "丁", "branch": "未", "age": "6-15岁"}],
+            },
+            "xiaoyun": {
+                "periods": [{"stem": "己", "branch": "酉", "age": "1岁"}],
+            },
+            "kinship": {
+                "spouse": {"label": "妻星", "stars": ["正财", "偏财"]},
+                "child": {"label": "子女星", "stars": ["正官", "七杀"]},
+            },
+            "spirits": [{"name": "孤辰", "category": "凶神"}],
+            "spirit_score": {"unfavorable": -2},
+        }
+    )
+
+    for expected in (
+        "男命 · 逆排",
+        "上一节 · 6岁4个月8小时",
+        "丁未",
+        "己酉",
+        "妻星",
+        "正财 / 偏财",
+        "孤辰",
+    ):
+        assert expected in male_html
+
+    female_html = render_gender_luck_section(
+        {
+            "gender": "女",
+            "dayun": {
+                "direction": "顺排",
+                "jiao_yun": {
+                    "reference": "下一节",
+                    "years": 6,
+                    "months": 4,
+                    "days": 0,
+                    "hours": 8,
+                    "formula": "三天折一岁，余一天折四个月",
+                },
+                "periods": [{"stem": "辛", "branch": "亥", "age": "6-15岁"}],
+            },
+            "xiaoyun": {
+                "periods": [{"stem": "壬", "branch": "子", "age": "1岁"}],
+            },
+            "kinship": {
+                "spouse": {"label": "夫星", "stars": ["正官", "七杀"]},
+                "child": {"label": "子女星", "stars": ["食神", "伤官"]},
+            },
+            "spirits": [{"name": "寡宿", "category": "凶神"}],
+            "spirit_score": {"unfavorable": -3},
+        }
+    )
+
+    for expected in (
+        "女命 · 顺排",
+        "下一节 · 6岁4个月8小时",
+        "辛亥",
+        "夫星",
+        "正官 / 七杀",
+        "寡宿",
+    ):
+        assert expected in female_html
+
+
+def test_gender_luck_section_escapes_dynamic_text_and_hides_without_data():
+    escaped_html = render_gender_luck_section(
+        {
+            "gender": "女",
+            "kinship": {
+                "spouse": {"label": "<夫星>", "stars": ["正官", "七杀"]},
+            },
+        }
+    )
+
+    assert "&lt;夫星&gt;" in escaped_html
+    assert "<夫星>" not in escaped_html
+    assert render_gender_luck_section({"gender": "男"}) == ""
 
 
 def test_personality_fusion_error_switches_to_raw_and_toggle_can_return():
