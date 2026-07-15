@@ -560,18 +560,20 @@ function _findCurrentDayun(d){
   };
 }
 
-function _getDisplayableXiaoyunPeriods(d){
+function _getXiaoyunChipTexts(d){
   let periods = d && d.xiaoyun && Array.isArray(d.xiaoyun.periods) ? d.xiaoyun.periods : [];
-  return periods.filter(function(period){
-    if (!period || typeof period !== 'object') return false;
-    return [period.stem, period.branch, period.age].some(function(value){
-      return value !== undefined && value !== null && String(value).trim();
-    });
-  });
+  return periods.map(function(period){
+    if (!period || typeof period !== 'object') return '';
+    let ageText = period.age ? String(period.age).trim() : '';
+    let stem = period.stem ? String(period.stem).trim() : '';
+    let branch = period.branch ? String(period.branch).trim() : '';
+    return [ageText, stem + branch].filter(Boolean).join(' · ');
+  }).filter(Boolean);
 }
 
-function _hasGenderLuckData(d){
+function _hasGenderLuckData(d, xiaoyunChipTexts){
   if (!d) return false;
+  xiaoyunChipTexts = Array.isArray(xiaoyunChipTexts) ? xiaoyunChipTexts : _getXiaoyunChipTexts(d);
 
   let jiaoyun = d.dayun && d.dayun.jiao_yun;
   if (jiaoyun && typeof jiaoyun === 'object'){
@@ -587,7 +589,7 @@ function _hasGenderLuckData(d){
     }
   }
 
-  if (_getDisplayableXiaoyunPeriods(d).length) return true;
+  if (xiaoyunChipTexts.length) return true;
 
   let kinship = d.kinship || {};
   let kinshipKeys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
@@ -621,7 +623,8 @@ function _formatJiaoyunAge(detail){
 }
 
 function _buildGenderLuckSection(d){
-  if (!_hasGenderLuckData(d)) return '';
+  let xiaoyunChipTexts = _getXiaoyunChipTexts(d);
+  if (!_hasGenderLuckData(d, xiaoyunChipTexts)) return '';
 
   let dayun = d.dayun || {};
   let xiaoyun = d.xiaoyun || {};
@@ -630,7 +633,6 @@ function _buildGenderLuckSection(d){
   let heading = [genderLabel, direction].filter(Boolean).join(' · ') || '运势起点与六亲';
   let periods = Array.isArray(dayun.periods) ? dayun.periods : [];
   let jiaoyun = dayun.jiao_yun || null;
-  let xiaoyunPeriods = _getDisplayableXiaoyunPeriods(d);
   let summaryRows = '';
   let h = '';
 
@@ -664,13 +666,10 @@ function _buildGenderLuckSection(d){
   }
   if (summaryRows) h += '<div class=gender-luck-summary>' + summaryRows + '</div>';
 
-  if (xiaoyunPeriods.length){
+  if (xiaoyunChipTexts.length){
     h += '<div class=gender-luck-xiaoyun><h3>小运</h3><div class=gender-luck-chips>';
-    for (let i = 0; i < xiaoyunPeriods.length; i++){
-      let period = xiaoyunPeriods[i] || {};
-      let ganzhi = String(period.stem || '') + String(period.branch || '');
-      let chipText = [period.age, ganzhi].filter(Boolean).join(' · ');
-      h += '<span class=gender-luck-chip>' + esc(chipText) + '</span>';
+    for (let i = 0; i < xiaoyunChipTexts.length; i++){
+      h += '<span class=gender-luck-chip>' + esc(xiaoyunChipTexts[i]) + '</span>';
     }
     h += '</div></div>';
   }
