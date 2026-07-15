@@ -10,6 +10,7 @@ activation_codes.json
 scripts/data/free_usage.json
 scripts/data/feedback/
 .idea/
+.worktrees/
 _anonymize.py
 
 # IDE/工具自动生成的索引缓存
