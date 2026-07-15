@@ -609,15 +609,19 @@ def test_home_form_keeps_advanced_options_collapsed_and_uses_report_cta():
 
 def test_mobile_report_action_bar_contains_primary_reader_actions():
     html = INDEX_HTML.read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
 
     assert 'id="reportActions"' in html
     assert "openChat('报告')" in html
     assert "copyBtn" in html
     assert "scrollTo({top:0" in html
+    assert html.index('id="result"') < html.index('id="reportActions"')
+    assert "display:none" in css_rule_body(css, ".report-mobile-actions")
 
 
-def test_gender_luck_release_updates_app_cache_version():
+def test_gender_luck_release_updates_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'href="style.css?v=20260715"' in html
     assert 'src="app.js?v=20260715"' in html
 
 
@@ -911,12 +915,23 @@ def test_gender_luck_section_is_integrated_and_responsive():
     )
 
 
-def test_gender_luck_mobile_section_reserves_action_safe_space():
+def test_mobile_report_action_bar_is_static_end_of_report_toolbar():
     css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
     mobile_css = extract_css_block(css, "@media(max-width:480px)")
+    container_rule = css_rule_body(mobile_css, ".container")
+    action_rule = css_rule_body(mobile_css, ".report-mobile-actions.active")
 
-    assert "margin-bottom:36px" in css_rule_body(
-        mobile_css, "#section-gender-luck"
+    assert "padding:16px12px24px" in container_rule
+    assert "position:fixed" not in action_rule
+    assert "bottom:" not in action_rule
+    assert "z-index:900" not in action_rule
+    assert "display:grid" in action_rule
+    assert "grid-template-columns:1fr1fr1fr" in action_rule
+    assert "width:calc(100%-108px)" in action_rule
+    assert "max-width:512px" in action_rule
+    assert "margin:24px84px24px12px" in action_rule
+    assert "#section-gender-luck{margin-bottom:36px}" not in "".join(
+        mobile_css.split()
     )
 
 
