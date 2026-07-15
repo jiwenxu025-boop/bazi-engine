@@ -616,6 +616,11 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
     assert "scrollTo({top:0" in html
 
 
+def test_gender_luck_release_updates_app_cache_version():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'src="app.js?v=20260715"' in html
+
+
 def test_chart_params_use_default_flow_range_without_empty_optional_numbers():
     script = textwrap.dedent(
         f"""
