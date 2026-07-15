@@ -499,6 +499,10 @@ input[type="checkbox"]{width:auto;padding:0;-webkit-appearance:checkbox;appearan
   scrollbar-color:var(--border-hover) transparent;
   scrollbar-width:thin;
 }
+.gender-luck-chips:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
 .gender-luck-chips::-webkit-scrollbar{height:4px}
 .gender-luck-chips::-webkit-scrollbar-thumb{
   background:var(--border-hover);
@@ -530,11 +534,14 @@ input[type="checkbox"]{width:auto;padding:0;-webkit-appearance:checkbox;appearan
   border-top:1px solid var(--border);
 }
 .gender-luck-kinship-row span{
-  flex:none;
+  flex:0 1 auto;
+  min-width:0;
   color:var(--text-tertiary);
   font-size:11px;
+  overflow-wrap:anywhere;
 }
 .gender-luck-kinship-row b{
+  flex:1 1 auto;
   min-width:0;
   color:var(--text);
   font-size:12px;

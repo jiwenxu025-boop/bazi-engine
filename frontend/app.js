@@ -676,7 +676,7 @@ function _buildGenderLuckSection(d){
   if (summaryRows) h += '<div class=gender-luck-summary>' + summaryRows + '</div>';
 
   if (xiaoyunChipTexts.length){
-    h += '<div class=gender-luck-xiaoyun><h3>小运</h3><div class=gender-luck-chips>';
+    h += '<div class=gender-luck-xiaoyun><h3>小运</h3><div class=gender-luck-chips tabindex="0" aria-label="小运列表">';
     for (let i = 0; i < xiaoyunChipTexts.length; i++){
       h += '<span class=gender-luck-chip>' + esc(xiaoyunChipTexts[i]) + '</span>';
     }

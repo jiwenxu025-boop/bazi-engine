@@ -9,6 +9,8 @@ import textwrap
 from html.parser import HTMLParser
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 APP_JS = ROOT / "frontend" / "app.js"
 INDEX_HTML = ROOT / "frontend" / "index.html"
@@ -46,29 +48,49 @@ class GenderLuckPanelParser(HTMLParser):
         super().__init__()
         self.panel_count = 0
         self.nested_card_classes: list[str] = []
-        self._panel_depth = 0
-        self._panel_tags: list[bool] = []
+        self.panel_depth = 0
+        self.open_tags: list[tuple[str, bool]] = []
+        self.structure_errors: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         classes = next(
             (value or "" for name, value in attrs if name == "class"), ""
         ).split()
-        inside_panel = self._panel_depth > 0
+        inside_panel = self.panel_depth > 0
         is_panel = "gender-luck-panel" in classes
         if is_panel:
             self.panel_count += 1
-            self._panel_depth += 1
+            self.panel_depth += 1
         elif inside_panel:
             self.nested_card_classes.extend(
                 class_name
                 for class_name in classes
                 if class_name == "card" or class_name.endswith("-card")
             )
-        self._panel_tags.append(is_panel)
+        self.open_tags.append((tag, is_panel))
+
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
-        if self._panel_tags.pop():
-            self._panel_depth -= 1
+        if not self.open_tags:
+            self.structure_errors.append(f"unexpected closing tag: {tag}")
+            return
+        opening_tag, is_panel = self.open_tags.pop()
+        if opening_tag != tag:
+            self.structure_errors.append(
+                f"mismatched tags: opened {opening_tag}, closed {tag}"
+            )
+        if is_panel:
+            self.panel_depth -= 1
+
+    def assert_balanced(self) -> None:
+        assert self.structure_errors == []
+        assert self.open_tags == []
+        assert self.panel_depth == 0
 
 
 def run_node(script: str) -> subprocess.CompletedProcess[str]:
@@ -271,6 +293,21 @@ def test_gender_luck_section_normalizes_xiaoyun_chip_text():
     )
 
     assert '<span class=gender-luck-chip>1岁 · 辛亥</span>' in valid_html
+
+
+def test_gender_luck_xiaoyun_list_is_keyboard_focusable():
+    html = render_gender_luck_section(
+        {
+            "xiaoyun": {
+                "periods": [{"stem": "辛", "branch": "亥", "age": "1岁"}],
+            },
+        }
+    )
+
+    assert (
+        '<div class=gender-luck-chips tabindex="0" aria-label="小运列表">'
+        in html
+    )
 
 
 def test_gender_luck_section_distinguishes_missing_and_zero_jiaoyun_age():
@@ -782,8 +819,12 @@ def test_gender_luck_section_is_integrated_and_responsive():
     )
     parser = GenderLuckPanelParser()
     parser.feed(panel_html)
+    parser.close()
+    parser.assert_balanced()
     assert parser.panel_count == 1
     assert parser.nested_card_classes == []
+    assert parser.open_tags == []
+    assert parser.panel_depth == 0
 
     for order_rule in (
         "#section-personality{order:3}",
@@ -811,10 +852,30 @@ def test_gender_luck_section_is_integrated_and_responsive():
     chips_rule = css_rule_body(desktop_css, ".gender-luck-chips")
     assert "display:flex" in chips_rule
     assert "overflow-x:auto" in chips_rule
+    chips_focus_rule = css_rule_body(
+        desktop_css, ".gender-luck-chips:focus-visible"
+    )
+    assert "outline:2pxsolidvar(--accent)" in chips_focus_rule
+    assert "outline-offset:2px" in chips_focus_rule
 
     kinship_rule = ";".join(css_rule_bodies(desktop_css, ".gender-luck-kinship"))
     assert "display:grid" in kinship_rule
     assert "grid-template-columns:repeat(2,minmax(0,1fr))" in kinship_rule
+
+    kinship_label_rule = css_rule_body(
+        desktop_css, ".gender-luck-kinship-row span"
+    )
+    assert "flex:01auto" in kinship_label_rule
+    assert "min-width:0" in kinship_label_rule
+    assert "overflow-wrap:anywhere" in kinship_label_rule
+
+    kinship_value_rule = css_rule_body(
+        desktop_css, ".gender-luck-kinship-row b"
+    )
+    assert "flex:11auto" in kinship_value_rule
+    assert "min-width:0" in kinship_value_rule
+    assert "overflow-wrap:anywhere" in kinship_value_rule
+    assert "text-align:right" in kinship_value_rule
 
     sensitive_note_rule = css_rule_body(desktop_css, ".gender-luck-sensitive-note")
     assert (
@@ -833,10 +894,25 @@ def test_gender_luck_section_is_integrated_and_responsive():
         css_rule_bodies(mobile_css, ".gender-luck-kinship")
     )
     assert "grid-template-columns:1fr" in mobile_kinship_rules
-    assert "70px" not in mobile_css
+    mobile_gender_luck_bodies = [
+        "".join(body.split())
+        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", mobile_css)
+        if ".gender-luck-" in selectors
+    ]
+    assert mobile_gender_luck_bodies
+    assert all("70px" not in body for body in mobile_gender_luck_bodies)
     assert "margin:013px13px" in css_rule_body(
         mobile_css, ".gender-luck-sensitive-note"
     )
+
+
+def test_gender_luck_panel_parser_rejects_unclosed_panel():
+    parser = GenderLuckPanelParser()
+    parser.feed('<section><div class="gender-luck-panel"><span>未闭合')
+    parser.close()
+
+    with pytest.raises(AssertionError):
+        parser.assert_balanced()
 
 
 def test_foundation_rules_are_rendered_as_expandable_evidence():
