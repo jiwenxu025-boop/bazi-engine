@@ -6,8 +6,17 @@ from datetime import date, datetime
 
 from ._constants import DIZHI_CANGGAN, get_nayin
 from ._constants import HiddenStem as HStem
-from .dayun import compute_start_age, dayun_direction, format_luck_periods, generate_luck_pillars
+from .dayun import (
+    compute_jiaoyun_detail,
+    compute_start_age,
+    dayun_direction,
+    format_luck_periods,
+    format_xiaoyun_periods,
+    generate_luck_pillars,
+    generate_xiaoyun_pillars,
+)
 from .enums import Dizhi, Shishen, Tiangan
+from .gender_rules import get_kinship_map
 from .interactions import (
     Interaction,
     find_all_dizhi_interactions,
@@ -16,7 +25,7 @@ from .interactions import (
 from .liunian import AnnualScan, scan_years
 from .pattern import determine_pattern
 from .pillars import compute_day_pillar, compute_hour_pillar, compute_month_pillar, compute_year_pillar
-from .spirits import SpiritAgent, find_all_spirits
+from .spirits import SpiritAgent, compute_spirit_score, find_all_spirits
 from .ten_gods import get_ten_god
 
 
@@ -77,6 +86,9 @@ class BaziChart:
     luck_periods: list[dict] = field(default_factory=list)
     start_age: int = 0
     dayun_direction_str: str = ""
+    jiaoyun_detail: dict = field(default_factory=dict)
+    xiaoyun_pillars: list[tuple[Tiangan, Dizhi]] = field(default_factory=list)
+    xiaoyun_periods: list[dict] = field(default_factory=list)
 
     # 干支关系
     tiangan_interactions: list[Interaction] = field(default_factory=list)
@@ -164,6 +176,7 @@ class BaziChart:
             "dayun": {
                 "direction": self.dayun_direction_str,
                 "start_age": self.start_age,
+                "jiao_yun": self.jiaoyun_detail,
                 "periods": [
                     {"stem": tg.value, "branch": dz.value, "age": lp["年龄"], "order": i + 1}
                     for i, ((tg, dz), lp) in enumerate(zip(self.luck_pillars, self.luck_periods, strict=False))
@@ -171,11 +184,20 @@ class BaziChart:
                 "modulations": self.dayun_modulations,
                 "interpretations": self.dayun_interpretations,
             },
+            "xiaoyun": {
+                "direction": self.dayun_direction_str,
+                "periods": [
+                    {"stem": tg.value, "branch": dz.value, "age": xp["年龄"], "order": i + 1}
+                    for i, ((tg, dz), xp) in enumerate(zip(self.xiaoyun_pillars, self.xiaoyun_periods, strict=False))
+                ],
+            },
+            "kinship": get_kinship_map(self.gender),
             "interactions": {
                 "tiangan": [i.to_dict() for i in self.tiangan_interactions],
                 "dizhi": [i.to_dict() for i in self.dizhi_interactions],
             },
             "spirits": [s.to_dict() for s in self.spirits],
+            "spirit_score": compute_spirit_score(self.spirits, self.gender),
             "annual_scans": [a.to_dict() for a in self.annual_scans] if hasattr(self, "annual_scans") and self.annual_scans else [],
             "warnings": self.warnings,
             "personality": self.personality_result,
@@ -328,6 +350,9 @@ def _init_chart_shell(
     chart._life_stage_override = life_stage_override  # 供 scan_years 内部使用
     chart.family_context = family_context
     chart.hour_confirmed = hour_confirmed
+    chart.jiaoyun_detail = {}
+    chart.xiaoyun_pillars = []
+    chart.xiaoyun_periods = []
 
     if not hour_confirmed:
         chart.warnings.append(
@@ -513,8 +538,15 @@ def _compute_dayun_stage(chart: BaziChart, gender: str) -> int:
         chart.birth_dt, chart.dayun_direction_str
     )
     chart.warnings.extend(age_w)
+    jiaoyun, jy_w = compute_jiaoyun_detail(chart.birth_dt, chart.dayun_direction_str)
+    chart.jiaoyun_detail = jiaoyun
+    chart.warnings.extend(jy_w)
     chart.start_age = start_age
     chart.luck_periods = format_luck_periods(start_age, chart.luck_pillars)
+    chart.xiaoyun_pillars = generate_xiaoyun_pillars(
+        chart.hour.stem, chart.hour.branch, chart.dayun_direction_str, max(start_age, 1)
+    )
+    chart.xiaoyun_periods = format_xiaoyun_periods(chart.xiaoyun_pillars)
     return start_age
 
 

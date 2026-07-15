@@ -1,4 +1,5 @@
 """性格分析主函数"""
+from ..gender_rules import get_kinship_map
 from .bingyao import detect_bingyao_combos
 from .constants import DAY_MASTER_PERSONALITY, PATTERN_PERSONALITY
 from .dataclasses import PersonalityResult
@@ -254,7 +255,14 @@ def analyze_personality(
     # ── 感情：官杀(责任) + 财星(欲望) + 日支状态 + 桃花 ──
     day_hidden = pillars_data[2].get("hidden_ten_gods", []) if len(pillars_data) > 2 else []
     fq_state = "冲" if day_branch_chong else ("合" if day_branch_he else "平稳")
-    spouse_star_note = "男命以财为妻星，女命以官杀为夫星" if gender in ("男", "女") else ""
+    kinship_map = get_kinship_map(gender)
+    spouse_label = kinship_map["spouse"]["label"]
+    spouse_stars = kinship_map["spouse"]["stars"]
+    spouse_score = cai_s if gender == "男" else guan_s
+    spouse_star_note = (
+        f"{'男命' if gender == '男' else '女命'}以{'财星' if gender == '男' else '官杀'}为{spouse_label}"
+        if gender in ("男", "女") else ""
+    )
     emotion_mod = _bingyao_modifiers.get("感情", {})
     result.trait_signals["感情"] = {
         "责任感_官杀": round(guan_s, 1),
@@ -271,6 +279,12 @@ def analyze_personality(
     if spouse_star_note:
         result.trait_signals["感情"]["_性别提示"] = spouse_star_note
     _romance_parts = []
+    if gender in ("男", "女"):
+        _romance_parts.append(
+            f"{spouse_label}看{spouse_stars[0]}/{spouse_stars[1]}，"
+            f"{'财星' if gender == '男' else '官杀'}力量"
+            f"{'明显' if spouse_score >= 5 else ('偏弱' if spouse_score <= 2 else '中等')}"
+        )
     if day_branch_chong:
         _romance_parts.append("夫妻宫被冲，感情波动较大，磨合期长")
     elif day_branch_he:

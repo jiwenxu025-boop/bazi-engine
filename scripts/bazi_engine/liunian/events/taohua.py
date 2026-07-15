@@ -83,6 +83,12 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if ln_branch == taohua:
         strength = max(strength, 2)
         triggers.append("流年桃花入命")
+        if gender == "女" and ln_shishen in (Shishen.偏官, Shishen.正官):
+            notes.append("女命七杀坐桃花→异性缘复杂，偏向感情困扰/关系受制，择偶需看边界感")
+        elif gender == "男" and ln_shishen in (Shishen.偏财, Shishen.正财):
+            notes.append("男命财星坐桃花→异性缘旺、风流机会多，需防感情消费和多线暧昧")
+        if all_branches.count(taohua) >= 1:
+            notes.append("原局桃花被流年引动→吸引力增强，也会放大感情波动")
 
     # 红鸾+伏吟 (calibration: direction depends on自刑 and prev year)
     # 扩展至全部四柱伏吟，不限于日支

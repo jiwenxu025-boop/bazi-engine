@@ -91,7 +91,13 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     # ── 4. 伤官见官 → 不守常规、反叛权威 ──
     # 来源：《渊海子平·论伤官》"伤官见官，为祸百端"
     if "伤官" in all_names and "正官" in all_names:
+        gender_note = (
+            "男命侧重职场变动、性格傲慢、官非诉讼风险。"
+            if gender == "男"
+            else "女命侧重婚姻波折、对伴侣挑剔、克夫倾向。"
+        )
         combos.append("伤官见官→ 不喜约束，反叛权威，思维跳脱常规，适合自由职业。"
+                      f"{gender_note}"
                       "《渊海子平》：「伤官见官，为祸百端」——官星受克，仕途多阻，宜换赛道")
 
     # ── 5. 食伤生财 → 以技艺才华生财 ──
@@ -139,7 +145,13 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     # 来源：《渊海子平·论比肩》"比劫夺财，财来财去"
     has_bijie = "比肩" in all_names or "劫财" in all_names
     if has_bijie and has_cai:
+        gender_note = (
+            "男命侧重克妻破财、冲动盲目。"
+            if gender == "男"
+            else "女命侧重性格刚强、婚姻中过于强势。"
+        )
         combos.append("比劫夺财→ 钱财易散，朋友借贷/合伙须谨慎，赚钱辛苦但花钱爽快。"
+                      f"{gender_note}"
                       "《渊海子平》：「比肩分夺、财临沐浴桃花」")
 
     # ── 11. 财破印 → 现实大于理想 ──
@@ -164,15 +176,26 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     taohua = _taohua_branch(day_branch)
     if taohua and _has_branch_in_pillars(taohua, pillars_data):
         position = ""
+        taohua_pillars = []
         for p in pillars_data:
             if p.get("branch") == taohua:
+                taohua_pillars.append(p)
                 position = p["pillar_type"]
-                break
+        taohua_ten_gods = {p.get("ten_god") for p in taohua_pillars if p.get("ten_god")}
+        if gender == "女" and ({"偏官", "七杀"} & taohua_ten_gods):
+            gender_note = "七杀坐桃花→女命偏向感情困扰、异性缘复杂，择偶需避开压迫型关系。"
+        elif gender == "男" and any("财" in tg for tg in taohua_ten_gods):
+            gender_note = "财星坐桃花→男命偏向异性缘旺、风流机会多，需防感情消费和多线暧昧。"
+        else:
+            gender_note = ""
+        multi_note = "多重桃花叠见，吸引力与感情波动同步放大。" if len(taohua_pillars) >= 2 else ""
         if position == "日柱":
             combos.append(f"桃花坐日支（{taohua}在日柱）→ 配偶颜值高，自身人缘好异性缘旺。"
+                          f"{gender_note}{multi_note}"
                           "《渊海子平》桃花：主酒色性欲，亦主人缘才艺")
         elif position in ("年柱", "月柱"):
-            combos.append(f"桃花在{position}→ 早年人缘好，异性关注度高，有吸引力。")
+            combos.append(f"桃花在{position}→ 早年人缘好，异性关注度高，有吸引力。"
+                          f"{gender_note}{multi_note}")
 
     # ── 14. 华盖入命 ──
     # 来源：《三命通会》华盖：主孤独、清高、艺术、宗教

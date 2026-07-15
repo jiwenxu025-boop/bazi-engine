@@ -425,7 +425,7 @@ def merge_spirit_interactions(spirits: list[SpiritAgent]) -> list[dict]:
     return merged
 
 
-def compute_spirit_score(spirits: list[SpiritAgent]) -> dict:
+def compute_spirit_score(spirits: list[SpiritAgent], gender: str = "") -> dict:
     """计算神煞总权重分。
 
     Returns:
@@ -437,6 +437,8 @@ def compute_spirit_score(spirits: list[SpiritAgent]) -> dict:
     unfav = 0
     for sp in spirits:
         w = SPIRIT_WEIGHTS.get(sp.name, 0)
+        if (gender == "男" and sp.name == "孤辰") or (gender == "女" and sp.name == "寡宿"):
+            w -= 1
         total += w
         if w > 0:
             fav += w

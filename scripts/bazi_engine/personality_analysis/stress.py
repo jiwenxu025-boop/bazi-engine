@@ -47,10 +47,16 @@ def analyze_stress_profile(
     # ════════════════════════════════════════
     if sha_count >= 2 or (has_qisha and guan_count >= 3):
         pressure_type = "七杀主导型"
+        gender_focus = (
+            "男命侧重生存压力、小人犯险、意外伤灾。"
+            if gender == "男"
+            else "女命侧重遇人不淑、感情受制/被欺压、异性缘复杂。"
+        )
         pressure_desc = (
             f"压力以突发性、高强度、生存级危机为主。"
             f"命局七杀{'多重' if sha_count >= 2 else '透出'}，"
             f"长期处于警觉/应激状态，对潜在威胁极度敏感，安全感基线偏低。"
+            f"{gender_focus}"
             f"{'官多化杀——体制内规则性压力也转化为心理上的生存焦虑。' if guan_count >= 3 else ''}"
         )
     elif has_zhengguan and guan_count >= 2:

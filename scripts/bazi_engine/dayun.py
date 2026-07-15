@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .enums import Dizhi, Tiangan, dizhi_by_index, tiangan_by_index
+from .gender_rules import is_forward_luck
 from .solar_terms import distance_to_next_jie, distance_to_prev_jie
 
 
@@ -17,8 +18,7 @@ def dayun_direction(year_stem: Tiangan, gender: str) -> str:
 
     阳男阴女顺排，阴男阳女逆排
     """
-    yn = yang_nian(year_stem)
-    if (yn and gender == "男") or (not yn and gender == "女"):
+    if is_forward_luck(year_stem, gender):
         return "顺排"
     return "逆排"
 
@@ -59,6 +59,33 @@ def compute_start_age(birth_dt: datetime, direction: str,
     return age, remainder, warnings
 
 
+def compute_jiaoyun_detail(birth_dt: datetime, direction: str) -> tuple[dict, list[str]]:
+    """Return detailed jiaoyun conversion from jieqi distance."""
+    if direction == "顺排":
+        days_float, warnings = distance_to_next_jie(birth_dt)
+        reference = "下一节"
+    else:
+        days_float, warnings = distance_to_prev_jie(birth_dt)
+        reference = "上一节"
+
+    total_hours = max(0, round(days_float * 24))
+    total_days = total_hours // 24
+    hours = total_hours % 24
+    years = total_days // 3
+    remainder_days = total_days % 3
+    months = remainder_days * 4
+
+    return {
+        "reference": reference,
+        "total_days": round(days_float, 4),
+        "years": years,
+        "months": months,
+        "days": 0,
+        "hours": hours,
+        "formula": "三天折一岁，余一天折四个月",
+    }, list(warnings)
+
+
 def format_luck_periods(start_age: int, luck_pillars: list[tuple[Tiangan, Dizhi]]) -> list[dict]:
     """格式化大运周期: 每步10年"""
     periods: list[dict] = []
@@ -74,6 +101,26 @@ def format_luck_periods(start_age: int, luck_pillars: list[tuple[Tiangan, Dizhi]
             "weight_note": "大运重地支（60%），天干辅象（40%）。地支定十年吉凶本质，天干主前五年表象。",
         })
     return periods
+
+
+def generate_xiaoyun_pillars(hour_stem: Tiangan, hour_branch: Dizhi,
+                             direction: str, count: int) -> list[tuple[Tiangan, Dizhi]]:
+    """生成小运/童限干支序列，以时柱为基准，一岁一柱。"""
+    result: list[tuple[Tiangan, Dizhi]] = []
+    delta = 1 if direction == "顺排" else -1
+    for i in range(1, max(0, count) + 1):
+        tg = tiangan_by_index((hour_stem.index + i * delta) % 10)
+        dz = dizhi_by_index((hour_branch.index + i * delta) % 12)
+        result.append((tg, dz))
+    return result
+
+
+def format_xiaoyun_periods(xiaoyun_pillars: list[tuple[Tiangan, Dizhi]]) -> list[dict]:
+    """格式化小运周期: 一岁一柱。"""
+    return [
+        {"小运": f"{tg.value}{dz.value}", "年龄": f"{i}岁", "天干": tg, "地支": dz, "序": i}
+        for i, (tg, dz) in enumerate(xiaoyun_pillars, start=1)
+    ]
 
 
 def describe_dayun_weight(dayun_stem: Tiangan, dayun_branch: Dizhi) -> str:
