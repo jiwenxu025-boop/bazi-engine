@@ -911,6 +911,15 @@ def test_gender_luck_section_is_integrated_and_responsive():
     )
 
 
+def test_gender_luck_mobile_section_reserves_action_safe_space():
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    mobile_css = extract_css_block(css, "@media(max-width:480px)")
+
+    assert "margin-bottom:36px" in css_rule_body(
+        mobile_css, "#section-gender-luck"
+    )
+
+
 def test_gender_luck_panel_parser_rejects_unclosed_panel():
     parser = GenderLuckPanelParser()
     parser.feed('<section><div class="gender-luck-panel"><span>未闭合')
