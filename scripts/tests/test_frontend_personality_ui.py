@@ -272,6 +272,27 @@ def test_gender_luck_section_normalizes_jiaoyun_text_and_escapes_formula():
     assert '三天"折一岁' not in formula_html
 
 
+def test_gender_luck_section_omits_whitespace_dayun_and_formula_only_empty_main():
+    html = render_gender_luck_section(
+        {
+            "gender": "女",
+            "dayun": {
+                "direction": "  ",
+                "periods": [{"stem": " ", "branch": "\t", "age": "  "}],
+                "jiao_yun": {"formula": '三天"折一岁'},
+            },
+        }
+    )
+
+    assert "<h2>女命</h2>" in html
+    assert "女命 ·" not in html
+    assert "<span>排运方向</span>" not in html
+    assert "<span>首步大运</span>" not in html
+    assert "<b" not in html
+    assert "三天&quot;折一岁" in html
+    assert '三天"折一岁' not in html
+
+
 def test_gender_luck_section_normalizes_kinship_and_shows_zero_spirit_score():
     html = render_gender_luck_section(
         {

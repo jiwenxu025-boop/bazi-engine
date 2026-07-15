@@ -636,7 +636,9 @@ function _buildGenderLuckSection(d){
 
   let dayun = d.dayun || {};
   let xiaoyun = d.xiaoyun || {};
-  let direction = dayun.direction || xiaoyun.direction || '';
+  let dayunDirection = dayun.direction === undefined || dayun.direction === null ? '' : String(dayun.direction).trim();
+  let xiaoyunDirection = xiaoyun.direction === undefined || xiaoyun.direction === null ? '' : String(xiaoyun.direction).trim();
+  let direction = dayunDirection || xiaoyunDirection;
   let genderLabel = d.gender ? String(d.gender) + '命' : '';
   let heading = [genderLabel, direction].filter(Boolean).join(' · ') || '运势起点与六亲';
   let periods = Array.isArray(dayun.periods) ? dayun.periods : [];
@@ -649,18 +651,25 @@ function _buildGenderLuckSection(d){
 
   if (periods.length){
     let firstPeriod = periods[0] || {};
-    let firstGanzhi = String(firstPeriod.stem || '') + String(firstPeriod.branch || '');
-    if (firstGanzhi || firstPeriod.age){
-      summaryRows += '<div class=gender-luck-summary-row><span>首步大运</span><b>' + esc(firstGanzhi || firstPeriod.age) + '</b>';
-      if (firstGanzhi && firstPeriod.age) summaryRows += '<p>' + esc(firstPeriod.age) + '</p>';
+    let firstStem = firstPeriod.stem === undefined || firstPeriod.stem === null ? '' : String(firstPeriod.stem).trim();
+    let firstBranch = firstPeriod.branch === undefined || firstPeriod.branch === null ? '' : String(firstPeriod.branch).trim();
+    let firstAge = firstPeriod.age === undefined || firstPeriod.age === null ? '' : String(firstPeriod.age).trim();
+    let firstGanzhi = firstStem + firstBranch;
+    if (firstGanzhi || firstAge){
+      summaryRows += '<div class=gender-luck-summary-row><span>首步大运</span><b>' + esc(firstGanzhi || firstAge) + '</b>';
+      if (firstGanzhi && firstAge) summaryRows += '<p>' + esc(firstAge) + '</p>';
       summaryRows += '</div>';
     }
   }
 
   if (jiaoyun.reference || jiaoyun.formula || jiaoyun.ageText){
     let mainText = [jiaoyun.reference, jiaoyun.ageText].filter(Boolean).join(' · ');
-    summaryRows += '<div class=gender-luck-summary-row><span>交运时间</span><b data-tip="' + esc(jiaoyun.formula) + '">' + esc(mainText) + '</b>';
-    if (jiaoyun.formula) summaryRows += '<p>' + esc(jiaoyun.formula) + '</p>';
+    summaryRows += '<div class=gender-luck-summary-row><span>交运时间</span>';
+    if (mainText) summaryRows += '<b data-tip="' + esc(jiaoyun.formula) + '">' + esc(mainText) + '</b>';
+    if (jiaoyun.formula){
+      let formulaTip = mainText ? '' : ' data-tip="' + esc(jiaoyun.formula) + '"';
+      summaryRows += '<p' + formulaTip + '>' + esc(jiaoyun.formula) + '</p>';
+    }
     summaryRows += '</div>';
   }
   if (summaryRows) h += '<div class=gender-luck-summary>' + summaryRows + '</div>';
