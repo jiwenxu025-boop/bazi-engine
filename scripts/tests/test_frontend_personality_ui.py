@@ -644,21 +644,93 @@ def test_report_navigation_exposes_main_reading_sections():
 
         const html = sandbox._buildReportNav({{
           personality: {{ profile: 'x' }},
+          dayun: {{
+            jiao_yun: {{ reference: '上一节', years: 6 }},
+          }},
+          kinship: {{
+            spouse: {{ label: '妻星', stars: ['正财', '偏财'] }},
+          }},
           annual_scans: [{{ year: 2026, events: [{{ category: '事业', strength: 3 }}] }}]
         }});
         if (!html.includes('href="#section-personality"')) throw new Error('personality nav missing');
         if (!html.includes('href="#section-focus"')) throw new Error('focus nav missing');
         if (!html.includes('href="#section-dayun"')) throw new Error('dayun nav missing');
+        if (!html.includes('href="#section-gender-luck"')) throw new Error('gender luck nav missing');
         if (!html.includes('href="#section-flow"')) throw new Error('flow nav missing');
         if (!html.includes('href="#section-foundation"')) throw new Error('foundation nav missing');
         if (!html.includes('原始依据')) throw new Error('foundation label missing');
         if (!html.includes('报告导航')) throw new Error('nav label missing');
+
+        const dayunIndex = html.indexOf('href="#section-dayun"');
+        const genderLuckIndex = html.indexOf('href="#section-gender-luck"');
+        const flowIndex = html.indexOf('href="#section-flow"');
+        if (!(dayunIndex < genderLuckIndex && genderLuckIndex < flowIndex)) {{
+          throw new Error('gender luck nav is not between dayun and flow');
+        }}
+
+        const emptyHtml = sandbox._buildReportNav({{
+          personality: {{ profile: 'x' }},
+          dayun: {{}},
+          xiaoyun: {{}},
+          kinship: {{}},
+          annual_scans: [{{ year: 2026, events: [] }}]
+        }});
+        if (emptyHtml.includes('href="#section-gender-luck"')) {{
+          throw new Error('gender luck nav should be hidden without displayable data');
+        }}
         """
     )
 
     result = run_node(script)
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_gender_luck_section_is_integrated_and_responsive():
+    js = APP_JS.read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    compact_css = "".join(css.split())
+
+    render_start = js.index("function render(d){")
+    render_body = js[render_start:]
+    assert (
+        "h += _buildReportFocusSections(d);\n"
+        "  h += _buildGenderLuckSection(d);"
+    ) in render_body
+    assert "<div class=gender-luck-panel>" in js
+
+    for order_rule in (
+        "#section-personality{order:3}",
+        "#section-focus{order:4}",
+        "#section-dayun{order:5}",
+        "#section-gender-luck{order:6}",
+        "#section-flow{order:7}",
+        "#section-calendar{order:8}",
+        "#section-foundation{order:9}",
+        ".report-warning{order:10}",
+    ):
+        assert order_rule in compact_css
+
+    for selector in (
+        ".gender-luck-panel",
+        ".gender-luck-summary",
+        ".gender-luck-summary-row",
+        ".gender-luck-xiaoyun",
+        ".gender-luck-chips",
+        ".gender-luck-chip",
+        ".gender-luck-kinship",
+        ".gender-luck-kinship-row",
+        ".gender-luck-sensitive-note",
+    ):
+        assert selector in css
+
+    assert ".gender-luck-chips{display:flex" in compact_css
+    assert "overflow-x:auto" in compact_css[compact_css.index(".gender-luck-chips{") :]
+
+    mobile_css = compact_css[compact_css.index("@media(max-width:480px){") :]
+    assert ".gender-luck-summary{grid-template-columns:1fr}" in mobile_css
+    assert ".gender-luck-kinship{grid-template-columns:1fr}" in mobile_css
+    assert ".gender-luck-chips{overflow-x:auto" in mobile_css
 
 
 def test_foundation_rules_are_rendered_as_expandable_evidence():

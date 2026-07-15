@@ -647,6 +647,7 @@ function _buildGenderLuckSection(d){
 
   h += '<section id=section-gender-luck class="report-section gender-luck-section">';
   h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div><p>本节只展示后端返回的规则事实，前端不重新计算顺逆排、起运或六亲规则。</p></div>';
+  h += '<div class=gender-luck-panel>';
   if (direction) summaryRows += '<div class=gender-luck-summary-row><span>排运方向</span><b>' + esc(direction) + '</b></div>';
 
   if (periods.length){
@@ -704,7 +705,7 @@ function _buildGenderLuckSection(d){
     h += '</p></div>';
   }
 
-  h += '</section>';
+  h += '</div></section>';
   return h;
 }
 
@@ -750,6 +751,7 @@ function _buildReportNav(d){
   if (d.personality || d.family) items.push({id:'section-personality', label:'性格关系'});
   items.push({id:'section-focus', label:'事业财运'});
   items.push({id:'section-dayun', label:'当前大运'});
+  if (_hasGenderLuckData(d)) items.push({id:'section-gender-luck', label:'运势起点'});
   if (d.annual_scans && d.annual_scans.length) items.push({id:'section-flow', label:'未来流年'});
   items.push({id:'section-calendar', label:'择日'});
   items.push({id:'section-foundation', label:'原始依据'});
@@ -786,6 +788,7 @@ function render(d){
   h += _buildReportOverview(d);
   h += _buildReportNav(d);
   h += _buildReportFocusSections(d);
+  h += _buildGenderLuckSection(d);
 
   // Four pillars
   h += '<section class=report-section id=section-foundation>';

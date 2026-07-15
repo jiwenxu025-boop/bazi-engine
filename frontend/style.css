@@ -201,10 +201,11 @@ input[type="checkbox"]{width:auto;padding:0;-webkit-appearance:checkbox;appearan
 #section-personality{order:3}
 #section-focus{order:4}
 #section-dayun{order:5}
-#section-flow{order:6}
-#section-calendar{order:7}
-#section-foundation{order:8}
-.report-warning{order:9}
+#section-gender-luck{order:6}
+#section-flow{order:7}
+#section-calendar{order:8}
+#section-foundation{order:9}
+.report-warning{order:10}
 
 .report-overview{
   background:linear-gradient(135deg,var(--surface),color-mix(in srgb,var(--gold) 7%,var(--surface)));
@@ -438,6 +439,126 @@ input[type="checkbox"]{width:auto;padding:0;-webkit-appearance:checkbox;appearan
 }
 .dayun-focus-card .dayun-interpretations{
   margin-top:10px;
+}
+.gender-luck-panel{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:3px solid var(--gold);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-card);
+  overflow:hidden;
+}
+.gender-luck-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.gender-luck-summary-row{
+  min-width:0;
+  padding:14px 16px;
+  border-right:1px solid var(--border);
+}
+.gender-luck-summary-row:last-child{border-right:0}
+.gender-luck-summary-row span{
+  display:block;
+  margin-bottom:5px;
+  color:var(--text-tertiary);
+  font-size:10px;
+}
+.gender-luck-summary-row b{
+  display:block;
+  color:var(--text);
+  font-size:15px;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.gender-luck-summary-row p{
+  margin-top:6px;
+  color:var(--text-secondary);
+  font-size:12px;
+  line-height:1.6;
+  overflow-wrap:anywhere;
+}
+.gender-luck-xiaoyun,
+.gender-luck-kinship{
+  padding:13px 16px 16px;
+  border-top:1px solid var(--border);
+}
+.gender-luck-xiaoyun h3,
+.gender-luck-kinship h3{
+  margin-bottom:8px;
+  color:var(--text-tertiary);
+  font-size:11px;
+  font-weight:600;
+  line-height:1.4;
+}
+.gender-luck-chips{
+  display:flex;
+  gap:6px;
+  overflow-x:auto;
+  padding-bottom:4px;
+  scrollbar-color:var(--border-hover) transparent;
+  scrollbar-width:thin;
+}
+.gender-luck-chips::-webkit-scrollbar{height:4px}
+.gender-luck-chips::-webkit-scrollbar-thumb{
+  background:var(--border-hover);
+  border-radius:var(--radius-sm);
+}
+.gender-luck-chip{
+  flex:none;
+  padding:4px 8px;
+  border:1px solid var(--border);
+  border-radius:var(--radius-sm);
+  background:var(--tag-bg);
+  color:var(--text-secondary);
+  font-size:11px;
+  line-height:1.4;
+  white-space:nowrap;
+}
+.gender-luck-kinship{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  column-gap:20px;
+}
+.gender-luck-kinship h3{grid-column:1/-1}
+.gender-luck-kinship-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  padding:8px 0;
+  border-top:1px solid var(--border);
+}
+.gender-luck-kinship-row span{
+  flex:none;
+  color:var(--text-tertiary);
+  font-size:11px;
+}
+.gender-luck-kinship-row b{
+  min-width:0;
+  color:var(--text);
+  font-size:12px;
+  line-height:1.5;
+  text-align:right;
+  overflow-wrap:anywhere;
+}
+.gender-luck-sensitive-note{
+  margin:0 16px 16px;
+  padding:9px 11px;
+  border-left:2px solid color-mix(in srgb,var(--bad) 42%,var(--border));
+  background:color-mix(in srgb,var(--bad) 6%,var(--surface));
+  color:var(--text-secondary);
+}
+.gender-luck-sensitive-note b{
+  display:block;
+  margin-bottom:3px;
+  color:color-mix(in srgb,var(--bad) 70%,var(--text));
+  font-size:11px;
+}
+.gender-luck-sensitive-note p{
+  font-size:11px;
+  line-height:1.6;
+  overflow-wrap:anywhere;
 }
 
 .section-title{
@@ -1071,6 +1192,19 @@ html.dark .calendar-legend .dot.bad{background:#c53030}
   .report-card-grid{grid-template-columns:1fr;gap:8px}
   .report-mini-card{padding:12px 14px}
   .dayun-focus-card{padding:14px 15px}
+  .gender-luck-summary{grid-template-columns:1fr}
+  .gender-luck-summary-row{
+    padding:11px 13px;
+    border-right:0;
+    border-bottom:1px solid var(--border);
+  }
+  .gender-luck-summary-row:last-child{border-bottom:0}
+  .gender-luck-xiaoyun,
+  .gender-luck-kinship{padding:11px 13px 13px}
+  .gender-luck-kinship{grid-template-columns:1fr}
+  .gender-luck-kinship{padding-right:70px}
+  .gender-luck-chips{overflow-x:auto;max-width:100%}
+  .gender-luck-sensitive-note{margin:0 70px 13px 13px;padding:8px 10px}
   .report-nav{margin-left:-2px;margin-right:-2px}
   .report-section{margin-bottom:24px}
   .report-section-head{display:block;margin-bottom:10px}
