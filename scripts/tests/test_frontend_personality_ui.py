@@ -214,6 +214,84 @@ def test_gender_luck_section_normalizes_xiaoyun_chip_text():
     assert '<span class=gender-luck-chip>1岁 · 辛亥</span>' in valid_html
 
 
+def test_gender_luck_section_distinguishes_missing_and_zero_jiaoyun_age():
+    reference_only_html = render_gender_luck_section(
+        {
+            "gender": "男",
+            "dayun": {"jiao_yun": {"reference": "上一节"}},
+        }
+    )
+
+    assert "上一节" in reference_only_html
+    assert "不足一月" not in reference_only_html
+
+    zero_age_html = render_gender_luck_section(
+        {
+            "gender": "男",
+            "dayun": {
+                "jiao_yun": {
+                    "years": 0,
+                    "months": 0,
+                    "days": 0,
+                    "hours": 0,
+                }
+            },
+        }
+    )
+
+    assert "不足一月" in zero_age_html
+
+
+def test_gender_luck_section_normalizes_jiaoyun_text_and_escapes_formula():
+    whitespace_html = render_gender_luck_section(
+        {
+            "gender": "女",
+            "dayun": {"jiao_yun": {"reference": "  ", "formula": " \t "}},
+            "kinship": {
+                "spouse": {"label": "夫星", "stars": ["正官"]},
+            },
+        }
+    )
+
+    assert "<span>交运时间</span>" not in whitespace_html
+
+    formula_html = render_gender_luck_section(
+        {
+            "gender": "男",
+            "dayun": {
+                "jiao_yun": {
+                    "reference": "上一节",
+                    "formula": '三天"折一岁',
+                }
+            },
+        }
+    )
+
+    assert 'data-tip="三天&quot;折一岁"' in formula_html
+    assert "<p>三天&quot;折一岁</p>" in formula_html
+    assert '三天"折一岁' not in formula_html
+
+
+def test_gender_luck_section_normalizes_kinship_and_shows_zero_spirit_score():
+    html = render_gender_luck_section(
+        {
+            "gender": "男",
+            "kinship": {
+                "spouse": {
+                    "label": " 妻星 ",
+                    "stars": ["", "  ", " 正财 ", None, ""],
+                },
+            },
+            "spirits": [{"name": "孤辰", "category": "凶神"}],
+            "spirit_score": {"unfavorable": 0},
+        }
+    )
+
+    assert "<span>妻星</span><b>正财</b>" in html
+    assert " / 正财 / " not in html
+    assert "后端不利神煞分：0。" in html
+
+
 def test_gender_luck_section_escapes_dynamic_text_and_hides_without_data():
     escaped_html = render_gender_luck_section(
         {

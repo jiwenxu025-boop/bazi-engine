@@ -571,41 +571,6 @@ function _getXiaoyunChipTexts(d){
   }).filter(Boolean);
 }
 
-function _hasGenderLuckData(d, xiaoyunChipTexts){
-  if (!d) return false;
-  xiaoyunChipTexts = Array.isArray(xiaoyunChipTexts) ? xiaoyunChipTexts : _getXiaoyunChipTexts(d);
-
-  let jiaoyun = d.dayun && d.dayun.jiao_yun;
-  if (jiaoyun && typeof jiaoyun === 'object'){
-    let textFields = ['reference', 'formula'];
-    for (let i = 0; i < textFields.length; i++){
-      let value = jiaoyun[textFields[i]];
-      if (value !== undefined && value !== null && String(value).trim()) return true;
-    }
-    let ageFields = ['years', 'months', 'days', 'hours'];
-    for (let i = 0; i < ageFields.length; i++){
-      let value = jiaoyun[ageFields[i]];
-      if (value !== undefined && value !== null && String(value).trim() && Number.isFinite(Number(value)) && Number(value) >= 0) return true;
-    }
-  }
-
-  if (xiaoyunChipTexts.length) return true;
-
-  let kinship = d.kinship || {};
-  let kinshipKeys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
-  for (let i = 0; i < kinshipKeys.length; i++){
-    let item = kinship[kinshipKeys[i]];
-    if (!item) continue;
-    if (item.label !== undefined && item.label !== null && String(item.label).trim()) return true;
-    let stars = Array.isArray(item.stars) ? item.stars : [item.stars];
-    if (stars.some(function(value){
-      return value !== undefined && value !== null && String(value).trim();
-    })) return true;
-  }
-
-  return false;
-}
-
 function _formatJiaoyunAge(detail){
   detail = detail || {};
   let units = [
@@ -615,16 +580,59 @@ function _formatJiaoyunAge(detail){
     ['hours', '小时']
   ];
   let parts = [];
+  let hasValidAge = false;
   for (let i = 0; i < units.length; i++){
-    let value = Number(detail[units[i][0]]);
-    if (Number.isFinite(value) && value > 0) parts.push(value + units[i][1]);
+    let rawValue = detail[units[i][0]];
+    if ((typeof rawValue !== 'number' && typeof rawValue !== 'string') || !String(rawValue).trim()) continue;
+    let value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) continue;
+    hasValidAge = true;
+    if (value > 0) parts.push(value + units[i][1]);
   }
-  return parts.length ? parts.join('') : '不足一月';
+  if (parts.length) return parts.join('');
+  return hasValidAge ? '不足一月' : '';
+}
+
+function _getNormalizedJiaoyun(d){
+  let detail = d && d.dayun && d.dayun.jiao_yun;
+  if (!detail || typeof detail !== 'object') return {reference:'', formula:'', ageText:''};
+  return {
+    reference: detail.reference === undefined || detail.reference === null ? '' : String(detail.reference).trim(),
+    formula: detail.formula === undefined || detail.formula === null ? '' : String(detail.formula).trim(),
+    ageText: _formatJiaoyunAge(detail)
+  };
+}
+
+function _getNormalizedKinshipRows(d){
+  let kinship = d && d.kinship ? d.kinship : {};
+  let keys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
+  let rows = [];
+  for (let i = 0; i < keys.length; i++){
+    let item = kinship[keys[i]];
+    if (!item || typeof item !== 'object') continue;
+    let label = item.label === undefined || item.label === null ? '' : String(item.label).trim();
+    let rawStars = Array.isArray(item.stars) ? item.stars : [item.stars];
+    let stars = rawStars.map(function(value){
+      return value === undefined || value === null ? '' : String(value).trim();
+    }).filter(Boolean);
+    if (label || stars.length) rows.push({label:label, stars:stars.join(' / ')});
+  }
+  return rows;
+}
+
+function _hasGenderLuckData(d, xiaoyunChipTexts, jiaoyun, kinshipRows){
+  if (!d) return false;
+  xiaoyunChipTexts = Array.isArray(xiaoyunChipTexts) ? xiaoyunChipTexts : _getXiaoyunChipTexts(d);
+  jiaoyun = jiaoyun || _getNormalizedJiaoyun(d);
+  kinshipRows = Array.isArray(kinshipRows) ? kinshipRows : _getNormalizedKinshipRows(d);
+  return Boolean(jiaoyun.reference || jiaoyun.formula || jiaoyun.ageText || xiaoyunChipTexts.length || kinshipRows.length);
 }
 
 function _buildGenderLuckSection(d){
   let xiaoyunChipTexts = _getXiaoyunChipTexts(d);
-  if (!_hasGenderLuckData(d, xiaoyunChipTexts)) return '';
+  let jiaoyun = _getNormalizedJiaoyun(d);
+  let kinshipRows = _getNormalizedKinshipRows(d);
+  if (!_hasGenderLuckData(d, xiaoyunChipTexts, jiaoyun, kinshipRows)) return '';
 
   let dayun = d.dayun || {};
   let xiaoyun = d.xiaoyun || {};
@@ -632,7 +640,6 @@ function _buildGenderLuckSection(d){
   let genderLabel = d.gender ? String(d.gender) + '命' : '';
   let heading = [genderLabel, direction].filter(Boolean).join(' · ') || '运势起点与六亲';
   let periods = Array.isArray(dayun.periods) ? dayun.periods : [];
-  let jiaoyun = dayun.jiao_yun || null;
   let summaryRows = '';
   let h = '';
 
@@ -650,19 +657,11 @@ function _buildGenderLuckSection(d){
     }
   }
 
-  if (jiaoyun){
-    let hasJiaoyun = ['years', 'months', 'days', 'hours'].some(function(key){
-      let value = jiaoyun[key];
-      return value !== undefined && value !== null && String(value).trim() && Number.isFinite(Number(value)) && Number(value) >= 0;
-    }) || Boolean(jiaoyun.reference) || Boolean(jiaoyun.formula);
-    if (hasJiaoyun){
-      let ageText = _formatJiaoyunAge(jiaoyun);
-      let mainText = [jiaoyun.reference, ageText].filter(Boolean).join(' · ');
-      let formula = jiaoyun.formula || '';
-      summaryRows += '<div class=gender-luck-summary-row><span>交运时间</span><b data-tip="' + esc(formula) + '">' + esc(mainText) + '</b>';
-      if (formula) summaryRows += '<p>' + esc(formula) + '</p>';
-      summaryRows += '</div>';
-    }
+  if (jiaoyun.reference || jiaoyun.formula || jiaoyun.ageText){
+    let mainText = [jiaoyun.reference, jiaoyun.ageText].filter(Boolean).join(' · ');
+    summaryRows += '<div class=gender-luck-summary-row><span>交运时间</span><b data-tip="' + esc(jiaoyun.formula) + '">' + esc(mainText) + '</b>';
+    if (jiaoyun.formula) summaryRows += '<p>' + esc(jiaoyun.formula) + '</p>';
+    summaryRows += '</div>';
   }
   if (summaryRows) h += '<div class=gender-luck-summary>' + summaryRows + '</div>';
 
@@ -674,17 +673,11 @@ function _buildGenderLuckSection(d){
     h += '</div></div>';
   }
 
-  let kinship = d.kinship || {};
-  let kinshipKeys = ['spouse', 'child', 'father_in_law', 'mother_in_law'];
-  let kinshipRows = '';
-  for (let i = 0; i < kinshipKeys.length; i++){
-    let item = kinship[kinshipKeys[i]];
-    if (!item) continue;
-    let stars = Array.isArray(item.stars) ? item.stars.join(' / ') : (item.stars || '');
-    if (!item.label && !stars) continue;
-    kinshipRows += '<div class=gender-luck-kinship-row><span>' + esc(item.label || '') + '</span><b>' + esc(stars) + '</b></div>';
+  let kinshipHtml = '';
+  for (let i = 0; i < kinshipRows.length; i++){
+    kinshipHtml += '<div class=gender-luck-kinship-row><span>' + esc(kinshipRows[i].label) + '</span><b>' + esc(kinshipRows[i].stars) + '</b></div>';
   }
-  if (kinshipRows) h += '<div class=gender-luck-kinship><h3>六亲对应</h3>' + kinshipRows + '</div>';
+  if (kinshipHtml) h += '<div class=gender-luck-kinship><h3>六亲对应</h3>' + kinshipHtml + '</div>';
 
   let sensitiveName = d.gender === '男' ? '孤辰' : d.gender === '女' ? '寡宿' : '';
   let spirits = Array.isArray(d.spirits) ? d.spirits : [];
