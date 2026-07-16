@@ -731,12 +731,17 @@ async def chat_api(request: Request):
         return JSONResponse({"error": "AI 功能未启用"}, status_code=503)
     from .chat import (
         FREE_DAILY_LIMIT,
+        _use_sqlite_runtime_store,
         build_messages,
         call_deepseek_stream,
         check_free_quota,
         consume_code,
         consume_free_quota,
         filter_sensitive,
+        release_quota_reservation,
+        reserve_activation_code,
+        reserve_free_quota,
+        settle_quota_reservation,
         validate_code,
     )
 
@@ -758,8 +763,27 @@ async def chat_api(request: Request):
             yield "data: [DONE]\n\n"
         return StreamingResponse(reject_gen(), media_type="text/event-stream")
 
-    # 2. 权限检查
-    if activation_code:
+    # 2. 权限检查。SQLite 模式先事务预占，首个 token 到达后才结算。
+    sqlite_runtime = _use_sqlite_runtime_store()
+    reservation_id = None
+    if sqlite_runtime and activation_code:
+        reservation = reserve_activation_code(activation_code)
+        if reservation is None:
+            _valid, _remaining, msg = validate_code(activation_code)
+            async def invalid_gen():
+                yield f"data: {json.dumps({'token': msg})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(invalid_gen(), media_type="text/event-stream")
+        reservation_id = reservation.reservation_id
+    elif sqlite_runtime:
+        reservation = reserve_free_quota(client_ip)
+        if reservation is None:
+            async def quota_gen():
+                yield f"data: {json.dumps({'token': f'今日免费追问次数（{FREE_DAILY_LIMIT}次）已用完。点击"解锁追问"获取激活码。'})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(quota_gen(), media_type="text/event-stream")
+        reservation_id = reservation.reservation_id
+    elif activation_code:
         valid, _remaining, msg = validate_code(activation_code)
         if not valid:
             async def invalid_gen():
@@ -780,14 +804,20 @@ async def chat_api(request: Request):
     # 4. 流式响应（扣费在首个token到达后执行，避免错误响应也扣费）
     async def stream_chat():
         consumed = False
-        async for chunk in call_deepseek_stream(messages):
-            if not consumed and chunk.startswith('data: {"token"'):
-                consumed = True
-                if activation_code:
-                    consume_code(activation_code)
-                else:
-                    consume_free_quota(client_ip)
-            yield chunk
+        try:
+            async for chunk in call_deepseek_stream(messages):
+                if not consumed and chunk.startswith('data: {"token"'):
+                    consumed = True
+                    if reservation_id:
+                        settle_quota_reservation(reservation_id)
+                    elif activation_code:
+                        consume_code(activation_code)
+                    else:
+                        consume_free_quota(client_ip)
+                yield chunk
+        finally:
+            if reservation_id and not consumed:
+                release_quota_reservation(reservation_id)
 
     return _limited_stream_response(stream_chat())
 

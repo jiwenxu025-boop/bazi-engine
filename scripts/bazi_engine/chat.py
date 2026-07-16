@@ -14,12 +14,16 @@ import httpx
 
 from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL
 from ._http import shared_async_client
+from .runtime_store import QuotaReservation, RuntimeStore
 
 # ═══════════════════════════════════════════════════════════════
 # 配置
 # ═══════════════════════════════════════════════════════════════
 
 _ACTIVATION_FILE = Path(__file__).resolve().parent / "activation_codes.json"
+_RUNTIME_DB = Path(
+    os.getenv("BAZI_RUNTIME_DB_PATH", Path(__file__).resolve().parents[2] / "data" / "runtime.sqlite3")
+)
 _RUNTIME_DATA_LOCK = threading.RLock()
 
 # ═══════════════════════════════════════════════════════════════
@@ -383,8 +387,33 @@ _USE_DEMO_CODES = (
 _default_codes = dict(_DEMO_CODES) if _USE_DEMO_CODES else {}
 
 
+def _use_sqlite_runtime_store() -> bool:
+    return os.getenv("BAZI_RUNTIME_STORE", "json").lower() == "sqlite"
+
+
+def _activation_seed_codes() -> dict:
+    codes = dict(_default_codes)
+    env_codes = os.getenv("ACTIVATION_CODES", "")
+    if env_codes:
+        with suppress(json.JSONDecodeError):
+            codes.update(json.loads(env_codes))
+    if os.getenv("BAZI_PUBLIC", "").lower() in ("1", "true", "yes"):
+        for code in _DEMO_CODES:
+            codes.pop(code, None)
+    return codes
+
+
+def _runtime_store() -> RuntimeStore:
+    store = RuntimeStore(_RUNTIME_DB)
+    store.seed_activation_codes(_activation_seed_codes())
+    return store
+
+
 def _load_codes() -> dict:
     """加载激活码（环境变量 + 本地文件合并，环境变量优先）"""
+    if _use_sqlite_runtime_store():
+        return _runtime_store().activation_codes()
+
     codes = dict(_default_codes)
 
     # 本地文件（首次自动创建，gitignore 保护）
@@ -442,6 +471,14 @@ def _atomic_json_write(path: Path, data: dict, **json_kwargs) -> None:
 
 def validate_code(code: str) -> tuple[bool, int, str]:
     """验证激活码。返回 (有效?, 剩余次数, 消息)"""
+    if _use_sqlite_runtime_store():
+        remaining = _runtime_store().activation_remaining(code)
+        if remaining is None:
+            return False, 0, "激活码无效"
+        if remaining <= 0:
+            return False, 0, "该激活码次数已用完"
+        return True, remaining, "有效"
+
     codes = _load_codes()
     entry = codes.get(code.strip().upper())
     if not entry:
@@ -454,6 +491,13 @@ def validate_code(code: str) -> tuple[bool, int, str]:
 
 def consume_code(code: str) -> tuple[bool, int]:
     """消耗一次激活码。返回 (成功?, 剩余次数)"""
+    if _use_sqlite_runtime_store():
+        reservation = reserve_activation_code(code)
+        if reservation is None:
+            return False, 0
+        _runtime_store().settle_reservation(reservation.reservation_id)
+        return True, reservation.remaining
+
     with _RUNTIME_DATA_LOCK:
         codes = _load_codes()
         entry = codes.get(code.strip().upper())
@@ -498,6 +542,10 @@ def check_free_quota(client_id: str) -> tuple[bool, int]:
     IP 经哈希处理后存储，不保留原始 IP。
     注意: NAT/代理环境下多用户共用同一 IP，一个用户用完额度其他人也会被拦。
     """
+    if _use_sqlite_runtime_store():
+        remaining = _runtime_store().free_remaining(_hash_ip(client_id), time.strftime("%Y-%m-%d"), FREE_DAILY_LIMIT)
+        return remaining > 0, remaining
+
     with _RUNTIME_DATA_LOCK:
         today = time.strftime("%Y-%m-%d")
         data = _load_free_usage()
@@ -521,6 +569,13 @@ def check_free_quota(client_id: str) -> tuple[bool, int]:
 
 def consume_free_quota(client_id: str) -> int:
     """消耗一次免费额度。返回剩余次数"""
+    if _use_sqlite_runtime_store():
+        reservation = reserve_free_quota(client_id)
+        if reservation is None:
+            return 0
+        _runtime_store().settle_reservation(reservation.reservation_id)
+        return reservation.remaining
+
     with _RUNTIME_DATA_LOCK:
         today = time.strftime("%Y-%m-%d")
         data = _load_free_usage()
@@ -536,3 +591,27 @@ def consume_free_quota(client_id: str) -> int:
         data[key] = entry
         _save_free_usage(data)
         return FREE_DAILY_LIMIT - entry["count"]
+
+
+def reserve_activation_code(code: str) -> QuotaReservation | None:
+    """Atomically reserve a paid quota until the first response token is delivered."""
+    if not _use_sqlite_runtime_store():
+        return None
+    return _runtime_store().reserve_activation(code)
+
+
+def reserve_free_quota(client_id: str) -> QuotaReservation | None:
+    """Atomically reserve one daily free quota until the first response token is delivered."""
+    if not _use_sqlite_runtime_store():
+        return None
+    return _runtime_store().reserve_free(
+        _hash_ip(client_id), time.strftime("%Y-%m-%d"), FREE_DAILY_LIMIT,
+    )
+
+
+def settle_quota_reservation(reservation_id: str) -> bool:
+    return _runtime_store().settle_reservation(reservation_id)
+
+
+def release_quota_reservation(reservation_id: str) -> bool:
+    return _runtime_store().release_reservation(reservation_id)

@@ -648,3 +648,62 @@ def test_chat_api_sends_corrected_current_context_to_model(monkeypatch):
     assert "2026年 19岁 丙午流年，丙午大运" in system_prompt
     assert "2026年 19岁 丙午流年，甲辰大运" not in system_prompt
     assert system_prompt.rfind("【最终事实约束】") > system_prompt.rfind("classical-texts.md")
+
+
+def test_sqlite_chat_quota_releases_when_provider_returns_no_token(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    import bazi_engine.chat as chat_module
+    from bazi_engine.api import app
+    from bazi_engine.runtime_store import RuntimeStore
+
+    async def failed_stream(_messages):
+        yield "data: [ERROR] provider unavailable\n\n"
+
+    database_path = tmp_path / "runtime.sqlite3"
+    monkeypatch.setenv("BAZI_RUNTIME_STORE", "sqlite")
+    monkeypatch.setenv("ACTIVATION_CODES", '{"TEST": {"剩余": 1, "备注": "test"}}')
+    monkeypatch.setattr(api_module, "_AI_ENABLED", True)
+    monkeypatch.setattr(chat_module, "_RUNTIME_DB", database_path)
+    monkeypatch.setattr(chat_module, "build_messages", lambda *_args: [{"role": "user", "content": "test"}])
+    monkeypatch.setattr(chat_module, "call_deepseek_stream", failed_stream)
+
+    with TestClient(app).stream(
+        "POST",
+        "/api/chat",
+        json={"question": "测试", "chart_data": {}, "activation_code": "TEST"},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert "provider unavailable" in body
+    assert RuntimeStore(database_path).activation_remaining("TEST") == 1
+
+
+def test_sqlite_chat_quota_settles_after_first_token(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    import bazi_engine.chat as chat_module
+    from bazi_engine.api import app
+    from bazi_engine.runtime_store import RuntimeStore
+
+    async def successful_stream(_messages):
+        yield 'data: {"token":"ok"}\n\n'
+        yield "data: [DONE]\n\n"
+
+    database_path = tmp_path / "runtime.sqlite3"
+    monkeypatch.setenv("BAZI_RUNTIME_STORE", "sqlite")
+    monkeypatch.setenv("ACTIVATION_CODES", '{"TEST": {"剩余": 1, "备注": "test"}}')
+    monkeypatch.setattr(api_module, "_AI_ENABLED", True)
+    monkeypatch.setattr(chat_module, "_RUNTIME_DB", database_path)
+    monkeypatch.setattr(chat_module, "build_messages", lambda *_args: [{"role": "user", "content": "test"}])
+    monkeypatch.setattr(chat_module, "call_deepseek_stream", successful_stream)
+
+    with TestClient(app).stream(
+        "POST",
+        "/api/chat",
+        json={"question": "测试", "chart_data": {}, "activation_code": "TEST"},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert '"token":"ok"' in body or '"token": "ok"' in body
+    assert RuntimeStore(database_path).activation_remaining("TEST") == 0

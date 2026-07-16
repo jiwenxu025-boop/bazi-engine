@@ -158,6 +158,17 @@ class RuntimeStore:
             ).fetchone()
         return int(row["remaining"]) if row else None
 
+    def activation_codes(self) -> dict[str, dict]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT code, remaining, note FROM activation_codes ORDER BY code"
+            ).fetchall()
+        return {
+            row["code"]: {"剩余": int(row["remaining"]), "备注": row["note"]}
+            for row in rows
+        }
+
     def free_remaining(self, client_hash: str, usage_date: str, limit: int) -> int:
         self.initialize()
         with self.connect() as connection:
