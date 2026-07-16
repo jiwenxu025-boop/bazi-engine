@@ -53,6 +53,7 @@ _LARGE_REQUEST_BODY_LIMITS = {
 }
 _MAX_AI_STREAMS = int(os.getenv("BAZI_MAX_AI_STREAMS", "3"))
 _AI_STREAM_SLOTS = threading.BoundedSemaphore(max(1, _MAX_AI_STREAMS))
+_ALLOW_LEGACY_CHART_GET = os.getenv("BAZI_ALLOW_LEGACY_CHART_GET", "1").lower() in ("1", "true", "yes")
 _FUSION_STREAM_TOTAL_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_TOTAL_TIMEOUT", "150"))
 _FUSION_STREAM_IDLE_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_IDLE_TIMEOUT", "45"))
 _STREAM_HEARTBEAT_INTERVAL = float(os.getenv("BAZI_STREAM_HEARTBEAT_INTERVAL", "15"))
@@ -61,6 +62,10 @@ _CORS_ORIGINS = [
     for origin in os.getenv("BAZI_CORS_ORIGINS", "").split(",")
     if origin.strip()
 ]
+
+
+class RequestBodyTooLargeError(Exception):
+    """Raised while consuming a chunked request body over the configured limit."""
 
 
 class ChartStreamRequest(BaseModel):
@@ -114,10 +119,31 @@ async def reject_large_request_bodies(request: Request, call_next):
     if request.method in {"POST", "PUT", "PATCH"}:
         content_length = request.headers.get("content-length")
         max_bytes = _LARGE_REQUEST_BODY_LIMITS.get(request.url.path, _MAX_REQUEST_BODY_BYTES)
-        if content_length and int(content_length) > max_bytes:
-            response = JSONResponse({"error": "请求体过大"}, status_code=413)
+        if content_length:
+            try:
+                if int(content_length) > max_bytes:
+                    response = JSONResponse({"error": "请求体过大"}, status_code=413)
+            except ValueError:
+                response = JSONResponse({"error": "无效的请求体长度"}, status_code=400)
+        if response is None:
+            receive = request._receive
+            received_bytes = 0
+
+            async def limited_receive():
+                nonlocal received_bytes
+                message = await receive()
+                if message["type"] == "http.request":
+                    received_bytes += len(message.get("body", b""))
+                    if received_bytes > max_bytes:
+                        raise RequestBodyTooLargeError
+                return message
+
+            request._receive = limited_receive
     if response is None:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except RequestBodyTooLargeError:
+            response = JSONResponse({"error": "请求体过大"}, status_code=413)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -176,6 +202,8 @@ def chart_api(
     hour_confirmed: bool = Query(False, description="出生时辰是否经用户确认"),
     practical: bool = Query(False, description="实用模式：仅返回白话解读，不包含技术推导"),
 ):
+    if not _ALLOW_LEGACY_CHART_GET:
+        return JSONResponse({"error": "该入口已停用，请使用 POST /api/chart/stream"}, status_code=410)
     ln_range = None
     if liunian_from and liunian_to:
         ln_range = (liunian_from, liunian_to)
@@ -527,6 +555,9 @@ async def chart_stream(
       data: {"phase":"done"}                             — 全流程结束
     """
 
+    if not _ALLOW_LEGACY_CHART_GET:
+        return JSONResponse({"error": "该入口已停用，请使用 POST /api/chart/stream"}, status_code=410)
+    logger.info("legacy chart stream GET used")
     payload = ChartStreamRequest(
         name=name,
         gender=gender,

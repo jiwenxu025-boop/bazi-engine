@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 import bazi_engine._chart_context as chart_context
 from tests._chat_fixtures import chart_data_with_current_dayun
@@ -55,6 +56,28 @@ def test_api_sets_baseline_security_headers():
     assert response.headers["referrer-policy"] == "no-referrer"
 
 
+def test_request_body_limit_applies_to_chunked_body(monkeypatch):
+    import bazi_engine.api as api_module
+
+    monkeypatch.setattr(api_module, "_MAX_REQUEST_BODY_BYTES", 4)
+    chunks = iter((
+        {"type": "http.request", "body": b"abc", "more_body": True},
+        {"type": "http.request", "body": b"de", "more_body": False},
+    ))
+
+    async def receive():
+        return next(chunks)
+
+    async def call_next(request):
+        await request.body()
+        return api_module.JSONResponse({"ok": True})
+
+    request = Request({"type": "http", "method": "POST", "path": "/api/feedback", "headers": []}, receive)
+    response = asyncio.run(api_module.reject_large_request_bodies(request, call_next))
+
+    assert response.status_code == 413
+
+
 def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_AI_ENABLED", "0")
@@ -81,6 +104,16 @@ def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     assert response.status_code == 200
     assert '"phase": "rules_done"' in body or '"phase":"rules_done"' in body
     assert "data: [DONE]" in body
+
+
+def test_legacy_chart_get_can_be_disabled(monkeypatch):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_ALLOW_LEGACY_CHART_GET", False)
+    params = {"gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20}
+    assert TestClient(app).get("/api/chart", params=params).status_code == 410
+    assert TestClient(app).get("/api/chart/stream", params=params).status_code == 410
 
 
 def test_chart_stream_post_returns_rules_and_done_events(monkeypatch):
