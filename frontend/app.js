@@ -66,6 +66,18 @@ document.getElementById('formCard').addEventListener('keydown', function(e){
    ========================================== */
 document.getElementById('submitBtn').addEventListener('click', go);
 
+function updateHourHint(){
+  let confirmed = document.getElementById('hourConfirmed');
+  let hint = document.getElementById('hourHint');
+  if (!confirmed || !hint) return;
+  hint.textContent = confirmed.checked
+    ? '已确认，格局、起运和时柱神煞将纳入解读'
+    : '⚠ 未确认，格局、起运、时柱神煞仅供参考';
+}
+
+document.getElementById('hourConfirmed').addEventListener('change', updateHourHint);
+updateHourHint();
+
 /* ==========================================
    Shared app state
    ========================================== */
@@ -164,18 +176,39 @@ function _buildChartParams(){
   });
   if (lnFrom) params.set('liunian_from', lnFrom);
   if (lnTo) params.set('liunian_to', lnTo);
-  let fl = document.getElementById('familyLevel').value;
-  if (fl) params.set('family_level', fl);
-  let fj = document.getElementById('fatherJob').value.trim();
-  if (fj) params.set('father_job', fj);
-  let mj = document.getElementById('motherJob').value.trim();
-  if (mj) params.set('mother_job', mj);
   let lsOverride = sessionStorage.getItem('bazi-life-stage');
   if (lsOverride) params.set('life_stage', lsOverride);
   return params;
 }
 
+function _buildChartRequest(){
+  let payload = {};
+  _buildChartParams().forEach(function(value, key){ payload[key] = value; });
+  return payload;
+}
+
+function _validateChartForm(){
+  let fields = ['year', 'month', 'day'];
+  for (let i = 0; i < fields.length; i++){
+    let field = document.getElementById(fields[i]);
+    if (!field.reportValidity()) return false;
+  }
+  let year = Number(document.getElementById('year').value);
+  let month = Number(document.getElementById('month').value);
+  let day = Number(document.getElementById('day').value);
+  let date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day){
+    let dayField = document.getElementById('day');
+    dayField.setCustomValidity('请输入真实存在的日期');
+    dayField.reportValidity();
+    dayField.setCustomValidity('');
+    return false;
+  }
+  return true;
+}
+
 async function go(){
+  if (!_validateChartForm()) return;
   let btn = document.getElementById('submitBtn');
   btn.disabled = true; btn.textContent = '计算中...';
   let r = document.getElementById('result');
@@ -185,12 +218,15 @@ async function go(){
   document.getElementById('reportActions').classList.remove('active');
 
   let api = document.getElementById('apiUrl').value.replace(/\/$/, '');
-  let params = _buildChartParams();
+  let payload = _buildChartRequest();
 
   try {
     // v0.11.2: 流式排盘——规则引擎立即渲染，LLM结果流式追加
-    let streamUrl = api + '/api/chart/stream?' + params;
-    let resp = await fetch(streamUrl);
+    let resp = await fetch(api + '/api/chart/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
     if (!resp.ok) throw new Error('API ' + resp.status);
 
     let streamReader = resp.body.getReader();
@@ -285,7 +321,7 @@ async function go(){
           } else if (msg.phase === 'dayun_error'){
             // 5b. 大运解读失败——显示原因
             let dyEls2 = document.querySelectorAll('.dayun-interpretations');
-            for (let de = 0; de < dyEls2.length; de++) dyEls2[de].innerHTML = '<div class=dayun-error>⚠ 大运解读暂不可用：' + (msg.message || '未知错误') + '</div>';
+            for (let de = 0; de < dyEls2.length; de++) dyEls2[de].innerHTML = '<div class=dayun-error>⚠ 大运解读暂不可用：' + esc(msg.message || '未知错误') + '</div>';
           } else if (msg.phase === 'done'){
             // 6. 全流程结束——清理LLM推理实时显示区
             let liveEl = document.querySelector('.llm-live-section');
@@ -295,7 +331,7 @@ async function go(){
       }
     }
   } catch(e) {
-    r.innerHTML = '<div class=error-state>请求失败: ' + e.message + '<br><small style="color:' + (document.documentElement.classList.contains('dark') ? '#a0a0b0' : '#78716c') + '">请确认 API 地址可访问</small></div>';
+    r.innerHTML = '<div class=error-state>请求失败: ' + esc(e.message) + '<br><small style="color:' + (document.documentElement.classList.contains('dark') ? '#a0a0b0' : '#78716c') + '">请确认 API 地址可访问</small></div>';
   }
   btn.disabled = false; btn.textContent = '生成解读';
 }
@@ -1151,16 +1187,14 @@ function render(d){
   document.getElementById('copyBtn').style.display = 'inline-block';
   document.getElementById('reportActions').classList.add('active');
 
-  // 如果用户填写了家境信息，自动提交反馈
+  // 用户主动填写的匿名家境反馈，仅保存两个等级用于校准统计。
   let fl = document.getElementById('familyLevel').value;
   if (fl){
     fetch('/api/feedback', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        chart_data: d,
+        engine_level: (d.family || {}).level || '',
         family_level: fl,
-        father_job: document.getElementById('fatherJob').value.trim(),
-        mother_job: document.getElementById('motherJob').value.trim()
       })
     }).catch(function(){});
   }
@@ -1677,8 +1711,8 @@ function _exportICS(){
 
 function md2html(t){
   // 过滤引擎数字泄露
-  t = _stripScores(t);
-  // 先跑 Markdown → HTML，再统一保护标签后转义纯文本
+  t = esc(_stripScores(String(t || '')));
+  // 原始文本先转义，再生成受控 Markdown 标签，禁止 LLM 注入任意 HTML。
   // 宽松匹配：空格可选，兼容 LLM 输出 "##社交" 或 "## 社交"
   t = t.replace(/^###\s*(.+)/gm, '<h3>$1</h3>');
   t = t.replace(/^##\s*(.+)/gm, '<h2>$1</h2>');
@@ -1697,13 +1731,6 @@ function md2html(t){
     }).join('');
     return '<table>'+h+r+'</table>';
   });
-  // 保护所有已生成的 HTML 标签（markdown 输出的 + 原文中的）
-  let safe = [];
-  t = t.replace(/(<[^>]+>)/g, function(m){ safe.push(m); return '\x00' + (safe.length-1) + '\x00'; });
-  // 转义剩余纯文本
-  t = t.replace(/[&<>"]/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; });
-  // 还原所有标签
-  t = t.replace(/\x00(\d+)\x00/g, function(_,i){ return safe[parseInt(i)]; });
   t = t.replace(/\n\n/g, '</p><p>');
   t = '<p>' + t + '</p>';
   t = t.replace(/<p>\s*<\/p>/g, '');
@@ -2025,8 +2052,15 @@ async function loadQuota(){
   let badge = document.getElementById('quotaBadge');
   try{
     let url = '/api/chat/quota';
-    if (CHAT.activationCode) url += '?code=' + CHAT.activationCode;
-    let r = await fetch(url);
+    let options = {};
+    if (CHAT.activationCode){
+      options = {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code: CHAT.activationCode}),
+      };
+    }
+    let r = await fetch(url, options);
     let d = await r.json();
     if (d.has_code){
       badge.textContent = '激活码剩余' + d.remaining + '次';
@@ -2051,7 +2085,11 @@ function submitActivationCode(){
   let code = document.getElementById('actCodeInput').value.trim().toUpperCase();
   let status = document.getElementById('actCodeStatus');
   if (!code){ status.textContent = '请输入激活码'; status.className='status-msg error'; return; }
-  fetch('/api/chat/quota?code=' + code).then(function(r){return r.json()}).then(function(d){
+  fetch('/api/chat/quota', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code: code}),
+  }).then(function(r){return r.json()}).then(function(d){
     if (d.remaining > 0){
       CHAT.activationCode = code;
       localStorage.setItem('bazi-act-code', code);

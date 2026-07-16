@@ -621,8 +621,8 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
 
 def test_gender_luck_release_updates_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'href="style.css?v=20260716"' in html
-    assert 'src="app.js?v=20260716"' in html
+    assert 'href="style.css?v=20260716-security1"' in html
+    assert 'src="app.js?v=20260716-security1"' in html
 
 
 def test_chart_params_use_default_flow_range_without_empty_optional_numbers():
@@ -1423,6 +1423,12 @@ def test_fusion_stream_prefers_cleaned_full_report_on_completion():
         assert "let finalText = chunk.full || text;" in source
         assert "el.innerHTML = md2html(finalText) || initialText;" in source
         assert "showFusionFeedback(finalText" in source
+
+
+def test_markdown_renderer_escapes_raw_html_before_rendering():
+    source = APP_JS.read_text(encoding="utf-8")
+    assert "t = esc(_stripScores(String(t || '')));" in source
+    assert "保护所有已生成的 HTML 标签" not in source
 
 
 def test_fusion_feedback_ui_submission_contract():

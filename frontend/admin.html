@@ -16,23 +16,39 @@ td{font-size:13px}
 .refresh{float:right;background:#4ecdc4;color:#1a1a2e;border:none;padding:6px 16px;border-radius:4px;cursor:pointer}
 </style></head>
 <body>
-<h1>KEy 激活码管理 <button class=refresh onclick=location.reload()>刷新</button></h1>
+<h1>KEY 激活码管理 <button class=refresh id=refreshBtn>刷新</button></h1>
 <div class=summary>
   <div>总码数<br><span class=num id=totalCodes>-</span></div>
   <div>总剩余次数<br><span class=num id=totalRemaining>-</span></div>
 </div>
 <table><thead><tr><th>激活码</th><th>剩余</th><th>备注</th></tr></thead><tbody id=tb></tbody></table>
 <script>
-fetch('/api/admin/codes?key=' + new URLSearchParams(location.search).get('key'))
-.then(r => r.json()).then(d => {
-  document.getElementById('totalCodes').textContent = d.total_codes;
-  document.getElementById('totalRemaining').textContent = d.total_remaining;
-  let h = '';
-  d.codes.forEach(c => {
-    let cls = c.remaining === 0 ? 'warn' : c.remaining <= 3 ? 'ok' : 'good';
-    h += '<tr><td>' + c.code + '</td><td class=' + cls + '>' + c.remaining + '</td><td>' + (c.note||'') + '</td></tr>';
+let adminKey = sessionStorage.getItem('bazi-admin-key') || prompt('输入管理密钥');
+if (adminKey) sessionStorage.setItem('bazi-admin-key', adminKey);
+
+async function loadCodes(){
+  let response = await fetch('/api/admin/codes', {headers: {'X-Admin-Key': adminKey || ''}});
+  let data = await response.json();
+  if (!response.ok) throw new Error(data.error || '加载失败');
+  document.getElementById('totalCodes').textContent = data.total_codes;
+  document.getElementById('totalRemaining').textContent = data.total_remaining;
+  let table = document.getElementById('tb');
+  table.replaceChildren();
+  data.codes.forEach(c => {
+    let row = document.createElement('tr');
+    let code = document.createElement('td');
+    let remaining = document.createElement('td');
+    let note = document.createElement('td');
+    code.textContent = c.code;
+    remaining.textContent = c.remaining;
+    remaining.className = c.remaining === 0 ? 'warn' : c.remaining <= 3 ? 'ok' : 'good';
+    note.textContent = c.note || '';
+    row.append(code, remaining, note);
+    table.appendChild(row);
   });
-  document.getElementById('tb').innerHTML = h;
-});
+}
+
+document.getElementById('refreshBtn').addEventListener('click', () => loadCodes().catch(alert));
+loadCodes().catch(alert);
 </script>
 </body></html>

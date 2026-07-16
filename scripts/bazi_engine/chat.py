@@ -367,10 +367,15 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
 # 激活码管理
 # ═══════════════════════════════════════════════════════════════
 
-_default_codes = {
+_DEMO_CODES = {
     "DEMO001": {"剩余": 3, "备注": "演示码"},
     "DEMO002": {"剩余": 10, "备注": "测试码"},
 }
+_USE_DEMO_CODES = (
+    os.getenv("BAZI_ENABLE_DEMO_CODES", "").lower() in ("1", "true", "yes")
+    and os.getenv("BAZI_PUBLIC", "").lower() not in ("1", "true", "yes")
+)
+_default_codes = dict(_DEMO_CODES) if _USE_DEMO_CODES else {}
 
 
 def _load_codes() -> dict:
@@ -393,6 +398,10 @@ def _load_codes() -> dict:
     if env_codes:
         with suppress(json.JSONDecodeError):
             codes.update(json.loads(env_codes))
+
+    if os.getenv("BAZI_PUBLIC", "").lower() in ("1", "true", "yes"):
+        for code in _DEMO_CODES:
+            codes.pop(code, None)
 
     return codes
 

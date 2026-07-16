@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>八字解读</title>
 <script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
-<link rel="stylesheet" href="style.css?v=20260716">
+<link rel="icon" href="favicon.svg?v=20260716" type="image/svg+xml">
+<link rel="stylesheet" href="style.css?v=20260716-security1">
 <link rel=stylesheet href=chat.css>
 </head>
 <body>
@@ -56,11 +57,9 @@
     </div>
   </details>
   <details style="margin-bottom:var(--space-md);font-size:13px;color:var(--text-secondary)">
-    <summary style="cursor:pointer;user-select:none">📋 填写已知家境（可选，用于校准）</summary>
+    <summary style="cursor:pointer;user-select:none">📋 提交匿名家境反馈（可选）</summary>
     <div class="form-row" style="margin-top:10px">
       <label><span>经济水平</span><select id="familyLevel"><option value="">不填</option><option>宽裕</option><option>普通</option><option>紧张</option></select></label>
-      <label><span>父亲职业</span><input id="fatherJob" placeholder="可选"></label>
-      <label><span>母亲职业</span><input id="motherJob" placeholder="可选"></label>
     </div>
   </details>
   <button class="btn" id="submitBtn">生成解读</button>
@@ -91,7 +90,7 @@
   <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">顶部</button>
 </div>
 
-<script src="app.js?v=20260716"></script>
+<script src="app.js?v=20260716-security1"></script>
 
 <!-- ═══ Chat Toggle ═══ -->
 <button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问">💬<span class=badge id=chatBadge></span></button>
@@ -164,7 +163,6 @@
         <div style="font-size:18px;font-weight:700;color:var(--accent)">¥19.9</div>
         <div style="font-size:10px;color:var(--text-tertiary)">永久</div>
       </div>
-    </div>
     </div>
     <p style="font-size:12px;color:var(--text-tertiary);text-align:center">已有激活码？直接输入下方</p>
     <input id=actCodeInput placeholder="输入激活码" autocomplete=off>

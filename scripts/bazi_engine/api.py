@@ -14,17 +14,20 @@
 import asyncio
 import concurrent.futures
 import hashlib
+import hmac
 import json
 import os
 import re
 import threading
 from contextlib import suppress
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from ._version import __version__
 from .chart import build_chart
@@ -33,6 +36,39 @@ _IS_PUBLIC = os.getenv("BAZI_PUBLIC", "").lower() in ("1", "true", "yes")
 _AI_ENABLED = os.getenv("BAZI_AI_ENABLED", "").lower() in ("1", "true", "yes")
 _ADMIN_KEY = os.getenv("BAZI_ADMIN_KEY", "")
 _FAVORABLE_QUERY = Query(None)
+_MAX_REQUEST_BODY_BYTES = int(os.getenv("BAZI_MAX_REQUEST_BODY_BYTES", "32768"))
+_LARGE_REQUEST_BODY_LIMITS = {
+    "/api/chat": int(os.getenv("BAZI_MAX_CHAT_BODY_BYTES", "131072")),
+    "/api/date-pick": int(os.getenv("BAZI_MAX_DATE_PICK_BODY_BYTES", "262144")),
+    "/api/personality/fusion/stream": int(os.getenv("BAZI_MAX_FUSION_BODY_BYTES", "131072")),
+}
+_MAX_AI_STREAMS = int(os.getenv("BAZI_MAX_AI_STREAMS", "3"))
+_AI_STREAM_SLOTS = threading.BoundedSemaphore(max(1, _MAX_AI_STREAMS))
+_CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("BAZI_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+
+class ChartStreamRequest(BaseModel):
+    name: str = Field(default="", max_length=40)
+    gender: Literal["男", "女"]
+    year: int = Field(ge=1900, le=2100)
+    month: int = Field(ge=1, le=12)
+    day: int = Field(ge=1, le=31)
+    hour: int = Field(ge=0, le=23)
+    liunian_from: int | None = Field(default=None, ge=1900, le=2100)
+    liunian_to: int | None = Field(default=None, ge=1900, le=2100)
+    favorable: list[str] | None = None
+    life_stage: Literal["auto", "中学", "大学", "深造", "职场", "晚年"] = "auto"
+    hour_confirmed: bool = False
+    practical: bool = False
+
+
+class ActivationCodeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=80)
+
 
 app = FastAPI(title="八字排盘引擎", version=__version__)
 
@@ -45,10 +81,47 @@ _FRONTEND = Path(_frontend_env) if _frontend_env else Path(__file__).resolve().p
 # 允许前端跨域访问
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def reject_large_request_bodies(request: Request, call_next):
+    if request.method in {"POST", "PUT", "PATCH"}:
+        content_length = request.headers.get("content-length")
+        max_bytes = _LARGE_REQUEST_BODY_LIMITS.get(request.url.path, _MAX_REQUEST_BODY_BYTES)
+        if content_length and int(content_length) > max_bytes:
+            return JSONResponse({"error": "请求体过大"}, status_code=413)
+    return await call_next(request)
+
+
+async def _release_stream_slot(stream):
+    try:
+        async for event in stream:
+            yield event
+    finally:
+        _AI_STREAM_SLOTS.release()
+
+
+def _limited_stream_response(stream):
+    if not _AI_STREAM_SLOTS.acquire(blocking=False):
+        return JSONResponse({"error": "服务繁忙，请稍后重试"}, status_code=429)
+    return StreamingResponse(
+        _release_stream_slot(stream),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _admin_authorized(request: Request) -> bool:
+    if not _ADMIN_KEY:
+        return False
+    authorization = request.headers.get("authorization", "")
+    bearer = authorization.removeprefix("Bearer ").strip()
+    candidate = request.headers.get("x-admin-key", "").strip() or bearer
+    return bool(candidate) and hmac.compare_digest(candidate, _ADMIN_KEY)
 
 
 @app.get("/api/health")
@@ -374,18 +447,47 @@ async def chart_stream(
       data: {"phase":"done"}                             — 全流程结束
     """
 
+    payload = ChartStreamRequest(
+        name=name,
+        gender=gender,
+        year=year,
+        month=month,
+        day=day,
+        hour=hour,
+        liunian_from=liunian_from,
+        liunian_to=liunian_to,
+        favorable=favorable,
+        life_stage=life_stage,
+        hour_confirmed=hour_confirmed,
+        practical=practical,
+    )
+    return _chart_stream_response(payload)
+
+
+def _chart_stream_response(payload: ChartStreamRequest):
     ln_range = None
-    if liunian_from and liunian_to:
-        ln_range = (liunian_from, liunian_to)
+    if payload.liunian_from and payload.liunian_to:
+        ln_range = (payload.liunian_from, payload.liunian_to)
+    fav_set = set(payload.favorable) if payload.favorable else None
+    return _limited_stream_response(stream_chart(
+        payload.name,
+        payload.gender,
+        payload.year,
+        payload.month,
+        payload.day,
+        payload.hour,
+        ln_range,
+        fav_set,
+        payload.life_stage,
+        payload.hour_confirmed,
+        payload.practical,
+    ))
 
-    fav_set = set(favorable) if favorable else None
 
-    return StreamingResponse(stream_chart(
-        name, gender, year, month, day, hour,
-        ln_range, fav_set, life_stage, hour_confirmed, practical,
-    ), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+@app.post("/api/chart/stream")
+async def chart_stream_post(payload: ChartStreamRequest):
+    """主页面使用的隐私优先流式排盘入口。"""
+    return _chart_stream_response(payload)
 
 
 def _strip_technical(data: dict):
@@ -433,6 +535,10 @@ def _strip_technical(data: dict):
 
 @app.post("/api/batch")
 def batch_api(records: list[dict]):
+    if _IS_PUBLIC:
+        return JSONResponse({"error": "公网不提供批量排盘"}, status_code=403)
+    if len(records) > 20:
+        return JSONResponse({"error": "单次最多处理20条"}, status_code=422)
     results = []
     for r in records:
         try:
@@ -620,9 +726,7 @@ async def chat_api(request: Request):
                     consume_free_quota(client_ip)
             yield chunk
 
-    return StreamingResponse(stream_chat(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return _limited_stream_response(stream_chat())
 
 
 @app.post("/api/personality/fusion/stream")
@@ -719,24 +823,24 @@ async def fusion_stream(request: Request):
                 executor.shutdown(wait=False)
                 return
 
-    return StreamingResponse(stream_fusion(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return _limited_stream_response(stream_fusion())
 
 
 @app.get("/api/chat/quota")
 async def chat_quota(request: Request):
-    """查询剩余追问次数"""
-    code = request.query_params.get("code", "").strip().upper()
-    if code:
-        from .chat import validate_code
-        valid, remaining, _ = validate_code(code)
-        return {"has_code": True, "remaining": remaining if valid else 0}
-    else:
-        from .chat import check_free_quota
-        client_ip = request.client.host if request.client else "unknown"
-        _can_use, remaining = check_free_quota(client_ip)
-        return {"has_code": False, "remaining": remaining}
+    """查询免费追问次数。激活码额度改由 POST 请求体查询。"""
+    from .chat import check_free_quota
+    client_ip = request.client.host if request.client else "unknown"
+    _can_use, remaining = check_free_quota(client_ip)
+    return {"has_code": False, "remaining": remaining}
+
+
+@app.post("/api/chat/quota")
+async def chat_code_quota(payload: ActivationCodeRequest):
+    """查询激活码额度，避免把凭证放进 URL 和访问日志。"""
+    from .chat import validate_code
+    valid, remaining, _ = validate_code(payload.code.strip().upper())
+    return {"has_code": True, "remaining": remaining if valid else 0}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -744,9 +848,9 @@ async def chat_quota(request: Request):
 # ═══════════════════════════════════════════════════════════════
 
 @app.get("/api/admin/codes")
-def admin_codes(key: str = Query("")):
+def admin_codes(request: Request):
     """查看所有激活码状态"""
-    if not _ADMIN_KEY or key != _ADMIN_KEY:
+    if not _admin_authorized(request):
         return JSONResponse({"error": "无权访问"}, status_code=403)
     from .chat import _load_codes
     codes = _load_codes()
@@ -768,9 +872,9 @@ def admin_codes(key: str = Query("")):
 
 
 @app.get("/api/admin/feedback")
-def admin_feedback(key: str = Query(""), days: int = Query(7, description="查看最近N天的反馈")):
+def admin_feedback(request: Request, days: int = Query(7, description="查看最近N天的反馈")):
     """查看用户反馈差异记录"""
-    if not _ADMIN_KEY or key != _ADMIN_KEY:
+    if not _admin_authorized(request):
         return JSONResponse({"error": "无权访问"}, status_code=403)
 
     # 日期筛选
@@ -819,48 +923,12 @@ def admin_feedback(key: str = Query(""), days: int = Query(7, description="查�
 
 
 @app.get("/api/admin")
-def admin_page(key: str = Query("")):
-    """激活码管理页面"""
-    if not _ADMIN_KEY or key != _ADMIN_KEY:
-        return HTMLResponse("<h1>无权访问</h1>", status_code=403)
-    return HTMLResponse("""<!DOCTYPE html>
-<html lang=zh-CN>
-<head><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>激活码管理</title>
-<style>
-body{font-family:monospace;max-width:800px;margin:20px auto;padding:0 16px;background:#1a1a2e;color:#e0e0e0}
-h1{font-size:18px;border-bottom:1px solid #333;padding-bottom:8px}
-table{width:100%;border-collapse:collapse;margin-top:12px}
-th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #2a2a3e}
-th{font-size:11px;color:#888;text-transform:uppercase}
-td{font-size:13px}
-.warn{color:#ff6b6b}.ok{color:#4ecdc4}.good{color:#45b7d1}
-.summary{display:flex;gap:20px;margin:16px 0}
-.summary div{background:#16213e;padding:12px 20px;border-radius:8px}
-.summary .num{font-size:24px;font-weight:700;color:#4ecdc4}
-.refresh{float:right;background:#4ecdc4;color:#1a1a2e;border:none;padding:6px 16px;border-radius:4px;cursor:pointer}
-</style></head>
-<body>
-<h1>🔑 激活码管理 <button class=refresh onclick=location.reload()>刷新</button></h1>
-<div class=summary>
-  <div>总码数<br><span class=num id=totalCodes>-</span></div>
-  <div>总剩余次数<br><span class=num id=totalRemaining>-</span></div>
-</div>
-<table><thead><tr><th>激活码</th><th>剩余</th><th>备注</th></tr></thead><tbody id=tb></tbody></table>
-<script>
-fetch('/api/admin/codes?key=' + new URLSearchParams(location.search).get('key'))
-.then(r => r.json()).then(d => {
-  document.getElementById('totalCodes').textContent = d.total_codes;
-  document.getElementById('totalRemaining').textContent = d.total_remaining;
-  var h = '';
-  d.codes.forEach(c => {
-    var cls = c.remaining === 0 ? 'warn' : c.remaining <= 3 ? 'ok' : 'good';
-    h += '<tr><td>' + c.code + '</td><td class=' + cls + '>' + c.remaining + '</td><td>' + (c.note||'') + '</td></tr>';
-  });
-  document.getElementById('tb').innerHTML = h;
-});
-</script>
-</body></html>""")
+def admin_page():
+    """兼容旧入口，管理数据仅由静态页面通过请求头获取。"""
+    return HTMLResponse(
+        '<!doctype html><meta http-equiv="refresh" content="0; url=/admin.html">',
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -928,11 +996,11 @@ async def fusion_feedback_api(request: Request):
 
 @app.get("/api/admin/fusion-feedback")
 def admin_fusion_feedback(
-    key: str = Query(""),
+    request: Request,
     days: int = Query(7, ge=0, le=365, description="查看最近N天的融合报告反馈"),
 ):
     """汇总融合报告命中度反馈，不返回报告正文或报告哈希。"""
-    if not _ADMIN_KEY or key != _ADMIN_KEY:
+    if not _admin_authorized(request):
         return JSONResponse({"error": "无权访问"}, status_code=403)
 
     from datetime import datetime as dt
@@ -1006,20 +1074,18 @@ async def feedback_api(request: Request):
     except Exception:
         return JSONResponse({"error": "请求格式错误"}, status_code=400)
 
-    chart_data = body.get("chart_data", {})
     family_level = body.get("family_level", "")
-    father_job = body.get("father_job", "")
-    mother_job = body.get("mother_job", "")
-    name = chart_data.get("name", "匿名")
+    engine_level = body.get("engine_level", "")
 
     if not family_level:
         return JSONResponse({"saved": False, "error": "缺少 family_level"}, status_code=400)
 
-    # 引擎推断的家境（从 chart_data 中提取）
-    engine_level = ""
-    family_section = chart_data.get("family") or chart_data.get("family_result", {})
-    if family_section:
-        engine_level = family_section.get("level", "")
+    # 兼容旧客户端，但不持久化旧请求中可能携带的命盘或身份字段。
+    if not engine_level:
+        chart_data = body.get("chart_data", {})
+        family_section = chart_data.get("family") or chart_data.get("family_result", {})
+        if family_section:
+            engine_level = family_section.get("level", "")
 
     # 比对
     discrepancy = None
@@ -1029,11 +1095,8 @@ async def feedback_api(request: Request):
     # 保存到持久化文件
     record = {
         "timestamp": __import__("datetime").datetime.now().isoformat(),
-        "name": name,
         "engine_level": engine_level,
         "user_level": family_level,
-        "father_job": father_job,
-        "mother_job": mother_job,
         "discrepancy": discrepancy is not None,
     }
     if discrepancy:

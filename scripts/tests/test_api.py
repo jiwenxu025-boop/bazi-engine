@@ -69,6 +69,103 @@ def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     assert "data: [DONE]" in body
 
 
+def test_chart_stream_post_returns_rules_and_done_events(monkeypatch):
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_AI_ENABLED", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
+    from bazi_engine.api import app
+
+    client = TestClient(app)
+    with client.stream(
+        "POST",
+        "/api/chart/stream",
+        json={
+            "name": "test",
+            "gender": "男",
+            "year": 2007,
+            "month": 8,
+            "day": 26,
+            "hour": 20,
+            "liunian_from": 2023,
+            "liunian_to": 2024,
+        },
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert '"phase": "rules_done"' in body or '"phase":"rules_done"' in body
+    assert "data: [DONE]" in body
+
+
+def test_public_batch_is_disabled(monkeypatch):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_IS_PUBLIC", True)
+    response = TestClient(app).post("/api/batch", json=[])
+
+    assert response.status_code == 403
+
+
+def test_chart_stream_rejects_oversized_request_body():
+    from bazi_engine.api import app
+
+    response = TestClient(app).post(
+        "/api/chart/stream",
+        json={
+            "name": "x" * 40000,
+            "gender": "男",
+            "year": 2007,
+            "month": 8,
+            "day": 26,
+            "hour": 20,
+        },
+    )
+
+    assert response.status_code == 413
+
+
+def test_activation_quota_uses_post_body(monkeypatch):
+    import bazi_engine.chat as chat_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(chat_module, "validate_code", lambda code: (code == "VALID", 7, "有效"))
+    client = TestClient(app)
+
+    assert client.get("/api/chat/quota", params={"code": "VALID"}).json()["has_code"] is False
+    assert client.post("/api/chat/quota", json={"code": "VALID"}).json() == {
+        "has_code": True,
+        "remaining": 7,
+    }
+
+
+def test_admin_codes_requires_a_request_header(monkeypatch):
+    import bazi_engine.api as api_module
+    import bazi_engine.chat as chat_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_ADMIN_KEY", "admin-test")
+    monkeypatch.setattr(chat_module, "_load_codes", lambda: {})
+    client = TestClient(app)
+
+    assert client.get("/api/admin/codes", params={"key": "admin-test"}).status_code == 403
+    assert client.get("/api/admin/codes", headers={"X-Admin-Key": "admin-test"}).status_code == 200
+
+
+def test_public_mode_ignores_persisted_demo_codes(monkeypatch, tmp_path):
+    import bazi_engine.chat as chat_module
+
+    codes_file = tmp_path / "activation_codes.json"
+    codes_file.write_text(
+        json.dumps({"DEMO001": {"剩余": 3}, "PAID001": {"剩余": 5}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BAZI_PUBLIC", "1")
+    monkeypatch.setattr(chat_module, "_ACTIVATION_FILE", codes_file)
+
+    assert chat_module._load_codes() == {"PAID001": {"剩余": 5}}
+
+
 def test_fusion_stream_sends_cleaned_full_report(monkeypatch):
     """独立融合流结束时应发送清洗后的全文供前端覆盖原始 token。"""
     import bazi_engine.personality_fusion as fusion_module
@@ -190,7 +287,8 @@ def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_pat
     client = TestClient(app)
     response = client.get(
         "/api/admin/fusion-feedback",
-        params={"key": "admin-test", "days": 0},
+        params={"days": 0},
+        headers={"X-Admin-Key": "admin-test"},
     )
 
     assert response.status_code == 200
@@ -295,10 +393,7 @@ def test_feedback_reads_public_family_output(monkeypatch, tmp_path):
     response = client.post(
         "/api/feedback",
         json={
-            "chart_data": {
-                "name": "case",
-                "family": {"level": "宽裕"},
-            },
+            "engine_level": "宽裕",
             "family_level": "普通",
         },
     )
@@ -308,7 +403,14 @@ def test_feedback_reads_public_family_output(monkeypatch, tmp_path):
 
     feedback_files = list(tmp_path.glob("feedback_*.jsonl"))
     assert len(feedback_files) == 1
-    assert '"engine_level": "宽裕"' in feedback_files[0].read_text(encoding="utf-8")
+    record = json.loads(feedback_files[0].read_text(encoding="utf-8"))
+    assert record == {
+        "timestamp": record["timestamp"],
+        "engine_level": "宽裕",
+        "user_level": "普通",
+        "discrepancy": True,
+        "discrepancy_detail": "引擎推断: 宽裕, 用户反馈: 普通",
+    }
 
 
 def test_chat_api_sends_corrected_current_context_to_model(monkeypatch):
