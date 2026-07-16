@@ -2,7 +2,9 @@
 import hashlib
 import json
 import sqlite3
+import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -23,6 +25,12 @@ class MigrationReport:
             self.fusion_feedback,
             self.family_feedback,
         ))
+
+
+@dataclass(frozen=True)
+class QuotaReservation:
+    reservation_id: str
+    remaining: int
 
 
 class RuntimeStore:
@@ -60,6 +68,22 @@ class RuntimeStore:
                     usage_date TEXT NOT NULL,
                     count INTEGER NOT NULL CHECK (count >= 0)
                 );
+                CREATE TABLE IF NOT EXISTS quota_reservations (
+                    reservation_id TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL CHECK (kind IN ('activation', 'free')),
+                    code TEXT,
+                    client_hash TEXT,
+                    usage_date TEXT,
+                    state TEXT NOT NULL CHECK (state IN ('reserved', 'settled', 'released')),
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CHECK (
+                        (kind = 'activation' AND code IS NOT NULL AND client_hash IS NULL)
+                        OR (kind = 'free' AND client_hash IS NOT NULL AND code IS NULL)
+                    )
+                );
+                CREATE INDEX IF NOT EXISTS quota_reservations_expiry
+                    ON quota_reservations(state, expires_at);
                 CREATE TABLE IF NOT EXISTS fusion_generations (
                     generation_id TEXT PRIMARY KEY,
                     timestamp TEXT NOT NULL,
@@ -105,6 +129,184 @@ class RuntimeStore:
                 );
                 INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('version', '1');
                 """
+            )
+
+    def seed_activation_codes(self, codes: dict) -> int:
+        """Insert environment-provided codes once without resetting consumed balances."""
+        self.initialize()
+        inserted = 0
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for code, entry in codes.items():
+                if not isinstance(entry, dict):
+                    continue
+                remaining = entry.get("剩余", 0)
+                if not isinstance(remaining, int) or remaining < 0:
+                    continue
+                result = connection.execute(
+                    "INSERT OR IGNORE INTO activation_codes(code, remaining, note) VALUES (?, ?, ?)",
+                    (str(code).upper(), remaining, str(entry.get("备注", ""))),
+                )
+                inserted += result.rowcount
+        return inserted
+
+    def activation_remaining(self, code: str) -> int | None:
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT remaining FROM activation_codes WHERE code = ?", (code.strip().upper(),)
+            ).fetchone()
+        return int(row["remaining"]) if row else None
+
+    def free_remaining(self, client_hash: str, usage_date: str, limit: int) -> int:
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT usage_date, count FROM free_usage WHERE client_hash = ?", (client_hash,)
+            ).fetchone()
+        used = int(row["count"]) if row and row["usage_date"] == usage_date else 0
+        return max(0, limit - used)
+
+    def reserve_activation(self, code: str, *, expiry_seconds: int = 300) -> QuotaReservation | None:
+        self.initialize()
+        normalized_code = code.strip().upper()
+        now = self._now()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._release_expired(connection, now)
+            updated = connection.execute(
+                """
+                UPDATE activation_codes
+                SET remaining = remaining - 1, updated_at = CURRENT_TIMESTAMP
+                WHERE code = ? AND remaining > 0
+                """,
+                (normalized_code,),
+            ).rowcount
+            if not updated:
+                return None
+            remaining = connection.execute(
+                "SELECT remaining FROM activation_codes WHERE code = ?", (normalized_code,)
+            ).fetchone()["remaining"]
+            reservation_id = uuid.uuid4().hex
+            connection.execute(
+                """
+                INSERT INTO quota_reservations(reservation_id, kind, code, state, expires_at)
+                VALUES (?, 'activation', ?, 'reserved', ?)
+                """,
+                (reservation_id, normalized_code, self._expires_at(now, expiry_seconds)),
+            )
+        return QuotaReservation(reservation_id, int(remaining))
+
+    def reserve_free(
+        self,
+        client_hash: str,
+        usage_date: str,
+        limit: int,
+        *,
+        expiry_seconds: int = 300,
+    ) -> QuotaReservation | None:
+        self.initialize()
+        now = self._now()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._release_expired(connection, now)
+            row = connection.execute(
+                "SELECT usage_date, count FROM free_usage WHERE client_hash = ?", (client_hash,)
+            ).fetchone()
+            used = int(row["count"]) if row and row["usage_date"] == usage_date else 0
+            if used >= limit:
+                return None
+            next_count = used + 1
+            connection.execute(
+                """
+                INSERT INTO free_usage(client_hash, usage_date, count) VALUES (?, ?, ?)
+                ON CONFLICT(client_hash) DO UPDATE SET usage_date = excluded.usage_date, count = excluded.count
+                """,
+                (client_hash, usage_date, next_count),
+            )
+            reservation_id = uuid.uuid4().hex
+            connection.execute(
+                """
+                INSERT INTO quota_reservations(
+                    reservation_id, kind, client_hash, usage_date, state, expires_at
+                ) VALUES (?, 'free', ?, ?, 'reserved', ?)
+                """,
+                (reservation_id, client_hash, usage_date, self._expires_at(now, expiry_seconds)),
+            )
+        return QuotaReservation(reservation_id, limit - next_count)
+
+    def settle_reservation(self, reservation_id: str) -> bool:
+        """Mark a delivered response as consumed. Repeated settlement is harmless."""
+        return self._finish_reservation(reservation_id, consume=True)
+
+    def release_reservation(self, reservation_id: str) -> bool:
+        """Return a reservation that failed before delivering a response."""
+        return self._finish_reservation(reservation_id, consume=False)
+
+    def _finish_reservation(self, reservation_id: str, *, consume: bool) -> bool:
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM quota_reservations WHERE reservation_id = ?", (reservation_id,)
+            ).fetchone()
+            if row is None or row["state"] != "reserved":
+                return False
+            if consume:
+                connection.execute(
+                    "UPDATE quota_reservations SET state = 'settled' WHERE reservation_id = ?",
+                    (reservation_id,),
+                )
+                return True
+            self._restore_reservation(connection, row)
+            connection.execute(
+                "UPDATE quota_reservations SET state = 'released' WHERE reservation_id = ?",
+                (reservation_id,),
+            )
+            return True
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now(UTC)
+
+    @staticmethod
+    def _expires_at(now: datetime, expiry_seconds: int) -> str:
+        return (now + timedelta(seconds=max(1, expiry_seconds))).isoformat()
+
+    def _release_expired(self, connection: sqlite3.Connection, now: datetime) -> None:
+        rows = connection.execute(
+            """
+            SELECT * FROM quota_reservations
+            WHERE state = 'reserved' AND expires_at <= ?
+            """,
+            (now.isoformat(),),
+        ).fetchall()
+        for row in rows:
+            self._restore_reservation(connection, row)
+            connection.execute(
+                "UPDATE quota_reservations SET state = 'released' WHERE reservation_id = ?",
+                (row["reservation_id"],),
+            )
+
+    @staticmethod
+    def _restore_reservation(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+        if row["kind"] == "activation":
+            connection.execute(
+                """
+                UPDATE activation_codes
+                SET remaining = remaining + 1, updated_at = CURRENT_TIMESTAMP
+                WHERE code = ?
+                """,
+                (row["code"],),
+            )
+        else:
+            connection.execute(
+                """
+                UPDATE free_usage
+                SET count = CASE WHEN count > 0 THEN count - 1 ELSE 0 END
+                WHERE client_hash = ? AND usage_date = ?
+                """,
+                (row["client_hash"], row["usage_date"]),
             )
 
     def summary_counts(self) -> dict[str, int]:

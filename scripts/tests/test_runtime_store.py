@@ -1,5 +1,6 @@
 """Runtime SQLite schema and legacy importer tests."""
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from bazi_engine.runtime_store import RuntimeStore
 
@@ -70,3 +71,34 @@ def test_legacy_runtime_data_import_is_idempotent(tmp_path):
         "fusion_feedback": 1,
         "family_feedback": 1,
     }
+
+
+def test_activation_reservations_are_transactional_under_concurrency(tmp_path):
+    store = RuntimeStore(tmp_path / "runtime.sqlite3")
+    store.seed_activation_codes({"PAID001": {"剩余": 3, "备注": "test"}})
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        reservations = list(executor.map(lambda _: store.reserve_activation("PAID001"), range(12)))
+
+    successful = [reservation for reservation in reservations if reservation]
+    assert len(successful) == 3
+    assert store.activation_remaining("PAID001") == 0
+    assert store.release_reservation(successful[0].reservation_id) is True
+    assert store.release_reservation(successful[0].reservation_id) is False
+    assert store.activation_remaining("PAID001") == 1
+    assert store.settle_reservation(successful[1].reservation_id) is True
+    assert store.activation_remaining("PAID001") == 1
+
+
+def test_free_reservations_release_on_failure(tmp_path):
+    store = RuntimeStore(tmp_path / "runtime.sqlite3")
+    first = store.reserve_free("hash", "2026-07-16", 2)
+    second = store.reserve_free("hash", "2026-07-16", 2)
+
+    assert first and second
+    assert store.reserve_free("hash", "2026-07-16", 2) is None
+    assert store.release_reservation(first.reservation_id) is True
+    third = store.reserve_free("hash", "2026-07-16", 2)
+    assert third is not None
+    assert store.settle_reservation(second.reservation_id) is True
+    assert store.free_remaining("hash", "2026-07-16", 2) == 0
