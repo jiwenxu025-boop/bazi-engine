@@ -957,14 +957,23 @@ def admin_fusion_feedback(
     rating_distribution: dict[str, int] = {}
     section_distribution: dict[str, int] = {}
     prompt_versions: dict[str, int] = {}
+    model_distribution: dict[str, int] = {}
+    temperature_distribution: dict[str, int] = {}
     repaired_count = 0
     for record in records:
         rating = record.get("rating", "unknown")
         section = record.get("inaccurate_section", "") or "未选择"
         version = record.get("prompt_version", "unknown")
+        model = str(record.get("model") or "unknown")
+        try:
+            temperature = f"{float(record.get('temperature')):g}"
+        except (TypeError, ValueError):
+            temperature = "unknown"
         rating_distribution[rating] = rating_distribution.get(rating, 0) + 1
         section_distribution[section] = section_distribution.get(section, 0) + 1
         prompt_versions[version] = prompt_versions.get(version, 0) + 1
+        model_distribution[model] = model_distribution.get(model, 0) + 1
+        temperature_distribution[temperature] = temperature_distribution.get(temperature, 0) + 1
         repaired_count += int(bool(record.get("repaired")))
 
     total = len(records)
@@ -977,6 +986,8 @@ def admin_fusion_feedback(
         "rating_distribution": rating_distribution,
         "section_distribution": section_distribution,
         "prompt_versions": prompt_versions,
+        "model_distribution": model_distribution,
+        "temperature_distribution": temperature_distribution,
         "repaired_count": repaired_count,
         "repaired_rate": f"{repaired_count / total * 100:.1f}%" if total else "0%",
         "recent": recent,

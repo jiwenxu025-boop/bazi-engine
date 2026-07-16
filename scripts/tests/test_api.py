@@ -199,6 +199,8 @@ def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_pat
     assert data["rating_distribution"] == {"partial": 1}
     assert data["section_distribution"] == {"analysis": 1}
     assert data["prompt_versions"] == {"test-v1": 1}
+    assert data["model_distribution"] == {"deepseek-chat": 1}
+    assert data["temperature_distribution"] == {"0.3": 1}
     assert data["repaired_rate"] == "100.0%"
     assert "report_hash" not in data["recent"][0]
 
