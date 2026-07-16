@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import date
@@ -286,6 +287,40 @@ def test_fusion_stream_hides_provider_error_and_records_failure(monkeypatch, tmp
     generation = json.loads(generation_file.read_text(encoding="utf-8"))
     assert generation["outcome"] == "failure"
     assert generation["error_class"] == "provider_rejected"
+
+
+def test_fusion_stream_stops_after_idle_timeout(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    import bazi_engine.personality_fusion as fusion_module
+    from bazi_engine.api import app
+
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "1")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(api_module, "_GENERATION_DIR", tmp_path)
+    monkeypatch.setattr(api_module, "_FUSION_STREAM_IDLE_TIMEOUT", 0.01)
+    monkeypatch.setattr(api_module, "_FUSION_STREAM_TOTAL_TIMEOUT", 0.5)
+    monkeypatch.setattr(api_module, "_STREAM_HEARTBEAT_INTERVAL", 0.005)
+
+    def fake_generate(*_args, **_kwargs):
+        time.sleep(0.05)
+        return "late report"
+
+    monkeypatch.setattr(fusion_module, "generate_fusion_report", fake_generate)
+    with TestClient(app).stream(
+        "POST",
+        "/api/personality/fusion/stream",
+        json={"personality": {"traits": {"社交": "内敛"}}},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    events = [
+        json.loads(line[6:])
+        for line in body.splitlines()
+        if line.startswith("data: {")
+    ]
+    assert any(event.get("error") == "融合报告响应超时，请稍后重试" for event in events)
+    assert "late report" not in body
 
 
 def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch, tmp_path):

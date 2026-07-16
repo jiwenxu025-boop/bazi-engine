@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 
 from ._http import close_shared_clients
 from ._runtime import close_blocking_executor, submit_blocking
+from ._streaming import StreamEventQueue
 from ._version import __version__
 from .chart import build_chart
 
@@ -52,6 +53,9 @@ _LARGE_REQUEST_BODY_LIMITS = {
 }
 _MAX_AI_STREAMS = int(os.getenv("BAZI_MAX_AI_STREAMS", "3"))
 _AI_STREAM_SLOTS = threading.BoundedSemaphore(max(1, _MAX_AI_STREAMS))
+_FUSION_STREAM_TOTAL_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_TOTAL_TIMEOUT", "150"))
+_FUSION_STREAM_IDLE_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_IDLE_TIMEOUT", "45"))
+_STREAM_HEARTBEAT_INTERVAL = float(os.getenv("BAZI_STREAM_HEARTBEAT_INTERVAL", "15"))
 _CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv("BAZI_CORS_ORIGINS", "").split(",")
@@ -324,17 +328,16 @@ async def stream_chart(    name, gender, year, month, day, hour,
                         chart_data.get("life_stage", ""),
                         age_info=age_info,
                     )
-                    fusion_queue: asyncio.Queue = asyncio.Queue()
+                    fusion_events = StreamEventQueue(loop, name="chart-fusion")
 
-                    def on_token(tok: str, _fusion_queue=fusion_queue):
-                        loop.call_soon_threadsafe(
-                            _fusion_queue.put_nowait, ("token", tok))
+                    def on_token(tok: str, _fusion_events=fusion_events):
+                        _fusion_events.publish("token", tok)
 
                     fusion_done_flag = {"done": False}
 
                     def run_fusion(
                         _fusion_key=fusion_key,
-                        _fusion_queue=fusion_queue,
+                        _fusion_events=fusion_events,
                         _pkg=pkg,
                         _fusion_done_flag=fusion_done_flag,
                         _fusion_meta=fusion_meta,
@@ -342,13 +345,22 @@ async def stream_chart(    name, gender, year, month, day, hour,
                     ):
                         try:
                             if not _fusion_key:
-                                loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
+                                _fusion_events.publish("fusion_error", "DEEPSEEK_API_KEY未设置")
                                 return
                             full = generate_fusion_report(
                                 _pkg,
                                 on_chunk=on_token,
                                 result_metadata=_fusion_meta,
                             )
+                            if _fusion_events.closed:
+                                _record_fusion_generation(
+                                    _fusion_meta["generation_id"],
+                                    _fusion_started_at,
+                                    "cancelled",
+                                    _fusion_meta,
+                                    "stream_closed",
+                                )
+                                return
                             if full:
                                 _record_fusion_generation(
                                     _fusion_meta["generation_id"],
@@ -356,7 +368,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                                     "success",
                                     _fusion_meta,
                                 )
-                                loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_done", full))
+                                _fusion_events.publish("fusion_done", full)
                             else:
                                 _record_fusion_generation(
                                     _fusion_meta["generation_id"],
@@ -365,10 +377,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                                     _fusion_meta,
                                     "empty_response",
                                 )
-                                loop.call_soon_threadsafe(
-                                    _fusion_queue.put_nowait,
-                                    ("fusion_error", "融合报告暂时不可用，请稍后重试"),
-                                )
+                                _fusion_events.publish("fusion_error", "融合报告暂时不可用，请稍后重试")
                             _fusion_done_flag["done"] = True
                         except Exception as error:
                             error_class = _fusion_error_class(error)
@@ -383,29 +392,33 @@ async def stream_chart(    name, gender, year, month, day, hour,
                                 "fusion generation failed id=%s class=%s type=%s",
                                 _fusion_meta["generation_id"], error_class, type(error).__name__,
                             )
-                            loop.call_soon_threadsafe(
-                                _fusion_queue.put_nowait,
-                                ("fusion_error", "融合报告暂时不可用，请稍后重试"),
-                            )
+                            _fusion_events.publish("fusion_error", "融合报告暂时不可用，请稍后重试")
                             _fusion_done_flag["done"] = True
 
                     submit_blocking(loop, run_fusion)
 
-                    _fusion_start = loop.time()
+                    _fusion_last_activity_at = loop.time()
                     while True:
                         try:
-                            ft, fd = await asyncio.wait_for(fusion_queue.get(), timeout=15.0)
+                            ft, fd = await fusion_events.get(_STREAM_HEARTBEAT_INTERVAL)
                         except TimeoutError:
                             if fusion_done_flag["done"]:
                                 break  # thread finished but queue empty
-                            elapsed = loop.time() - _fusion_start
-                            if elapsed > 90:
-                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合超时({elapsed:.0f}s)'})}\n\n"
+                            total_elapsed = loop.time() - fusion_started_at
+                            idle_elapsed = loop.time() - _fusion_last_activity_at
+                            if total_elapsed > _FUSION_STREAM_TOTAL_TIMEOUT:
+                                fusion_events.close()
+                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告超时，请稍后重试'})}\n\n"
                                 break
+                            if idle_elapsed > _FUSION_STREAM_IDLE_TIMEOUT or fusion_events.overflowed:
+                                fusion_events.close()
+                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告响应超时，请稍后重试'})}\n\n"
+                                break
+                            yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
                             continue
                         if ft == "token":
                             yield f"data: {json.dumps({'phase': 'personality_token', 'token': fd})}\n\n"
-                            _fusion_start = loop.time()  # reset timeout on activity
+                            _fusion_last_activity_at = loop.time()
                         elif ft == "fusion_done":
                             if fd:
                                 yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd, 'meta': fusion_meta})}\n\n"
@@ -413,6 +426,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                         elif ft == "fusion_error":
                             yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
                             break
+                    fusion_events.close()
                 except Exception as error:
                     error_class = _fusion_error_class(error)
                     _record_fusion_generation(
@@ -876,14 +890,25 @@ async def fusion_stream(request: Request):
 
     # SSE 生成器 — 用 asyncio.Queue 桥接同步 LLM 流，实现真正的逐 token 推送
     async def stream_fusion():
-        queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
+        events = StreamEventQueue(loop, name="fusion-direct")
         fusion_meta: dict = {"generation_id": uuid.uuid4().hex}
         fusion_started_at = time.monotonic()
+        generation_recorded = threading.Event()
+
+        def record_once(
+            outcome: Literal["success", "failure", "cancelled"],
+            error_class: str | None = None,
+        ) -> None:
+            if not generation_recorded.is_set():
+                generation_recorded.set()
+                _record_fusion_generation(
+                    fusion_meta["generation_id"], fusion_started_at, outcome, fusion_meta, error_class,
+                )
 
         def on_token(token: str):
             """LLM 每吐一个 token，立刻推入 queue"""
-            loop.call_soon_threadsafe(queue.put_nowait, ("token", token))
+            events.publish("token", token)
 
         def run_llm():
             """在线程中跑同步流式 LLM 调用"""
@@ -893,45 +918,75 @@ async def fusion_stream(request: Request):
                     on_chunk=on_token,
                     result_metadata=fusion_meta,
                 )
+                if events.closed:
+                    record_once("cancelled", "client_disconnected")
+                    return
                 if full:
-                    _record_fusion_generation(
-                        fusion_meta["generation_id"], fusion_started_at, "success", fusion_meta,
-                    )
-                    loop.call_soon_threadsafe(queue.put_nowait, ("done", full))
+                    record_once("success")
+                    events.publish("done", full)
                 else:
-                    _record_fusion_generation(
-                        fusion_meta["generation_id"], fusion_started_at, "failure", fusion_meta,
-                        "empty_response",
-                    )
-                    loop.call_soon_threadsafe(queue.put_nowait, ("error", "融合报告暂时不可用，请稍后重试"))
+                    record_once("failure", "empty_response")
+                    events.publish("error", "融合报告暂时不可用，请稍后重试")
             except Exception as error:
                 error_class = _fusion_error_class(error)
-                _record_fusion_generation(
-                    fusion_meta["generation_id"], fusion_started_at, "failure", fusion_meta, error_class,
-                )
+                record_once("failure", error_class)
                 logger.warning(
                     "fusion generation failed id=%s class=%s type=%s",
                     fusion_meta["generation_id"], error_class, type(error).__name__,
                 )
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", "融合报告暂时不可用，请稍后重试"))
+                events.publish("error", "融合报告暂时不可用，请稍后重试")
 
         submit_blocking(loop, run_llm)
 
-        while True:
-            msg_type, msg_data = await queue.get()
-            if msg_type == "token":
-                yield f"data: {json.dumps({'token': msg_data})}\n\n"
-            elif msg_type == "done":
-                if msg_data:
-                    yield f"data: {json.dumps({'done': True, 'length': len(msg_data), 'full': msg_data, 'meta': fusion_meta})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-            elif msg_type == "error":
-                yield f"data: {json.dumps({'error': msg_data})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
+        last_event_at = loop.time()
+        try:
+            while True:
+                elapsed = loop.time() - fusion_started_at
+                idle = loop.time() - last_event_at
+                if elapsed >= _FUSION_STREAM_TOTAL_TIMEOUT:
+                    events.close()
+                    record_once("failure", "total_timeout")
+                    yield f"data: {json.dumps({'error': '融合报告超时，请稍后重试'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                if idle >= _FUSION_STREAM_IDLE_TIMEOUT:
+                    events.close()
+                    record_once("failure", "idle_timeout")
+                    yield f"data: {json.dumps({'error': '融合报告响应超时，请稍后重试'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                timeout = min(
+                    _STREAM_HEARTBEAT_INTERVAL,
+                    _FUSION_STREAM_TOTAL_TIMEOUT - elapsed,
+                    _FUSION_STREAM_IDLE_TIMEOUT - idle,
+                )
+                try:
+                    msg_type, msg_data = await events.get(max(0.01, timeout))
+                except TimeoutError:
+                    if events.overflowed:
+                        events.close()
+                        record_once("failure", "queue_overflow")
+                        yield f"data: {json.dumps({'error': '融合报告处理繁忙，请稍后重试'})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    yield f"data: {json.dumps({'heartbeat': True})}\n\n"
+                    continue
+                last_event_at = loop.time()
+                if msg_type == "token":
+                    yield f"data: {json.dumps({'token': msg_data})}\n\n"
+                elif msg_type == "done":
+                    if msg_data:
+                        yield f"data: {json.dumps({'done': True, 'length': len(msg_data), 'full': msg_data, 'meta': fusion_meta})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                elif msg_type == "error":
+                    yield f"data: {json.dumps({'error': msg_data})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+        finally:
+            events.close()
 
     return _limited_stream_response(stream_fusion())
 
