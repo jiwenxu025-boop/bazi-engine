@@ -89,12 +89,19 @@ app.add_middleware(
 
 @app.middleware("http")
 async def reject_large_request_bodies(request: Request, call_next):
+    response = None
     if request.method in {"POST", "PUT", "PATCH"}:
         content_length = request.headers.get("content-length")
         max_bytes = _LARGE_REQUEST_BODY_LIMITS.get(request.url.path, _MAX_REQUEST_BODY_BYTES)
         if content_length and int(content_length) > max_bytes:
-            return JSONResponse({"error": "请求体过大"}, status_code=413)
-    return await call_next(request)
+            response = JSONResponse({"error": "请求体过大"}, status_code=413)
+    if response is None:
+        response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+    return response
 
 
 async def _release_stream_slot(stream):

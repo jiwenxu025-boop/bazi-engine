@@ -41,6 +41,16 @@ def test_api_module_imports_app():
     assert app.title
 
 
+def test_api_sets_baseline_security_headers():
+    from bazi_engine.api import app
+
+    response = TestClient(app).get("/api/health")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
 def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_AI_ENABLED", "0")

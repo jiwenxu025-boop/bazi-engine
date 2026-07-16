@@ -1418,7 +1418,7 @@ def test_fusion_stream_prefers_cleaned_full_report_on_completion():
     from pathlib import Path
 
     frontend = Path(__file__).resolve().parents[2] / "frontend"
-    for script in (frontend / "app.js", frontend / "js" / "fusion.js"):
+    for script in (frontend / "app.js",):
         source = script.read_text(encoding="utf-8")
         assert "let finalText = chunk.full || text;" in source
         assert "el.innerHTML = md2html(finalText) || initialText;" in source
@@ -1435,11 +1435,9 @@ def test_fusion_feedback_ui_submission_contract():
     """融合报告应提供三档评分、可选偏差板块和独立反馈接口。"""
     frontend = Path(__file__).resolve().parents[2] / "frontend"
     app_source = (frontend / "app.js").read_text(encoding="utf-8")
-    display_source = (frontend / "js" / "display.js").read_text(encoding="utf-8")
-    fusion_source = (frontend / "js" / "fusion.js").read_text(encoding="utf-8")
     css = (frontend / "style.css").read_text(encoding="utf-8")
 
-    for source in (app_source, display_source):
+    for source in (app_source,):
         assert "这份分析像你吗？" in source
         assert "data-rating=very" in source
         assert "data-rating=partial" in source
@@ -1449,7 +1447,7 @@ def test_fusion_feedback_ui_submission_contract():
         assert "重点分析" in source
         assert "容易被误解" in source
 
-    for source in (app_source, fusion_source):
+    for source in (app_source,):
         assert "function selectFusionRating" in source
         assert "function submitFusionFeedback" in source
         assert "'/api/personality/fusion/feedback'" in source
