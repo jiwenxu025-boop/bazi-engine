@@ -29,27 +29,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      - name: Import check
-        run: |
-          cd scripts && python -c "
-import sys; sys.path.insert(0, '.')
-from bazi_engine.enums import Tiangan, Dizhi, Wuxing
-from bazi_engine.ten_gods import wuxing_relation, get_ten_god
-from bazi_engine.nayin_chain import find_all_nayin_relations
-from bazi_engine.day_pillar_db import lookup_day_pillar, verify_known_cases
-# Verify day pillar calculation
-assert verify_known_cases(), 'Day pillar verification failed'
-print('All imports OK')
-"
-      - name: Quick integration test
-        run: |
-          cd scripts && python -c "
-import sys; sys.path.insert(0, '.')
-from bazi_engine.chart import build_chart
-c = build_chart('test', '\u7537', 1990, 6, 15, 12)
-d = c.to_dict()
-assert d.get('four_pillars', {}).get('year'), 'Missing year pillar'
-year_pillar = d['four_pillars']['year']
-print(f'Chart built: {year_pillar.get(\"stem\")}{year_pillar.get(\"branch\")}')
-print('Integration test OK')
-"
+          pip install -r requirements-dev.txt
+      - name: Full test suite
+        run: cd scripts && python -m pytest tests/ -q

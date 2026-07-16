@@ -53,8 +53,11 @@
 
 ```bash
 git clone https://github.com/jiwenxu025-boop/bazi-engine.git
-cd bazi-engine/scripts
-pip install -r requirements.txt
+cd bazi-engine
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
 ## 使用
@@ -81,7 +84,8 @@ python -m uvicorn bazi_engine.api:app --host 0.0.0.0 --port 8000
 ### 测试
 
 ```bash
-# 单元测试
+python -m pip install -r requirements-dev.txt
+cd scripts
 python -m pytest tests/ -q
 
 # 校准测试
@@ -171,7 +175,7 @@ bazi-engine/
 3. 添加环境变量：
    ```
    BAZI_PUBLIC=true
-   DEEPSEEK_API_KEY=sk-xxx    # 可选，启用 AI 追问
+   DEEPSEEK_API_KEY=          # 可选，启用 AI 追问，不要提交到仓库
    DEEPSEEK_MODEL=deepseek-chat
    BAZI_LLM_REVIEW=1          # 可选，启用 LLM 推理层
    ```
@@ -180,6 +184,10 @@ bazi-engine/
 ### 本地前端
 
 浏览器打开 `frontend/index.html`，API 地址填写公网 URL 即可远程排盘。
+
+### 生产运维
+
+生产环境变量请从 `.env.example` 创建，并保存在仓库外或受权限保护的 `.env` 中。部署、回滚、备份和公网 HTTP 风险说明见 [docs/operations.md](docs/operations.md)。
 
 ## 免责声明
 
