@@ -1797,8 +1797,7 @@ async function submitFusionFeedback(section){
       body:JSON.stringify({
         rating:state.rating,
         inaccurate_section:section || '',
-        report_text:state.reportText,
-        generation:state.generation
+        generation_id:state.generation && state.generation.generation_id
       })
     });
     if (!resp.ok) throw new Error('feedback ' + resp.status);

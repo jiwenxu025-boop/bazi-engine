@@ -393,6 +393,43 @@ def test_fusion_feedback_rejects_non_object_generation(monkeypatch, tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_sqlite_fusion_feedback_uses_generation_metadata(monkeypatch, tmp_path):
+    import bazi_engine.chat as chat_module
+    from bazi_engine.api import app
+    from bazi_engine.runtime_store import RuntimeStore
+
+    database_path = tmp_path / "runtime.sqlite3"
+    generation_id = "d" * 32
+    store = RuntimeStore(database_path)
+    assert store.record_fusion_generation({
+        "timestamp": "2026-07-16T10:00:00",
+        "generation_id": generation_id,
+        "outcome": "success",
+        "prompt_version": "server-v1",
+        "model": "server-model",
+        "temperature": 0.3,
+        "repaired": True,
+    })
+    monkeypatch.setenv("BAZI_RUNTIME_STORE", "sqlite")
+    monkeypatch.setattr(chat_module, "_RUNTIME_DB", database_path)
+
+    response = TestClient(app).post(
+        "/api/personality/fusion/feedback",
+        json={
+            "rating": "partial",
+            "inaccurate_section": "analysis",
+            "generation_id": generation_id,
+            "generation": {"model": "forged-model", "temperature": 2},
+        },
+    )
+
+    assert response.status_code == 200
+    feedback = store.fusion_feedback_records("2000-01-01T00:00:00")
+    assert feedback[0]["model"] == "server-model"
+    assert feedback[0]["temperature"] == 0.3
+    assert feedback[0]["prompt_version"] == "server-v1"
+
+
 def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_path):
     import bazi_engine.api as api_module
     from bazi_engine.api import app

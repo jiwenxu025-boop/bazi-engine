@@ -335,6 +335,78 @@ class RuntimeStore:
                 for table in tables
             }
 
+    def record_fusion_generation(self, record: dict) -> bool:
+        """Persist a single privacy-safe generation event by its server-issued id."""
+        self.initialize()
+        generation_id = str(record.get("generation_id") or "")
+        timestamp = str(record.get("timestamp") or "")
+        if not generation_id or not timestamp:
+            return False
+        with self.connect() as connection:
+            result = connection.execute(
+                """
+                INSERT OR IGNORE INTO fusion_generations(
+                    generation_id, timestamp, generation_type, outcome, duration_ms,
+                    prompt_version, model, temperature, repaired, error_class, synthetic
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    generation_id, timestamp, str(record.get("generation_type", "fusion")),
+                    str(record.get("outcome", "unknown")), record.get("duration_ms"),
+                    record.get("prompt_version"), record.get("model"), self._number(record.get("temperature")),
+                    int(bool(record.get("repaired"))), record.get("error_class"),
+                ),
+            )
+        return result.rowcount == 1
+
+    def record_fusion_feedback(self, generation_id: str, rating: str, section: str) -> bool:
+        """Attach one feedback response to a known server generation exactly once."""
+        self.initialize()
+        with self.connect() as connection:
+            generation = connection.execute(
+                """SELECT generation_id, prompt_version, model, temperature, repaired
+                   FROM fusion_generations WHERE generation_id = ?""",
+                (generation_id,),
+            ).fetchone()
+            if generation is None:
+                return False
+            result = connection.execute(
+                """
+                INSERT OR IGNORE INTO fusion_feedback(
+                    legacy_hash, generation_id, timestamp, rating, inaccurate_section,
+                    prompt_version, model, temperature, repaired, synthetic
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    generation_id, generation_id, self._now().isoformat(), rating, section,
+                    generation["prompt_version"], generation["model"], generation["temperature"],
+                    generation["repaired"],
+                ),
+            )
+        return result.rowcount == 1
+
+    def fusion_feedback_records(self, cutoff: str) -> list[dict]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT timestamp, generation_id, rating, inaccurate_section, prompt_version,
+                          model, temperature, repaired, synthetic
+                   FROM fusion_feedback WHERE timestamp >= ? ORDER BY timestamp DESC""",
+                (cutoff,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fusion_generation_records(self, cutoff: str) -> list[dict]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT timestamp, generation_id, generation_type, outcome, duration_ms,
+                          prompt_version, model, temperature, repaired, error_class, synthetic
+                   FROM fusion_generations WHERE timestamp >= ? ORDER BY timestamp DESC""",
+                (cutoff,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def import_legacy(
         self,
         *,

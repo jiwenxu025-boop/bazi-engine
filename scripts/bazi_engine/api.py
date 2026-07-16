@@ -1147,6 +1147,18 @@ def _record_fusion_generation(
     if error_class:
         record["error_class"] = error_class
 
+    from .chat import _runtime_store, _use_sqlite_runtime_store
+
+    if _use_sqlite_runtime_store():
+        try:
+            _runtime_store().record_fusion_generation(record)
+        except Exception as error:
+            logger.error(
+                "fusion generation metric write failed id=%s type=%s",
+                generation_id, type(error).__name__,
+            )
+        return
+
     generation_file = _GENERATION_DIR / f"fusion_generation_{dt.now():%Y-%m-%d}.jsonl"
     try:
         with _GENERATION_LOCK:
@@ -1174,21 +1186,35 @@ async def fusion_feedback_api(request: Request):
     generation = body.get("generation", {})
     if not isinstance(generation, dict):
         return JSONResponse({"saved": False, "error": "无效 generation"}, status_code=400)
-    generation_id = str(generation.get("generation_id") or "")
+    generation_id = str(body.get("generation_id") or generation.get("generation_id") or "")
     valid_ratings = {"very", "partial", "low"}
     valid_sections = {"", "core", "moments", "analysis", "misunderstood"}
     if rating not in valid_ratings:
         return JSONResponse({"saved": False, "error": "无效 rating"}, status_code=400)
     if section not in valid_sections:
         return JSONResponse({"saved": False, "error": "无效 inaccurate_section"}, status_code=400)
-    if not isinstance(report_text, str) or not report_text.strip():
-        return JSONResponse({"saved": False, "error": "缺少 report_text"}, status_code=400)
     if generation_id and not _GENERATION_ID_RE.fullmatch(generation_id):
         return JSONResponse({"saved": False, "error": "无效 generation_id"}, status_code=400)
+
+    from .chat import _runtime_store, _use_sqlite_runtime_store
+
+    if _use_sqlite_runtime_store():
+        if not generation_id:
+            return JSONResponse({"saved": False, "error": "缺少 generation_id"}, status_code=400)
+        try:
+            saved = _runtime_store().record_fusion_feedback(generation_id, rating, section)
+        except Exception as error:
+            logger.exception("fusion feedback persistence failed type=%s", type(error).__name__)
+            return JSONResponse({"saved": False, "error": "反馈暂时无法保存"}, status_code=503)
+        if not saved:
+            return JSONResponse({"saved": False, "error": "反馈已提交或报告已失效"}, status_code=409)
+        return JSONResponse({"saved": True, "message": "反馈已记录"})
 
     from ._deepseek_config import DEEPSEEK_MODEL
     from .personality_fusion import FUSION_PROMPT_VERSION
 
+    if not isinstance(report_text, str) or not report_text.strip():
+        return JSONResponse({"saved": False, "error": "缺少 report_text"}, status_code=400)
     report_text = report_text[:20000]
     default_temperature = float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3"))
     try:
@@ -1235,8 +1261,14 @@ def admin_fusion_feedback(
     from datetime import timedelta
 
     cutoff = dt.now() - timedelta(days=days) if days > 0 else dt(2000, 1, 1)
-    records: list[dict] = []
-    for feedback_file in sorted(_FEEDBACK_DIR.glob("fusion_feedback_*.jsonl"), reverse=True):
+    from .chat import _runtime_store, _use_sqlite_runtime_store
+
+    sqlite_runtime = _use_sqlite_runtime_store()
+    records: list[dict] = (
+        _runtime_store().fusion_feedback_records(cutoff.isoformat()) if sqlite_runtime else []
+    )
+    feedback_files = () if sqlite_runtime else sorted(_FEEDBACK_DIR.glob("fusion_feedback_*.jsonl"), reverse=True)
+    for feedback_file in feedback_files:
         try:
             file_date = dt.strptime(feedback_file.stem.replace("fusion_feedback_", ""), "%Y-%m-%d")
             if file_date < cutoff:
@@ -1303,8 +1335,14 @@ def admin_fusion_generations(
         return JSONResponse({"error": "无权访问"}, status_code=403)
 
     cutoff = dt.now() - timedelta(days=days) if days > 0 else dt(2000, 1, 1)
-    records: list[dict] = []
-    for generation_file in sorted(_GENERATION_DIR.glob("fusion_generation_*.jsonl"), reverse=True):
+    from .chat import _runtime_store, _use_sqlite_runtime_store
+
+    sqlite_runtime = _use_sqlite_runtime_store()
+    records: list[dict] = (
+        _runtime_store().fusion_generation_records(cutoff.isoformat()) if sqlite_runtime else []
+    )
+    generation_files = () if sqlite_runtime else sorted(_GENERATION_DIR.glob("fusion_generation_*.jsonl"), reverse=True)
+    for generation_file in generation_files:
         try:
             file_date = dt.strptime(generation_file.stem.replace("fusion_generation_", ""), "%Y-%m-%d")
             if file_date < cutoff:
@@ -1326,7 +1364,7 @@ def admin_fusion_generations(
     model_distribution: dict[str, int] = {}
     temperature_distribution: dict[str, int] = {}
     repaired_count = 0
-    duration_total = 0
+    durations: list[int] = []
     for record in records:
         outcome = record.get("outcome", "unknown")
         outcome_distribution[outcome] = outcome_distribution.get(outcome, 0) + 1
@@ -1339,7 +1377,8 @@ def admin_fusion_generations(
         except (TypeError, ValueError):
             temperature = "unknown"
         with suppress(TypeError, ValueError):
-            duration_total += max(0, int(record.get("duration_ms", 0)))
+            duration = max(0, int(record.get("duration_ms")))
+            durations.append(duration)
         prompt_versions[version] = prompt_versions.get(version, 0) + 1
         model_distribution[model] = model_distribution.get(model, 0) + 1
         temperature_distribution[temperature] = temperature_distribution.get(temperature, 0) + 1
@@ -1347,12 +1386,23 @@ def admin_fusion_generations(
 
     total = len(records)
     success_count = outcome_distribution.get("success", 0)
+    durations.sort()
+
+    def percentile(percent: float) -> int:
+        if not durations:
+            return 0
+        index = round((len(durations) - 1) * percent)
+        return durations[index]
+
     return {
         "total_records": total,
         "synthetic_excluded_count": synthetic_excluded_count,
         "success_count": success_count,
         "success_rate": f"{success_count / total * 100:.1f}%" if total else "0%",
-        "average_duration_ms": round(duration_total / total) if total else 0,
+        "average_duration_ms": round(sum(durations) / len(durations)) if durations else 0,
+        "duration_sample_count": len(durations),
+        "duration_p50_ms": percentile(0.5),
+        "duration_p95_ms": percentile(0.95),
         "outcome_distribution": outcome_distribution,
         "error_distribution": error_distribution,
         "prompt_versions": prompt_versions,

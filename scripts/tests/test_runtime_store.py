@@ -102,3 +102,35 @@ def test_free_reservations_release_on_failure(tmp_path):
     assert third is not None
     assert store.settle_reservation(second.reservation_id) is True
     assert store.free_remaining("hash", "2026-07-16", 2) == 0
+
+
+def test_fusion_feedback_uses_server_generation_metadata(tmp_path):
+    store = RuntimeStore(tmp_path / "runtime.sqlite3")
+    generation_id = "b" * 32
+
+    assert store.record_fusion_generation({
+        "timestamp": "2026-07-16T10:00:00",
+        "generation_id": generation_id,
+        "outcome": "success",
+        "duration_ms": 1200,
+        "prompt_version": "server-v1",
+        "model": "server-model",
+        "temperature": 0.3,
+        "repaired": True,
+    })
+    assert store.record_fusion_feedback(generation_id, "partial", "analysis")
+    assert not store.record_fusion_feedback(generation_id, "very", "")
+    assert not store.record_fusion_feedback("c" * 32, "very", "")
+
+    feedback = store.fusion_feedback_records("2000-01-01T00:00:00")
+    assert feedback == [{
+        "timestamp": feedback[0]["timestamp"],
+        "generation_id": generation_id,
+        "rating": "partial",
+        "inaccurate_section": "analysis",
+        "prompt_version": "server-v1",
+        "model": "server-model",
+        "temperature": 0.3,
+        "repaired": 1,
+        "synthetic": 0,
+    }]

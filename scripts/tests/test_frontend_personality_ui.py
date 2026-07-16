@@ -1451,8 +1451,8 @@ def test_fusion_feedback_ui_submission_contract():
         assert "function selectFusionRating" in source
         assert "function submitFusionFeedback" in source
         assert "'/api/personality/fusion/feedback'" in source
-        assert "report_text:state.reportText" in source
-        assert "generation:state.generation" in source
+        assert "generation_id:state.generation && state.generation.generation_id" in source
+        assert "report_text:state.reportText" not in source
 
     assert ".fusion-rating-options" in css
     assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
