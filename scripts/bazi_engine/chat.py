@@ -12,10 +12,12 @@ from pathlib import Path
 
 import httpx
 
+from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL
+from ._http import shared_async_client
+
 # ═══════════════════════════════════════════════════════════════
 # 配置
 # ═══════════════════════════════════════════════════════════════
-from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL
 
 _ACTIVATION_FILE = Path(__file__).resolve().parent / "activation_codes.json"
 _RUNTIME_DATA_LOCK = threading.RLock()
@@ -334,7 +336,7 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
 
     try:
         async with (
-            httpx.AsyncClient(timeout=60.0) as client,
+            shared_async_client(60.0) as client,
             client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
         ):
             if resp.status_code != 200:

@@ -22,7 +22,7 @@ import re
 import threading
 import time
 import uuid
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime as dt
 from datetime import timedelta
 from pathlib import Path
@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from ._http import close_shared_clients
 from ._version import __version__
 from .chart import build_chart
 
@@ -77,7 +78,15 @@ class ActivationCodeRequest(BaseModel):
     code: str = Field(min_length=1, max_length=80)
 
 
-app = FastAPI(title="八字排盘引擎", version=__version__)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        yield
+    finally:
+        await close_shared_clients()
+
+
+app = FastAPI(title="八字排盘引擎", version=__version__, lifespan=lifespan)
 
 # 前端页面路径（支持环境变量覆盖，打包部署时可指定）
 _frontend_env = os.getenv("FRONTEND_DIR", "")
