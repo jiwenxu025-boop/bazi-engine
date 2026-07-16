@@ -24,6 +24,16 @@
 
 每日将 `/opt/bazi/data/` 归档到仓库外的受限目录或对象存储，并定期演练还原。备份应加密并设置保留期，因为反馈与运行指标虽然不含报告正文，仍属于运营数据。
 
+运行中的 SQLite 数据库不能直接用文件复制代替在线备份。使用内置工具创建一致快照，再执行完整性检查：
+
+```bash
+cd /opt/bazi
+./venv/bin/python -c "from pathlib import Path; from bazi_engine.runtime_backup import backup_runtime_database; backup_runtime_database(Path('data/runtime.sqlite3'), Path('/secure-backups/runtime.sqlite3'))"
+./venv/bin/python -c "from pathlib import Path; from bazi_engine.runtime_backup import verify_runtime_database; verify_runtime_database(Path('/secure-backups/runtime.sqlite3'))"
+```
+
+恢复演练必须在临时目录完成：先校验备份，再以临时副本启动服务并核对关键表计数；不要直接覆盖 `/opt/bazi/data/runtime.sqlite3`。保留原 JSON/JSONL 文件至少一个发布周期，作为 SQLite 迁移后的回滚依据。
+
 ## 访问边界
 
 - 管理汇总接口需要 `X-Admin-Key` 或 Bearer 管理密钥；不要为了排查问题临时关闭认证。

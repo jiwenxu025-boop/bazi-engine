@@ -2,6 +2,7 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 
+from bazi_engine.runtime_backup import backup_runtime_database, verify_runtime_database
 from bazi_engine.runtime_store import RuntimeStore
 
 
@@ -134,3 +135,16 @@ def test_fusion_feedback_uses_server_generation_metadata(tmp_path):
         "repaired": 1,
         "synthetic": 0,
     }]
+
+
+def test_runtime_database_backup_can_be_verified_and_reopened(tmp_path):
+    source = tmp_path / "runtime.sqlite3"
+    backup = tmp_path / "backups" / "runtime.sqlite3"
+    store = RuntimeStore(source)
+    store.seed_activation_codes({"PAID001": {"剩余": 2, "备注": "test"}})
+
+    backup_runtime_database(source, backup)
+    verify_runtime_database(backup)
+
+    restored = RuntimeStore(backup)
+    assert restored.activation_remaining("PAID001") == 2

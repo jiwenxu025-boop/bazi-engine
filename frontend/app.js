@@ -86,7 +86,29 @@ let AppState = {
   currentContext: null,
   streamStatus: 'idle',
   lifeStageOverride: null,
+  streamControllers: {},
 };
+
+function beginStreamRequest(name){
+  let previous = AppState.streamControllers[name];
+  if (previous) previous.abort();
+  let controller = typeof AbortController === 'function'
+    ? new AbortController()
+    : {abort:function(){}, signal:undefined};
+  AppState.streamControllers[name] = controller;
+  return controller;
+}
+
+function endStreamRequest(name, controller){
+  if (AppState.streamControllers[name] === controller) delete AppState.streamControllers[name];
+}
+
+window.addEventListener('pagehide', function(){
+  Object.keys(AppState.streamControllers).forEach(function(name){
+    AppState.streamControllers[name].abort();
+  });
+  AppState.streamControllers = {};
+});
 
 function setChartData(chart){
   AppState.chart = chart || null;
@@ -219,6 +241,7 @@ async function go(){
 
   let api = document.getElementById('apiUrl').value.replace(/\/$/, '');
   let payload = _buildChartRequest();
+  let controller = beginStreamRequest('chart');
 
   try {
     // v0.11.2: 流式排盘——规则引擎立即渲染，LLM结果流式追加
@@ -226,6 +249,7 @@ async function go(){
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
     if (!resp.ok) throw new Error('API ' + resp.status);
 
@@ -331,7 +355,10 @@ async function go(){
       }
     }
   } catch(e) {
+    if (e.name === 'AbortError') return;
     r.innerHTML = '<div class=error-state>请求失败: ' + esc(e.message) + '<br><small style="color:' + (document.documentElement.classList.contains('dark') ? '#a0a0b0' : '#78716c') + '">请确认 API 地址可访问</small></div>';
+  } finally {
+    endStreamRequest('chart', controller);
   }
   btn.disabled = false; btn.textContent = '生成解读';
 }
@@ -1813,13 +1840,15 @@ async function streamFusionReport(personality, family, lifeStage, dayMaster){
   let el = document.querySelector('.personality-text');
   if (!el) return;
   let initialText = el.textContent;
+  let controller = beginStreamRequest('fusion');
   el.innerHTML = '<span class=fusion-placeholder>正在生成融合报告</span><span class=fusion-cursor>|</span>';
   let text = '';
 
   try{
     let resp = await fetch('/api/personality/fusion/stream', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({personality: personality, family: family || null, life_stage: lifeStage, age_info: dayMaster || null})
+      body: JSON.stringify({personality: personality, family: family || null, life_stage: lifeStage, age_info: dayMaster || null}),
+      signal: controller.signal,
     });
     let reader = resp.body.getReader();
     let decoder = new TextDecoder();
@@ -1860,7 +1889,10 @@ async function streamFusionReport(personality, family, lifeStage, dayMaster){
     el.innerHTML = md2html(text) || initialText;
     showFusionFeedback(text, {});
   }catch(e){
+    if (e.name === 'AbortError') return;
     el.textContent = initialText;
+  }finally{
+    endStreamRequest('fusion', controller);
   }
 }
 
@@ -1942,6 +1974,7 @@ async function sendChat(){
 
   let ctx = input.dataset.context || '';
   let fullQ = ctx ? '【关于' + ctx + '】' + q : q;
+  let controller = beginStreamRequest('chat');
 
   try{
     let resp = await fetch('/api/chat', {
@@ -1951,7 +1984,8 @@ async function sendChat(){
         chart_data: getChartData(),
         activation_code: CHAT.activationCode,
         history: CHAT.history
-      })
+      }),
+      signal: controller.signal,
     });
     removeTyping();
     let bubble = appendBubble('', 'ai');
@@ -1996,7 +2030,9 @@ async function sendChat(){
     }
   }catch(e){
     removeTyping();
-    appendBubble('请求失败: ' + e.message, 'ai');
+    if (e.name !== 'AbortError') appendBubble('请求失败: ' + e.message, 'ai');
+  }finally{
+    endStreamRequest('chat', controller);
   }
   CHAT.isStreaming = false;
   document.getElementById('chatSendBtn').disabled = false;
