@@ -1,9 +1,11 @@
 """API module tests."""
 
+import asyncio
 import importlib
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
@@ -707,3 +709,38 @@ def test_sqlite_chat_quota_settles_after_first_token(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert '"token":"ok"' in body or '"token": "ok"' in body
     assert RuntimeStore(database_path).activation_remaining("TEST") == 0
+
+
+def test_chat_provider_error_does_not_expose_response_body(monkeypatch):
+    import bazi_engine.chat as chat_module
+
+    class FakeResponse:
+        status_code = 429
+
+    async def aread(self):
+        return b"provider-secret-detail"
+
+    class FakeStream:
+        async def __aenter__(self):
+            return FakeResponse()
+
+        async def __aexit__(self, *_args):
+            return False
+
+    class FakeClient:
+        def stream(self, *_args, **_kwargs):
+            return FakeStream()
+
+    @asynccontextmanager
+    async def fake_shared_client(_timeout):
+        yield FakeClient()
+
+    async def collect_events():
+        return [event async for event in chat_module.call_deepseek_stream([])]
+
+    monkeypatch.setattr(chat_module, "DEEPSEEK_KEY", "test-key")
+    monkeypatch.setattr(chat_module, "shared_async_client", fake_shared_client)
+    events = asyncio.run(collect_events())
+
+    assert events == ["data: [ERROR] AI服务暂不可用，请稍后重试\n\n"]
+    assert "provider-secret-detail" not in "".join(events)

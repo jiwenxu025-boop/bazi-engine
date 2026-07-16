@@ -251,8 +251,9 @@ async def stream_chart(    name, gender, year, month, day, hour,
             if practical:
                 _strip_technical(result)
             loop.call_soon_threadsafe(queue.put_nowait, ("chart", result))
-        except Exception as e:
-            loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
+        except Exception as error:
+            logger.exception("chart stream build failed type=%s", type(error).__name__)
+            loop.call_soon_threadsafe(queue.put_nowait, ("error", "排盘暂时不可用，请稍后重试"))
 
     # 立即告知前端连接已建立
     yield f"data: {json.dumps({'phase': 'started', 'message': '规则引擎计算中...'})}\n\n"
@@ -452,8 +453,9 @@ async def stream_chart(    name, gender, year, month, day, hour,
                     try:
                         result = enrich_dayun_interpretations(_chart) if _chart else []
                         _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, result)
-                    except Exception as e:
-                        _dy_error.append(str(e))
+                    except Exception as error:
+                        logger.exception("dayun interpretation failed type=%s", type(error).__name__)
+                        _dy_error.append("大运解读暂不可用")
                         _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, [])
 
                 submit_blocking(loop_dy, _run_dayun)
@@ -474,8 +476,9 @@ async def stream_chart(    name, gender, year, month, day, hour,
                         "LLM开关未启用" if not LLM_REVIEW_ENABLED else (
                         "DEEPSEEK_API_KEY未设置" if not DEEPSEEK_KEY else "LLM返回空"))
                     yield f"data: {json.dumps({'phase': 'dayun_error', 'message': detail})}\n\n"
-            except Exception as e:
-                yield f"data: {json.dumps({'phase': 'dayun_error', 'message': f'大运解读模块异常: {e}'})}\n\n"
+            except Exception as error:
+                logger.exception("dayun stream failed type=%s", type(error).__name__)
+                yield f"data: {json.dumps({'phase': 'dayun_error', 'message': '大运解读暂不可用'})}\n\n"
 
             # 5. 结束
             yield f"data: {json.dumps({'phase': 'done'})}\n\n"
@@ -620,8 +623,9 @@ def batch_api(records: list[dict]):
                 life_stage_override=r.get("life_stage", ""),
             )
             results.append({"name": r.get("name"), "status": "ok", "data": chart.to_dict()})
-        except Exception as e:
-            results.append({"name": r.get("name"), "status": "error", "error": str(e)})
+        except Exception as error:
+            logger.exception("batch chart build failed type=%s", type(error).__name__)
+            results.append({"name": r.get("name"), "status": "error", "error": "排盘暂时不可用"})
     return {"count": len(results), "results": results}
 
 

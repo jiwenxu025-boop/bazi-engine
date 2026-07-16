@@ -1,6 +1,7 @@
 """AI 八字追问 — DeepSeek V4-Pro 集成 + 激活码管理"""
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -25,6 +26,7 @@ _RUNTIME_DB = Path(
     os.getenv("BAZI_RUNTIME_DB_PATH", Path(__file__).resolve().parents[2] / "data" / "runtime.sqlite3")
 )
 _RUNTIME_DATA_LOCK = threading.RLock()
+logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
 # System Prompt
@@ -318,7 +320,7 @@ DISCLAIMER_SUFFIX = "\n\n（以上内容由 AI 生成，基于传统命理文化
 async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
     """调用 DeepSeek API，流式返回"""
     if not DEEPSEEK_KEY:
-        yield "data: [ERROR] DeepSeek API Key 未配置\n\n"
+        yield "data: [ERROR] AI服务暂不可用，请稍后重试\n\n"
         return
 
     # Token 预算检查
@@ -344,8 +346,8 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
             client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
         ):
             if resp.status_code != 200:
-                body = await resp.aread()
-                yield f"data: [ERROR] DeepSeek API {resp.status_code}: {body.decode()[:200]}\n\n"
+                logger.warning("chat provider rejected request status=%s", resp.status_code)
+                yield "data: [ERROR] AI服务暂不可用，请稍后重试\n\n"
                 return
 
             async for line in resp.aiter_lines():
@@ -368,8 +370,9 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
 
     except httpx.TimeoutException:
         yield "data: [ERROR] 请求超时，请稍后重试\n\n"
-    except Exception as e:
-        yield f"data: [ERROR] {str(e)[:200]}\n\n"
+    except Exception as error:
+        logger.exception("chat provider request failed type=%s", type(error).__name__)
+        yield "data: [ERROR] AI服务暂不可用，请稍后重试\n\n"
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -1,5 +1,6 @@
 """BaziChart 数据类 + build_chart() 工厂函数 — 一站式八字排盘"""
 
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -27,6 +28,8 @@ from .pattern import determine_pattern
 from .pillars import compute_day_pillar, compute_hour_pillar, compute_month_pillar, compute_year_pillar
 from .spirits import SpiritAgent, compute_spirit_score, find_all_spirits
 from .ten_gods import get_ten_god
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -811,10 +814,9 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
         if os.getenv("BAZI_FUSION_ENGINE", "0") == "1":
             chart.personality_result["_fusion_ready"] = True
 
-    except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        chart.warnings.append(f"性格家境分析失败: {e}\n{tb}")
+    except Exception as error:
+        logger.exception("personality and family analysis failed type=%s", type(error).__name__)
+        chart.warnings.append("性格家境分析暂不可用")
 
     return pd, interactions_dict
 
