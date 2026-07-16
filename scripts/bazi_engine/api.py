@@ -12,7 +12,6 @@
 """
 
 import asyncio
-import concurrent.futures
 import hashlib
 import hmac
 import json
@@ -35,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ._http import close_shared_clients
+from ._runtime import close_blocking_executor, submit_blocking
 from ._version import __version__
 from .chart import build_chart
 
@@ -83,6 +83,7 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        close_blocking_executor()
         await close_shared_clients()
 
 
@@ -256,8 +257,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
     # 立即告知前端连接已建立
     yield f"data: {json.dumps({'phase': 'started', 'message': '规则引擎计算中...'})}\n\n"
 
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    loop.run_in_executor(executor, run_build)
+    submit_blocking(loop, run_build)
 
     # 缓冲LLM结果和token（它们在build_chart线程中先到达，前端应先看到rules_done）
     buffered_llm: list[dict] = []
@@ -274,7 +274,6 @@ async def stream_chart(    name, gender, year, month, day, hour,
         if msg_type == "error":
             yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
             yield "data: [DONE]\n\n"
-            executor.shutdown(wait=False)
             return
         elif msg_type == "llm_token":
             buffered_llm_tokens.append(msg_data)
@@ -389,8 +388,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             )
                             _fusion_done_flag["done"] = True
 
-                    fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                    loop.run_in_executor(fusion_ex, run_fusion)
+                    submit_blocking(loop, run_fusion)
 
                     _fusion_start = loop.time()
                     while True:
@@ -402,7 +400,6 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             elapsed = loop.time() - _fusion_start
                             if elapsed > 90:
                                 yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合超时({elapsed:.0f}s)'})}\n\n"
-                                fusion_ex.shutdown(wait=False)
                                 break
                             continue
                         if ft == "token":
@@ -411,11 +408,9 @@ async def stream_chart(    name, gender, year, month, day, hour,
                         elif ft == "fusion_done":
                             if fd:
                                 yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd, 'meta': fusion_meta})}\n\n"
-                            fusion_ex.shutdown(wait=False)
                             break
                         elif ft == "fusion_error":
                             yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
-                            fusion_ex.shutdown(wait=False)
                             break
                 except Exception as error:
                     error_class = _fusion_error_class(error)
@@ -461,7 +456,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                         _dy_error.append(str(e))
                         _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, [])
 
-                executor.submit(_run_dayun)
+                submit_blocking(loop_dy, _run_dayun)
                 while True:
                     try:
                         dayun_result = await asyncio.wait_for(dy_queue.get(), timeout=_HEARTBEAT_INTERVAL)
@@ -485,7 +480,6 @@ async def stream_chart(    name, gender, year, month, day, hour,
             # 5. 结束
             yield f"data: {json.dumps({'phase': 'done'})}\n\n"
             yield "data: [DONE]\n\n"
-            executor.shutdown(wait=False)
             return
 
 @app.get("/api/chart/stream")
@@ -847,9 +841,6 @@ async def fusion_stream(request: Request):
     data_package = build_fusion_data_package(personality_data, family_data, life_stage, age_info)
 
     # SSE 生成器 — 用 asyncio.Queue 桥接同步 LLM 流，实现真正的逐 token 推送
-    import asyncio
-    import concurrent.futures
-
     async def stream_fusion():
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
@@ -890,8 +881,7 @@ async def fusion_stream(request: Request):
                 )
                 loop.call_soon_threadsafe(queue.put_nowait, ("error", "融合报告暂时不可用，请稍后重试"))
 
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        loop.run_in_executor(executor, run_llm)
+        submit_blocking(loop, run_llm)
 
         while True:
             msg_type, msg_data = await queue.get()
@@ -903,12 +893,10 @@ async def fusion_stream(request: Request):
                 else:
                     yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
                 yield "data: [DONE]\n\n"
-                executor.shutdown(wait=False)
                 return
             elif msg_type == "error":
                 yield f"data: {json.dumps({'error': msg_data})}\n\n"
                 yield "data: [DONE]\n\n"
-                executor.shutdown(wait=False)
                 return
 
     return _limited_stream_response(stream_fusion())
