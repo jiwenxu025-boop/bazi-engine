@@ -16,10 +16,15 @@ import concurrent.futures
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import threading
+import time
+import uuid
 from contextlib import suppress
+from datetime import datetime as dt
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -31,6 +36,8 @@ from pydantic import BaseModel, Field
 
 from ._version import __version__
 from .chart import build_chart
+
+logger = logging.getLogger(__name__)
 
 _IS_PUBLIC = os.getenv("BAZI_PUBLIC", "").lower() in ("1", "true", "yes")
 _AI_ENABLED = os.getenv("BAZI_AI_ENABLED", "").lower() in ("1", "true", "yes")
@@ -282,6 +289,9 @@ async def stream_chart(    name, gender, year, month, day, hour,
             fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
             fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
             if fusion_enabled and fusion_key and chart_data.get("personality"):
+                fusion_generation_id = uuid.uuid4().hex
+                fusion_started_at = time.monotonic()
+                fusion_meta: dict = {"generation_id": fusion_generation_id}
                 try:
                     from datetime import date
 
@@ -312,7 +322,6 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             _fusion_queue.put_nowait, ("token", tok))
 
                     fusion_done_flag = {"done": False}
-                    fusion_meta: dict = {}
 
                     def run_fusion(
                         _fusion_key=fusion_key,
@@ -320,6 +329,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                         _pkg=pkg,
                         _fusion_done_flag=fusion_done_flag,
                         _fusion_meta=fusion_meta,
+                        _fusion_started_at=fusion_started_at,
                     ):
                         try:
                             if not _fusion_key:
@@ -331,12 +341,43 @@ async def stream_chart(    name, gender, year, month, day, hour,
                                 result_metadata=_fusion_meta,
                             )
                             if full:
+                                _record_fusion_generation(
+                                    _fusion_meta["generation_id"],
+                                    _fusion_started_at,
+                                    "success",
+                                    _fusion_meta,
+                                )
                                 loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_done", full))
                             else:
-                                loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", "API返回空"))
+                                _record_fusion_generation(
+                                    _fusion_meta["generation_id"],
+                                    _fusion_started_at,
+                                    "failure",
+                                    _fusion_meta,
+                                    "empty_response",
+                                )
+                                loop.call_soon_threadsafe(
+                                    _fusion_queue.put_nowait,
+                                    ("fusion_error", "融合报告暂时不可用，请稍后重试"),
+                                )
                             _fusion_done_flag["done"] = True
-                        except Exception as e:
-                            loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", str(e)))
+                        except Exception as error:
+                            error_class = _fusion_error_class(error)
+                            _record_fusion_generation(
+                                _fusion_meta["generation_id"],
+                                _fusion_started_at,
+                                "failure",
+                                _fusion_meta,
+                                error_class,
+                            )
+                            logger.warning(
+                                "fusion generation failed id=%s class=%s type=%s",
+                                _fusion_meta["generation_id"], error_class, type(error).__name__,
+                            )
+                            loop.call_soon_threadsafe(
+                                _fusion_queue.put_nowait,
+                                ("fusion_error", "融合报告暂时不可用，请稍后重试"),
+                            )
                             _fusion_done_flag["done"] = True
 
                     fusion_ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -367,8 +408,20 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
                             fusion_ex.shutdown(wait=False)
                             break
-                except Exception as e:
-                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': f'融合引擎异常: {e}'})}\n\n"
+                except Exception as error:
+                    error_class = _fusion_error_class(error)
+                    _record_fusion_generation(
+                        fusion_generation_id,
+                        fusion_started_at,
+                        "failure",
+                        fusion_meta,
+                        error_class,
+                    )
+                    logger.warning(
+                        "fusion generation failed id=%s class=%s type=%s",
+                        fusion_generation_id, error_class, type(error).__name__,
+                    )
+                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告暂时不可用，请稍后重试'})}\n\n"
             else:
                 detail = []
                 if not fusion_enabled:
@@ -791,7 +844,8 @@ async def fusion_stream(request: Request):
     async def stream_fusion():
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
-        fusion_meta: dict = {}
+        fusion_meta: dict = {"generation_id": uuid.uuid4().hex}
+        fusion_started_at = time.monotonic()
 
         def on_token(token: str):
             """LLM 每吐一个 token，立刻推入 queue"""
@@ -805,9 +859,27 @@ async def fusion_stream(request: Request):
                     on_chunk=on_token,
                     result_metadata=fusion_meta,
                 )
-                loop.call_soon_threadsafe(queue.put_nowait, ("done", full))
-            except Exception as e:
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
+                if full:
+                    _record_fusion_generation(
+                        fusion_meta["generation_id"], fusion_started_at, "success", fusion_meta,
+                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, ("done", full))
+                else:
+                    _record_fusion_generation(
+                        fusion_meta["generation_id"], fusion_started_at, "failure", fusion_meta,
+                        "empty_response",
+                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, ("error", "融合报告暂时不可用，请稍后重试"))
+            except Exception as error:
+                error_class = _fusion_error_class(error)
+                _record_fusion_generation(
+                    fusion_meta["generation_id"], fusion_started_at, "failure", fusion_meta, error_class,
+                )
+                logger.warning(
+                    "fusion generation failed id=%s class=%s type=%s",
+                    fusion_meta["generation_id"], error_class, type(error).__name__,
+                )
+                loop.call_soon_threadsafe(queue.put_nowait, ("error", "融合报告暂时不可用，请稍后重试"))
 
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         loop.run_in_executor(executor, run_llm)
@@ -944,6 +1016,62 @@ def admin_page():
 
 _FEEDBACK_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "feedback"
 _FEEDBACK_LOCK = threading.Lock()
+_GENERATION_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "generations"
+_GENERATION_LOCK = threading.Lock()
+_GENERATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _fusion_error_class(error: object) -> str:
+    """Map provider/runtime failures to a small, privacy-safe metric dimension."""
+    message = str(error).lower()
+    if "timeout" in message or "超时" in message:
+        return "timeout"
+    if "返回空" in message or "未收到任何内容" in message:
+        return "empty_response"
+    if "api返回" in message or "status" in message:
+        return "provider_rejected"
+    if "api调用异常" in message or "connect" in message or "network" in message:
+        return "provider_unavailable"
+    return "internal_error"
+
+
+def _record_fusion_generation(
+    generation_id: str,
+    started_at: float,
+    outcome: Literal["success", "failure", "cancelled"],
+    metadata: dict | None = None,
+    error_class: str | None = None,
+) -> None:
+    """Persist a privacy-safe fusion generation event without its input or output."""
+    from ._deepseek_config import DEEPSEEK_MODEL
+    from .personality_fusion import FUSION_PROMPT_VERSION
+
+    metadata = metadata or {}
+    record = {
+        "timestamp": dt.now().isoformat(),
+        "generation_id": generation_id,
+        "generation_type": "fusion",
+        "outcome": outcome,
+        "duration_ms": round((time.monotonic() - started_at) * 1000),
+        "prompt_version": str(metadata.get("prompt_version") or FUSION_PROMPT_VERSION)[:80],
+        "model": str(metadata.get("model") or DEEPSEEK_MODEL)[:80],
+        "temperature": metadata.get("temperature", float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3"))),
+        "repaired": bool(metadata.get("repaired", False)),
+    }
+    if error_class:
+        record["error_class"] = error_class
+
+    generation_file = _GENERATION_DIR / f"fusion_generation_{dt.now():%Y-%m-%d}.jsonl"
+    try:
+        with _GENERATION_LOCK:
+            _GENERATION_DIR.mkdir(parents=True, exist_ok=True)
+            with open(generation_file, "a", encoding="utf-8") as file:
+                file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as error:
+        logger.error(
+            "fusion generation metric write failed id=%s type=%s",
+            generation_id, type(error).__name__,
+        )
 
 
 @app.post("/api/personality/fusion/feedback")
@@ -958,6 +1086,9 @@ async def fusion_feedback_api(request: Request):
     section = body.get("inaccurate_section", "")
     report_text = body.get("report_text", "")
     generation = body.get("generation", {})
+    if not isinstance(generation, dict):
+        return JSONResponse({"saved": False, "error": "无效 generation"}, status_code=400)
+    generation_id = str(generation.get("generation_id") or "")
     valid_ratings = {"very", "partial", "low"}
     valid_sections = {"", "core", "moments", "analysis", "misunderstood"}
     if rating not in valid_ratings:
@@ -966,6 +1097,8 @@ async def fusion_feedback_api(request: Request):
         return JSONResponse({"saved": False, "error": "无效 inaccurate_section"}, status_code=400)
     if not isinstance(report_text, str) or not report_text.strip():
         return JSONResponse({"saved": False, "error": "缺少 report_text"}, status_code=400)
+    if generation_id and not _GENERATION_ID_RE.fullmatch(generation_id):
+        return JSONResponse({"saved": False, "error": "无效 generation_id"}, status_code=400)
 
     from ._deepseek_config import DEEPSEEK_MODEL
     from .personality_fusion import FUSION_PROMPT_VERSION
@@ -990,6 +1123,8 @@ async def fusion_feedback_api(request: Request):
         "temperature": temperature,
         "repaired": bool(generation.get("repaired", False)),
     }
+    if generation_id:
+        record["generation_id"] = generation_id
     date_str = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
     feedback_file = _FEEDBACK_DIR / f"fusion_feedback_{date_str}.jsonl"
 
@@ -1066,6 +1201,74 @@ def admin_fusion_feedback(
         "repaired_count": repaired_count,
         "repaired_rate": f"{repaired_count / total * 100:.1f}%" if total else "0%",
         "recent": recent,
+    }
+
+
+@app.get("/api/admin/fusion-generations")
+def admin_fusion_generations(
+    request: Request,
+    days: int = Query(7, ge=0, le=365, description="查看最近N天的融合生成质量"),
+):
+    """汇总匿名融合生成事件，不返回输入、报告正文或供应商原始错误。"""
+    if not _admin_authorized(request):
+        return JSONResponse({"error": "无权访问"}, status_code=403)
+
+    cutoff = dt.now() - timedelta(days=days) if days > 0 else dt(2000, 1, 1)
+    records: list[dict] = []
+    for generation_file in sorted(_GENERATION_DIR.glob("fusion_generation_*.jsonl"), reverse=True):
+        try:
+            file_date = dt.strptime(generation_file.stem.replace("fusion_generation_", ""), "%Y-%m-%d")
+            if file_date < cutoff:
+                continue
+        except ValueError:
+            pass
+        with open(generation_file, encoding="utf-8") as file:
+            for line in file:
+                with suppress(Exception):
+                    records.append(json.loads(line.strip()))
+        if len(records) >= 1000:
+            break
+
+    outcome_distribution: dict[str, int] = {}
+    error_distribution: dict[str, int] = {}
+    prompt_versions: dict[str, int] = {}
+    model_distribution: dict[str, int] = {}
+    temperature_distribution: dict[str, int] = {}
+    repaired_count = 0
+    duration_total = 0
+    for record in records:
+        outcome = record.get("outcome", "unknown")
+        outcome_distribution[outcome] = outcome_distribution.get(outcome, 0) + 1
+        if error_class := record.get("error_class"):
+            error_distribution[error_class] = error_distribution.get(error_class, 0) + 1
+        version = str(record.get("prompt_version") or "unknown")
+        model = str(record.get("model") or "unknown")
+        try:
+            temperature = f"{float(record.get('temperature')):g}"
+        except (TypeError, ValueError):
+            temperature = "unknown"
+        with suppress(TypeError, ValueError):
+            duration_total += max(0, int(record.get("duration_ms", 0)))
+        prompt_versions[version] = prompt_versions.get(version, 0) + 1
+        model_distribution[model] = model_distribution.get(model, 0) + 1
+        temperature_distribution[temperature] = temperature_distribution.get(temperature, 0) + 1
+        repaired_count += int(bool(record.get("repaired")))
+
+    total = len(records)
+    success_count = outcome_distribution.get("success", 0)
+    return {
+        "total_records": total,
+        "success_count": success_count,
+        "success_rate": f"{success_count / total * 100:.1f}%" if total else "0%",
+        "average_duration_ms": round(duration_total / total) if total else 0,
+        "outcome_distribution": outcome_distribution,
+        "error_distribution": error_distribution,
+        "prompt_versions": prompt_versions,
+        "model_distribution": model_distribution,
+        "temperature_distribution": temperature_distribution,
+        "repaired_count": repaired_count,
+        "repaired_rate": f"{repaired_count / total * 100:.1f}%" if total else "0%",
+        "recent": records[:50],
     }
 
 

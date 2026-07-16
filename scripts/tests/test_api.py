@@ -204,13 +204,15 @@ def test_runtime_json_state_handles_concurrent_quota_consumption(monkeypatch, tm
     assert sorted(quota_results) == list(range(-5, 3))
 
 
-def test_fusion_stream_sends_cleaned_full_report(monkeypatch):
+def test_fusion_stream_sends_cleaned_full_report(monkeypatch, tmp_path):
     """独立融合流结束时应发送清洗后的全文供前端覆盖原始 token。"""
+    import bazi_engine.api as api_module
     import bazi_engine.personality_fusion as fusion_module
     from bazi_engine.api import app
 
     monkeypatch.setenv("BAZI_FUSION_ENGINE", "1")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(api_module, "_GENERATION_DIR", tmp_path)
 
     def fake_generate(_data_package, on_chunk=None, result_metadata=None):
         if on_chunk:
@@ -244,6 +246,44 @@ def test_fusion_stream_sends_cleaned_full_report(monkeypatch):
     assert done["length"] == len(done["full"])
     assert done["meta"]["prompt_version"] == "test-v1"
     assert done["meta"]["repaired"] is True
+    assert len(done["meta"]["generation_id"]) == 32
+    generation_files = list(tmp_path.glob("fusion_generation_*.jsonl"))
+    assert len(generation_files) == 1
+    generation = json.loads(generation_files[0].read_text(encoding="utf-8"))
+    assert generation["generation_id"] == done["meta"]["generation_id"]
+    assert generation["outcome"] == "success"
+    assert generation["prompt_version"] == "test-v1"
+    assert "report_text" not in generation
+
+
+def test_fusion_stream_hides_provider_error_and_records_failure(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    import bazi_engine.personality_fusion as fusion_module
+    from bazi_engine.api import app
+
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "1")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(api_module, "_GENERATION_DIR", tmp_path)
+
+    def fake_generate(*_args, **_kwargs):
+        raise RuntimeError("API返回401: provider detail must not reach the browser")
+
+    monkeypatch.setattr(fusion_module, "generate_fusion_report", fake_generate)
+    with TestClient(app).stream(
+        "POST",
+        "/api/personality/fusion/stream",
+        json={"personality": {"traits": {"社交": "内敛"}}},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert "provider detail" not in body
+    error_event = json.loads(next(line[6:] for line in body.splitlines() if line.startswith("data: {")))
+    assert error_event["error"] == "融合报告暂时不可用，请稍后重试"
+    generation_file = next(tmp_path.glob("fusion_generation_*.jsonl"))
+    generation = json.loads(generation_file.read_text(encoding="utf-8"))
+    assert generation["outcome"] == "failure"
+    assert generation["error_class"] == "provider_rejected"
 
 
 def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch, tmp_path):
@@ -265,6 +305,7 @@ def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch
                 "model": "deepseek-chat",
                 "temperature": 0.3,
                 "repaired": False,
+                "generation_id": "a" * 32,
             },
         },
     )
@@ -280,6 +321,7 @@ def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch
     assert record["prompt_version"] == "test-v1"
     assert record["report_length"] == len("这是一份用于测试的融合报告。")
     assert len(record["report_hash"]) == 64
+    assert record["generation_id"] == "a" * 32
     assert "report_text" not in record
     assert "birth" not in record
     assert "2001" not in saved_text
@@ -294,6 +336,20 @@ def test_fusion_feedback_rejects_invalid_rating(monkeypatch, tmp_path):
     response = client.post(
         "/api/personality/fusion/feedback",
         json={"rating": "unknown", "report_text": "报告正文。"},
+    )
+
+    assert response.status_code == 400
+    assert not list(tmp_path.iterdir())
+
+
+def test_fusion_feedback_rejects_non_object_generation(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_FEEDBACK_DIR", tmp_path)
+    response = TestClient(app).post(
+        "/api/personality/fusion/feedback",
+        json={"rating": "very", "report_text": "报告正文。", "generation": "invalid"},
     )
 
     assert response.status_code == 400
@@ -339,6 +395,63 @@ def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_pat
     assert data["temperature_distribution"] == {"0.3": 1}
     assert data["repaired_rate"] == "100.0%"
     assert "report_hash" not in data["recent"][0]
+
+
+def test_admin_fusion_generations_requires_auth_and_returns_summary(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_GENERATION_DIR", tmp_path)
+    monkeypatch.setattr(api_module, "_ADMIN_KEY", "admin-test")
+    generation_file = tmp_path / f"fusion_generation_{date.today().isoformat()}.jsonl"
+    generation_file.write_text(
+        "\n".join([
+            json.dumps({
+                "timestamp": "2026-07-16T12:00:00",
+                "generation_id": "a" * 32,
+                "generation_type": "fusion",
+                "outcome": "success",
+                "duration_ms": 800,
+                "prompt_version": "test-v1",
+                "model": "deepseek-chat",
+                "temperature": 0.3,
+                "repaired": True,
+            }, ensure_ascii=False),
+            json.dumps({
+                "timestamp": "2026-07-16T12:01:00",
+                "generation_id": "b" * 32,
+                "generation_type": "fusion",
+                "outcome": "failure",
+                "duration_ms": 200,
+                "prompt_version": "test-v1",
+                "model": "deepseek-chat",
+                "temperature": 0.3,
+                "repaired": False,
+                "error_class": "timeout",
+            }, ensure_ascii=False),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    client = TestClient(app)
+    denied = client.get("/api/admin/fusion-generations")
+    response = client.get(
+        "/api/admin/fusion-generations",
+        params={"days": 0},
+        headers={"Authorization": "Bearer admin-test"},
+    )
+
+    assert denied.status_code == 403
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_records"] == 2
+    assert data["success_count"] == 1
+    assert data["success_rate"] == "50.0%"
+    assert data["average_duration_ms"] == 500
+    assert data["outcome_distribution"] == {"success": 1, "failure": 1}
+    assert data["error_distribution"] == {"timeout": 1}
+    assert data["prompt_versions"] == {"test-v1": 2}
+    assert data["repaired_rate"] == "50.0%"
 
 
 def test_chart_api_returns_public_contract_shape(monkeypatch):
