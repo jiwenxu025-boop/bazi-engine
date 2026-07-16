@@ -209,6 +209,111 @@ def test_fusion_prompt_contains_zhihe_style_contract():
     assert "不要过度安抚" in FUSION_SYSTEM_PROMPT
 
 
+def test_fusion_prompt_prioritizes_distinctive_progressive_structure():
+    """融合报告应先建立命中感，再展开少量高辨识度主题。"""
+    from bazi_engine.personality_fusion import FUSION_SYSTEM_PROMPT, build_fusion_user_prompt
+
+    for heading in ("## 核心画像", "## 最像你的三个瞬间", "## 重点分析", "## 容易被误解的一面"):
+        assert heading in FUSION_SYSTEM_PROMPT
+
+    assert "严格输出3条项目符号" in FUSION_SYSTEM_PROMPT
+    assert "只选择3个最有辨识度的主题" in FUSION_SYSTEM_PROMPT
+    assert "全文控制在550-800个汉字左右" in FUSION_SYSTEM_PROMPT
+    assert "年轻化不等于堆网络热词" in FUSION_SYSTEM_PROMPT
+    assert "## 社交" not in FUSION_SYSTEM_PROMPT
+    assert "每个维度必须覆盖" not in FUSION_SYSTEM_PROMPT
+
+    prompt = build_fusion_user_prompt({"六维度信号": {"社交": "内敛"}})
+    assert "三个可验证的生活瞬间" in prompt
+    assert "只展开3个最有辨识度的主题" in prompt
+    assert "中位或证据不足的维度直接省略" in prompt
+    assert "550-800个汉字" in prompt
+
+
+def test_fusion_report_quality_gate_repairs_percentages_and_harsh_phrasing():
+    """百分数清理不能制造病句，偶发的术语和贬损表达也应被软化。"""
+    from bazi_engine.personality_fusion import sanitize_fusion_report
+
+    raw = (
+        "一件事如果还有10%没弄懂，你就不愿开始。"
+        "日支藏干让你在关系里更谨慎。"
+        "这会让你成为理论上的巨人，行动上的矮子，行动开关失灵。"
+    )
+    cleaned = sanitize_fusion_report(raw)
+
+    assert "还有少量没弄懂" in cleaned
+    assert "10" not in cleaned
+    assert "%" not in cleaned
+    assert "藏干" not in cleaned
+    assert "亲密关系中的底层倾向" in cleaned
+    assert "理论上的巨人" not in cleaned
+    assert "行动开关失灵" not in cleaned
+
+
+def test_fusion_report_structure_issues_detects_only_gross_failures():
+    """结构验收应拦截明显失败，同时接受合理的篇幅波动。"""
+    from bazi_engine.personality_fusion import fusion_report_structure_issues
+
+    valid = (
+        "# 核心画像\n" + "核心拉扯带来稳定但稍慢的节奏。" * 4
+        + "\n# 最像你的三个瞬间\n- 场景一足够具体。\n- 场景二足够具体。\n- 场景三足够具体。"
+        + "\n# 重点分析\n### 主题一\n" + "分析一。" * 18
+        + "\n### 主题二\n" + "分析二。" * 18
+        + "\n### 主题三\n" + "分析三。" * 18
+        + "\n# 容易被误解的一面\n" + "外在表现和真实动机存在落差。" * 5
+    )
+
+    assert 400 <= len(valid) <= 1100
+    assert fusion_report_structure_issues(valid) == []
+
+    invalid = valid.replace("- 场景三足够具体。\n", "").replace("### 主题三\n", "")
+    issues = fusion_report_structure_issues(invalid)
+    assert "生活瞬间数量:2" in issues
+    assert "重点主题数量:2" in issues
+
+
+def test_finalize_fusion_report_repairs_at_most_once(monkeypatch):
+    """明显不合格时只调用一次修订，并采用问题更少的结果。"""
+    import bazi_engine.personality_fusion as fusion_module
+
+    repaired = (
+        "# 核心画像\n" + "核心拉扯带来稳定但稍慢的节奏。" * 4
+        + "\n# 最像你的三个瞬间\n- 场景一足够具体。\n- 场景二足够具体。\n- 场景三足够具体。"
+        + "\n# 重点分析\n### 主题一\n" + "分析一。" * 18
+        + "\n### 主题二\n" + "分析二。" * 18
+        + "\n### 主题三\n" + "分析三。" * 18
+        + "\n# 容易被误解的一面\n" + "外在表现和真实动机存在落差。" * 5
+    )
+    calls = []
+
+    def fake_repair(text, issues):
+        calls.append((text, issues))
+        return repaired
+
+    monkeypatch.setattr(fusion_module, "_repair_fusion_report", fake_repair)
+    metadata = {}
+    result = fusion_module._finalize_fusion_report(
+        "只有一小段，结构完全缺失。",
+        metadata,
+    )
+
+    assert result == repaired
+    assert len(calls) == 1
+    assert metadata["prompt_version"] == fusion_module.FUSION_PROMPT_VERSION
+    assert metadata["repaired"] is True
+    assert metadata["temperature"] == 0.3
+
+
+def test_fusion_prompt_file_matches_fallback_copy():
+    """正式提示词与文件缺失时使用的回退副本必须保持一致。"""
+    from pathlib import Path
+
+    from bazi_engine.personality_fusion import _FALLBACK_SYSTEM_PROMPT
+
+    prompt_path = Path(__file__).parents[1] / "prompts" / "fusion_system.txt"
+    assert prompt_path.read_text(encoding="utf-8").strip() == _FALLBACK_SYSTEM_PROMPT.strip()
+
+
 def test_fusion_prompt_omits_action_section():
     """当前性格融合报告不应输出独立行动建议板块"""
     from bazi_engine.personality_fusion import FUSION_SYSTEM_PROMPT, build_fusion_user_prompt

@@ -36,16 +36,19 @@ _FUSION_PROMPT_PATH = os.path.join(
 _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看的性格分析。不学术、不鸡汤、不装。
 
 # 禁止
-- 八字术语（比劫、官杀、印星、食伤、财星、格局、身强身弱、调候、用神忌神等）
-- 开场白、收尾语、行动清单。直接从全局诊断开始写，写完最后一个分析板块就结束
+- 八字术语（比劫、官杀、印星、食伤、财星、藏干、格局、身强身弱、调候、用神忌神等）
+- 开场白、收尾语、行动清单。直接从“核心画像”开始写，写完“容易被误解的一面”就结束
 - "你是一个...的人""骨子里就是..."这类句式——直接说事，别总结
 - 给概念加引号（"耗电""卡住""压力处理器"）
 - 每句话都追求金句效果——正常说话不需要句句精彩
 - 占位符或异常符号：禁止输出 %、{{变量}}、未替换模板、半截句
 - 人格定死话术：避免"你就是""骨子里""注定""一定会"。可以判断倾向，但要保留场景条件。
+- 网络梗、贬损型比喻和制造羞耻感的反差，例如“反复横跳”“行动开关失灵”“理论上的巨人，行动上的矮子”。
 
 # 怎么写
 陈述事实，不表演。短句为主。可以指出矛盾，但不刻意制造戏剧性。
+先写最有辨识度、最容易被本人验证的部分，再补充解释。年轻化不等于堆网络热词，不使用“社恐”“恋爱脑”“卷王”等流行标签代替分析。
+优先使用能被观察到的当代生活场景，例如群聊、陌生人聚会、合作分工、截止日期、亲密沟通和消费选择；场景必须与[当前人生阶段]匹配，不能为了画面感硬编经历。
 
 # 表达人格：知禾式表达
 语气温和、耐心、清楚，像一位稳重的陪伴型分析者。先理解人的处境，再给判断；指出问题时不刺人，不贴死标签，不制造羞耻感。
@@ -63,39 +66,41 @@ _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看
 
 # 输出结构
 
-全局诊断（核心矛盾 + 一句解释为什么是关键。比如"责任感极强但表达欲偏低——对承诺极度认真，但不喜欢张扬地证明这一点，容易被低估"）
+## 核心画像
+50-80字。先给出全盘最有辨识度的一组核心拉扯，再用一个可验证的现实表现解释为什么它重要。不要使用“你是一个……的人”这类空泛定义。
 
-## 社交
-## 感情
-## 内心
-## 决策
-## 事业
-## 财富观
-## 家境（如有数据）
+## 最像你的三个瞬间
+严格输出3条项目符号，每条25-40字。只写强信号支持、本人能在日常生活中验证的具体瞬间；三条分别体现不同侧面，不得换句话重复同一结论。
 
-每节 2-4 句为主。重点写清楚性格机制、现实表现和可能代价，不输出建议清单。
-**覆盖度要求：每个维度必须覆盖主要偏高或偏低的信号，但要合并同类项，不要逐条复述标签。** 比如社交维度同时收到"表达欲偏高"和"内敛度偏高"，要解释它们如何共存，而不是罗列成清单。
+## 重点分析
+只选择3个最有辨识度的主题，不强制覆盖社交、感情、内心、决策、事业、财富观和家境。每个主题使用“### 具体标题”，标题要概括真实矛盾或表现，不能只写“社交”“内心”这类维度名。
+每个主题70-100字、2-3句，围绕一个主要机制，写清现实场景、带来的优势以及可能代价。信号全部处于中位、与其他主题重复或缺少依据的维度直接省略。
+
+## 容易被误解的一面
+60-90字。写一种外在表现与真实动机之间的落差，说明它在什么场景下成立；不得为了制造反差而夸大。
+
+全文控制在550-800个汉字左右。重点优先于完整，宁可少写一个普通维度，也不要用泛泛而谈的内容凑齐板块。不要输出开场白、总结、收尾语或建议清单。
 
 # 数据使用
-- [全局主要矛盾]是全盘最高指令，所有板块要跟它一致
+- [全局主要矛盾]是全盘最高指令，核心画像和重点主题要跟它一致
 - [当前人生阶段]只用于调整场景感：中学生偏学业，大学生偏专业/实习，职场人偏职业。不要因此输出"立刻能做的事"或行动清单。
-- [六维度信号] 是结构化定性标签（偏低/中位/偏高），不是描述文字。你需要自己解读这些信号之间的关系和矛盾，写出具体的性格表现。注意矛盾组合（如表达欲偏高+内敛度偏高=需要安全感才释放的表达者）
+- [六维度信号] 是结构化定性标签（偏低/中位/偏高），不是描述文字。你需要自己解读这些信号之间的关系和矛盾，优先选择偏离明显且能相互印证的信号写成重点主题。注意矛盾组合（如表达欲偏高+内敛度偏高=需要安全感才释放的表达者）
 - [粒度性格特质] 是引擎从十神藏干和地支关系提取的具体行为倾向。每条特质有"所属维度"标签，优先把该维度标注的特质融入对应章节，**但不限于此——标注特质是起点，不是边界。你还需要根据十神组合、地支驱动、六维度信号等数据，推导出标注列表中没有覆盖到的性格表现**。四柱藏干特质是底层性格驱动力（来自地支藏干），十神加权特质是外在行为倾向。**和六维度信号的关系：六维度信号给数值框架（强度高低），粒度特质给具体描述（怎么表现）。优先结合六维度信号和粒度特质；如果某维度粒度特质不足，不要硬编，用六维度信号简要说明即可。** 粒度特质数量不同是正常的（如感情只有几条，内心有很多），数量少不等于该维度不重要——用六维度信号补充数值强度
-- 表面矛盾要融合（如又爱学术又想搞钱→"知识付费赛道比纯学术更适合你"）
+- 表面矛盾要融合，但不能据此虚构具体职业、赛道、收入方式或人生经历。只解释数据支持的行为机制。
 - 古代概念做现代翻译：参考[古今差异提示]
 - 禁止古代职业建议、古代婚恋观、古代健康判词
 - **禁止在报告中输出任何原始分数**：定性标签只能融入自然语言，不要机械列成"表达欲偏高、内敛度偏高"这种清单。
 - **禁止输出底层术语**：如果数据或参考里出现"七杀/偏印/伤官/食伤/夫妻宫/日支/华盖/财破印/杀印相生/自刑"等词，必须翻译成现代行为语言再写。
 
 # 多信号叠合（重要）
-**不允许只看一个信号写结论。每个维度的描述要覆盖主要偏高或偏低信号，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
+**不允许只看一个信号写结论。优先级是辨识度高于覆盖度：只展开3个证据最充分的主题，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
 具体方法：
 1. **维度内叠合**：同一维度的多个信号一起看。如社交维度同时有"表达欲偏高"和"内敛度偏高"→写出两种倾向如何共存，什么场景下哪一种占主导。
 2. **跨维度叠合**：不同维度之间相互影响。如"社交表达欲低"+"决策果断"→团队中可能独断不想解释；"内心情绪敏感"+"感情表达欲低"→心里有事但不说的类型。
 3. **底层驱动解读**：每个维度的高/低信号不是孤立的，背后有底层行为驱动在共同作用。比如"决策维度的冒险倾向高"可能不是单纯冲动，而是机会敏感、风险承受和执行力叠加的结果。在分析中把这种驱动关系点出来。
 4. **粒度特质印证**：粒度特质出现的场景就是该信号在现实生活中的表现方式。如果六维度信号显示"内敛度偏高"+粒度特质有"不善表达情感"，那这两个肯定是一个意思——在描述中要合并说，不要当两件事分开说。
-5. **当代场景落地**：每个维度写完，要让读者能在脑海中对应到一个具体的日常场景——不是"你很内向"，而是"在聚会上你会找角落站着，但如果有一个人主动来找你聊专业话题，你会说很久"。
-- **如果一个维度的全部信号都处于中位，不需要硬写，一句话带过即可。**
+5. **当代场景落地**：每个重点主题都要让读者能在脑海中对应到一个具体的日常场景——不是"你很内向"，而是"在聚会上你通常先观察，但遇到真正感兴趣的话题会聊得很深"。场景用于解释信号，不得假装知道用户实际发生过什么。
+- **如果一个维度的全部信号都处于中位，不写；不要用一句空话凑覆盖度。**
 - **不要输出"立刻能做的事"、"建议"、"行动步骤"这类独立板块。**"""
 
 def _load_system_prompt() -> str:
@@ -109,6 +114,7 @@ def _load_system_prompt() -> str:
     return _FALLBACK_SYSTEM_PROMPT
 
 FUSION_SYSTEM_PROMPT = _load_system_prompt()
+FUSION_PROMPT_VERSION = "2026-07-16-youth-v2"
 
 # 最终报告质量闸门：把模型偶发泄漏的术语和格式残留转成用户可读表达。
 _REPORT_TERM_REPLACEMENTS: list[tuple[str, str]] = [
@@ -135,8 +141,10 @@ _REPORT_TERM_REPLACEMENTS: list[tuple[str, str]] = [
     ("正财", "务实和稳定收益意识"),
     ("偏财", "机会敏感度"),
     ("财星", "现实收益意识"),
+    ("日支藏干", "亲密关系中的底层倾向"),
     ("日支", "亲密关系位置"),
     ("夫妻宫", "亲密关系位置"),
+    ("藏干", "底层倾向"),
     ("华盖星", "独处和精神探索倾向"),
     ("华盖", "独处和精神探索倾向"),
     ("多自刑", "自我拉扯和反复内耗"),
@@ -163,6 +171,9 @@ _REPORT_HARDENING_REPLACEMENTS: list[tuple[str, str]] = [
     ("你更像个工程兵，不是总设计师", "你更擅长把复杂问题拆开落地；长期蓝图需要刻意训练"),
     ("不要平躺", "尽量避免长期停在缺乏挑战的状态里"),
     ("家里给不了太多金钱或人脉上的强力支持", "家里更像是提供基础支持，外部资源仍需要你自己争取"),
+    ("理论上的巨人，行动上的矮子", "理解得很深，行动却容易晚一步"),
+    ("行动开关失灵", "理解充分后仍难启动"),
+    ("反复横跳", "反复拉扯"),
 ]
 
 _REPORT_BANNED_PATTERNS: list[re.Pattern[str]] = [
@@ -183,6 +194,21 @@ def sanitize_fusion_report(text: str) -> str:
         cleaned = cleaned.replace(old, new)
     for old, new in _REPORT_TERM_REPLACEMENTS:
         cleaned = cleaned.replace(old, new)
+
+    def _qualitative_percentage(match: re.Match[str]) -> str:
+        value = float(match.group(1))
+        if value >= 80:
+            return "大部分"
+        if value >= 60:
+            return "多数"
+        if value >= 40:
+            return "接近一半"
+        if value >= 20:
+            return "一部分"
+        return "少量"
+
+    # 百分数先转为定性表达，避免后续移除“%”时留下残缺数字和半截句。
+    cleaned = re.sub(r"(\d+(?:\.\d+)?)\s*%", _qualitative_percentage, cleaned)
 
     # 当前产品形态只保留分析稿，不展示独立建议/行动板块。
     cleaned = re.sub(
@@ -210,6 +236,117 @@ def fusion_report_quality_issues(text: str) -> list[str]:
         if pat.search(text):
             issues.append(f"异常格式:{pat.pattern}")
     return issues
+
+
+_REPORT_REQUIRED_SECTIONS = ("核心画像", "最像你的三个瞬间", "重点分析", "容易被误解的一面")
+
+
+def fusion_report_structure_issues(text: str) -> list[str]:
+    """检查会明显破坏阅读体验的结构问题，不追逐轻微字数波动。"""
+    issues: list[str] = []
+    normalized = text.strip()
+
+    for title in _REPORT_REQUIRED_SECTIONS:
+        if not re.search(rf"^#{{1,3}}\s*{re.escape(title)}\s*$", normalized, re.MULTILINE):
+            issues.append(f"缺少板块:{title}")
+
+    moments_match = re.search(
+        r"^#{1,3}\s*最像你的三个瞬间\s*$([\s\S]*?)(?=^#{1,3}\s*重点分析\s*$)",
+        normalized,
+        re.MULTILINE,
+    )
+    if moments_match:
+        moment_count = len(re.findall(r"^\s*[-*]\s+\S", moments_match.group(1), re.MULTILINE))
+        if moment_count != 3:
+            issues.append(f"生活瞬间数量:{moment_count}")
+
+    topics_match = re.search(
+        r"^#{1,3}\s*重点分析\s*$([\s\S]*?)(?=^#{1,3}\s*容易被误解的一面\s*$)",
+        normalized,
+        re.MULTILINE,
+    )
+    if topics_match:
+        topic_count = len(re.findall(r"^#{2,4}\s*\S", topics_match.group(1), re.MULTILINE))
+        if topic_count != 3:
+            issues.append(f"重点主题数量:{topic_count}")
+
+    if len(normalized) < 400:
+        issues.append(f"篇幅过短:{len(normalized)}")
+    elif len(normalized) > 1100:
+        issues.append(f"篇幅过长:{len(normalized)}")
+
+    if normalized and normalized[-1] not in "。！？!?":
+        issues.append("结尾残缺")
+    return issues
+
+
+def _repair_fusion_report(text: str, issues: list[str]) -> str | None:
+    """对明显不合格的报告做一次低温修订；失败时由调用方保留原文。"""
+    messages = [
+        {"role": "system", "content": FUSION_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                "下面的报告已经完成事实分析，只修订结构和表达，不添加任何新事实、职业、经历或建议。\n"
+                f"需要修复的问题：{'；'.join(issues)}\n"
+                "必须保留四个板块、三个生活瞬间和三个重点主题；总长度控制在550-800个汉字左右。"
+                "直接输出修订后的完整报告，不解释修改过程。\n\n"
+                f"【待修订报告】\n{text}"
+            ),
+        },
+    ]
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "stream": False,
+        "temperature": 0.1,
+        "max_tokens": 1800,
+    }
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        _timeout = 90.0 if "v4" in DEEPSEEK_MODEL.lower() else 45.0
+        with shared_client(_timeout) as client:
+            resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return sanitize_fusion_report(content) if content else None
+    except Exception:
+        return None
+
+
+def _finalize_fusion_report(text: str, result_metadata: dict | None = None) -> str:
+    """清洗报告，并在严重结构问题出现时最多修订一次。"""
+    cleaned = sanitize_fusion_report(text)
+    issues = fusion_report_quality_issues(cleaned) + fusion_report_structure_issues(cleaned)
+
+    def record_metadata(repaired: bool) -> None:
+        if result_metadata is not None:
+            result_metadata.update({
+                "prompt_version": FUSION_PROMPT_VERSION,
+                "model": DEEPSEEK_MODEL,
+                "temperature": float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3")),
+                "repaired": repaired,
+            })
+
+    if not issues or os.getenv("BAZI_FUSION_REPAIR", "1") != "1":
+        record_metadata(False)
+        return cleaned
+
+    repaired = _repair_fusion_report(cleaned, issues)
+    if not repaired:
+        record_metadata(False)
+        return cleaned
+
+    repaired_issues = fusion_report_quality_issues(repaired) + fusion_report_structure_issues(repaired)
+    use_repaired = len(repaired_issues) < len(issues)
+    record_metadata(use_repaired)
+    return repaired if use_repaired else cleaned
 
 # ═══════════════════════════════════════════════════════════════
 # 数据包构建
@@ -587,8 +724,9 @@ def build_fusion_user_prompt(data_package: dict) -> str:
         "【输出要求】\n"
         "- 严格按照系统提示的格式和约束输出。\n"
         "- 禁止在报告中出现任何原始分数或原始八字术语。\n"
-        "- 每个维度优先解释主要矛盾，合并同类信号，不逐条罗列标签。\n"
-        "- 如果全部信号处于中位，一句话带过即可。\n"
+        "- 先写核心画像和三个可验证的生活瞬间，再只展开3个最有辨识度的主题。\n"
+        "- 辨识度高于覆盖度；合并同类信号，不逐条罗列标签，中位或证据不足的维度直接省略。\n"
+        "- 全文控制在550-800个汉字左右，不使用网络热词、贬损比喻代替分析。\n"
         "- 不输出“立刻能做的事”“建议”“行动步骤”等独立板块。"
     )
 
@@ -602,6 +740,7 @@ def build_fusion_user_prompt(data_package: dict) -> str:
 def generate_fusion_report(
     data_package: dict,
     on_chunk=None,
+    result_metadata: dict | None = None,
 ) -> str | None:
     """流式调用 DeepSeek API，生成融合报告。
 
@@ -667,7 +806,7 @@ def generate_fusion_report(
                 except json.JSONDecodeError:
                     continue
 
-        text = sanitize_fusion_report("".join(full_text_parts))
+        text = _finalize_fusion_report("".join(full_text_parts), result_metadata)
         if not text:
             raise RuntimeError("流式响应已完成但未收到任何内容")
         return text
@@ -710,7 +849,7 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
 
             body = resp.json()
             content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return sanitize_fusion_report(content) if content else None
+            return _finalize_fusion_report(content) if content else None
 
     except Exception:
         return None

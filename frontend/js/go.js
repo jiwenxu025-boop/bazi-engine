@@ -113,6 +113,7 @@ async function go(){
               clearTimeout(personalityEl._debounce);
               let finalText = msg.full || personalityText;
               personalityEl.innerHTML = md2html(finalText);
+              showFusionFeedback(finalText, msg.meta || {});
             }
           } else if (msg.phase === 'personality_error'){
             // 4b. 性格融合失败——仅融合模式才覆盖文本

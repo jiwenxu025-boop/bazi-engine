@@ -13,6 +13,7 @@
 
 import asyncio
 import concurrent.futures
+import hashlib
 import json
 import os
 import re
@@ -231,18 +232,24 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             _fusion_queue.put_nowait, ("token", tok))
 
                     fusion_done_flag = {"done": False}
+                    fusion_meta: dict = {}
 
                     def run_fusion(
                         _fusion_key=fusion_key,
                         _fusion_queue=fusion_queue,
                         _pkg=pkg,
                         _fusion_done_flag=fusion_done_flag,
+                        _fusion_meta=fusion_meta,
                     ):
                         try:
                             if not _fusion_key:
                                 loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_error", "DEEPSEEK_API_KEY未设置"))
                                 return
-                            full = generate_fusion_report(_pkg, on_chunk=on_token)
+                            full = generate_fusion_report(
+                                _pkg,
+                                on_chunk=on_token,
+                                result_metadata=_fusion_meta,
+                            )
                             if full:
                                 loop.call_soon_threadsafe(_fusion_queue.put_nowait, ("fusion_done", full))
                             else:
@@ -273,7 +280,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             _fusion_start = loop.time()  # reset timeout on activity
                         elif ft == "fusion_done":
                             if fd:
-                                yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd})}\n\n"
+                                yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd, 'meta': fusion_meta})}\n\n"
                             fusion_ex.shutdown(wait=False)
                             break
                         elif ft == "fusion_error":
@@ -673,6 +680,7 @@ async def fusion_stream(request: Request):
     async def stream_fusion():
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
+        fusion_meta: dict = {}
 
         def on_token(token: str):
             """LLM 每吐一个 token，立刻推入 queue"""
@@ -681,7 +689,11 @@ async def fusion_stream(request: Request):
         def run_llm():
             """在线程中跑同步流式 LLM 调用"""
             try:
-                full = generate_fusion_report(data_package, on_chunk=on_token)
+                full = generate_fusion_report(
+                    data_package,
+                    on_chunk=on_token,
+                    result_metadata=fusion_meta,
+                )
                 loop.call_soon_threadsafe(queue.put_nowait, ("done", full))
             except Exception as e:
                 loop.call_soon_threadsafe(queue.put_nowait, ("error", str(e)))
@@ -695,7 +707,7 @@ async def fusion_stream(request: Request):
                 yield f"data: {json.dumps({'token': msg_data})}\n\n"
             elif msg_type == "done":
                 if msg_data:
-                    yield f"data: {json.dumps({'done': True, 'length': len(msg_data)})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'length': len(msg_data), 'full': msg_data, 'meta': fusion_meta})}\n\n"
                 else:
                     yield f"data: {json.dumps({'error': 'LLM 调用失败，请稍后重试'})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -857,6 +869,118 @@ fetch('/api/admin/codes?key=' + new URLSearchParams(location.search).get('key'))
 
 _FEEDBACK_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "feedback"
 _FEEDBACK_LOCK = threading.Lock()
+
+
+@app.post("/api/personality/fusion/feedback")
+async def fusion_feedback_api(request: Request):
+    """保存融合报告命中度反馈，不持久化出生资料或报告正文。"""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "请求格式错误"}, status_code=400)
+
+    rating = body.get("rating", "")
+    section = body.get("inaccurate_section", "")
+    report_text = body.get("report_text", "")
+    generation = body.get("generation", {})
+    valid_ratings = {"very", "partial", "low"}
+    valid_sections = {"", "core", "moments", "analysis", "misunderstood"}
+    if rating not in valid_ratings:
+        return JSONResponse({"saved": False, "error": "无效 rating"}, status_code=400)
+    if section not in valid_sections:
+        return JSONResponse({"saved": False, "error": "无效 inaccurate_section"}, status_code=400)
+    if not isinstance(report_text, str) or not report_text.strip():
+        return JSONResponse({"saved": False, "error": "缺少 report_text"}, status_code=400)
+
+    from ._deepseek_config import DEEPSEEK_MODEL
+    from .personality_fusion import FUSION_PROMPT_VERSION
+
+    report_text = report_text[:20000]
+    default_temperature = float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3"))
+    try:
+        temperature = float(generation.get("temperature", default_temperature))
+    except (TypeError, ValueError):
+        temperature = default_temperature
+    if not 0 <= temperature <= 2:
+        temperature = default_temperature
+
+    record = {
+        "timestamp": __import__("datetime").datetime.now().isoformat(),
+        "rating": rating,
+        "inaccurate_section": section,
+        "report_hash": hashlib.sha256(report_text.encode("utf-8")).hexdigest(),
+        "report_length": len(report_text),
+        "prompt_version": str(generation.get("prompt_version") or FUSION_PROMPT_VERSION)[:80],
+        "model": str(generation.get("model") or DEEPSEEK_MODEL)[:80],
+        "temperature": temperature,
+        "repaired": bool(generation.get("repaired", False)),
+    }
+    date_str = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+    feedback_file = _FEEDBACK_DIR / f"fusion_feedback_{date_str}.jsonl"
+
+    with _FEEDBACK_LOCK:
+        _FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+        with open(feedback_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    return JSONResponse({"saved": True, "message": "反馈已记录"})
+
+
+@app.get("/api/admin/fusion-feedback")
+def admin_fusion_feedback(
+    key: str = Query(""),
+    days: int = Query(7, ge=0, le=365, description="查看最近N天的融合报告反馈"),
+):
+    """汇总融合报告命中度反馈，不返回报告正文或报告哈希。"""
+    if not _ADMIN_KEY or key != _ADMIN_KEY:
+        return JSONResponse({"error": "无权访问"}, status_code=403)
+
+    from datetime import datetime as dt
+    from datetime import timedelta
+
+    cutoff = dt.now() - timedelta(days=days) if days > 0 else dt(2000, 1, 1)
+    records: list[dict] = []
+    for feedback_file in sorted(_FEEDBACK_DIR.glob("fusion_feedback_*.jsonl"), reverse=True):
+        try:
+            file_date = dt.strptime(feedback_file.stem.replace("fusion_feedback_", ""), "%Y-%m-%d")
+            if file_date < cutoff:
+                continue
+        except ValueError:
+            pass
+        with open(feedback_file, encoding="utf-8") as fh:
+            for line in fh:
+                with suppress(Exception):
+                    records.append(json.loads(line.strip()))
+        if len(records) >= 1000:
+            break
+
+    rating_distribution: dict[str, int] = {}
+    section_distribution: dict[str, int] = {}
+    prompt_versions: dict[str, int] = {}
+    repaired_count = 0
+    for record in records:
+        rating = record.get("rating", "unknown")
+        section = record.get("inaccurate_section", "") or "未选择"
+        version = record.get("prompt_version", "unknown")
+        rating_distribution[rating] = rating_distribution.get(rating, 0) + 1
+        section_distribution[section] = section_distribution.get(section, 0) + 1
+        prompt_versions[version] = prompt_versions.get(version, 0) + 1
+        repaired_count += int(bool(record.get("repaired")))
+
+    total = len(records)
+    recent = [
+        {key: value for key, value in record.items() if key != "report_hash"}
+        for record in records[:50]
+    ]
+    return {
+        "total_records": total,
+        "rating_distribution": rating_distribution,
+        "section_distribution": section_distribution,
+        "prompt_versions": prompt_versions,
+        "repaired_count": repaired_count,
+        "repaired_rate": f"{repaired_count / total * 100:.1f}%" if total else "0%",
+        "recent": recent,
+    }
 
 
 @app.post("/api/feedback")

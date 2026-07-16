@@ -1,6 +1,7 @@
 """API module tests."""
 
 import importlib
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -66,6 +67,140 @@ def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     assert response.status_code == 200
     assert '"phase": "rules_done"' in body or '"phase":"rules_done"' in body
     assert "data: [DONE]" in body
+
+
+def test_fusion_stream_sends_cleaned_full_report(monkeypatch):
+    """独立融合流结束时应发送清洗后的全文供前端覆盖原始 token。"""
+    import bazi_engine.personality_fusion as fusion_module
+    from bazi_engine.api import app
+
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "1")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+
+    def fake_generate(_data_package, on_chunk=None, result_metadata=None):
+        if on_chunk:
+            on_chunk("原始藏干内容")
+        if result_metadata is not None:
+            result_metadata.update({
+                "prompt_version": "test-v1",
+                "model": "test-model",
+                "temperature": 0.3,
+                "repaired": True,
+            })
+        return "清洗后的完整报告。"
+
+    monkeypatch.setattr(fusion_module, "generate_fusion_report", fake_generate)
+    client = TestClient(app)
+    with client.stream(
+        "POST",
+        "/api/personality/fusion/stream",
+        json={"personality": {"traits": {"社交": "内敛"}}},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    events = [
+        json.loads(line[6:])
+        for line in body.splitlines()
+        if line.startswith("data: {")
+    ]
+    done = next(event for event in events if event.get("done"))
+    assert response.status_code == 200
+    assert done["full"] == "清洗后的完整报告。"
+    assert done["length"] == len(done["full"])
+    assert done["meta"]["prompt_version"] == "test-v1"
+    assert done["meta"]["repaired"] is True
+
+
+def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch, tmp_path):
+    """融合反馈只保存分析元数据和报告哈希，不落报告正文或出生资料。"""
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_FEEDBACK_DIR", tmp_path)
+    client = TestClient(app)
+    response = client.post(
+        "/api/personality/fusion/feedback",
+        json={
+            "rating": "partial",
+            "inaccurate_section": "analysis",
+            "report_text": "这是一份用于测试的融合报告。",
+            "birth": {"year": 2001, "month": 5, "day": 16},
+            "generation": {
+                "prompt_version": "test-v1",
+                "model": "deepseek-chat",
+                "temperature": 0.3,
+                "repaired": False,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["saved"] is True
+    feedback_files = list(tmp_path.glob("fusion_feedback_*.jsonl"))
+    assert len(feedback_files) == 1
+    saved_text = feedback_files[0].read_text(encoding="utf-8")
+    record = json.loads(saved_text)
+    assert record["rating"] == "partial"
+    assert record["inaccurate_section"] == "analysis"
+    assert record["prompt_version"] == "test-v1"
+    assert record["report_length"] == len("这是一份用于测试的融合报告。")
+    assert len(record["report_hash"]) == 64
+    assert "report_text" not in record
+    assert "birth" not in record
+    assert "2001" not in saved_text
+
+
+def test_fusion_feedback_rejects_invalid_rating(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_FEEDBACK_DIR", tmp_path)
+    client = TestClient(app)
+    response = client.post(
+        "/api/personality/fusion/feedback",
+        json={"rating": "unknown", "report_text": "报告正文。"},
+    )
+
+    assert response.status_code == 400
+    assert not list(tmp_path.iterdir())
+
+
+def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    monkeypatch.setattr(api_module, "_FEEDBACK_DIR", tmp_path)
+    monkeypatch.setattr(api_module, "_ADMIN_KEY", "admin-test")
+    feedback_file = tmp_path / f"fusion_feedback_{date.today().isoformat()}.jsonl"
+    feedback_file.write_text(
+        json.dumps({
+            "timestamp": "2026-07-16T12:00:00",
+            "rating": "partial",
+            "inaccurate_section": "analysis",
+            "report_hash": "secret-hash",
+            "report_length": 800,
+            "prompt_version": "test-v1",
+            "model": "deepseek-chat",
+            "temperature": 0.3,
+            "repaired": True,
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/admin/fusion-feedback",
+        params={"key": "admin-test", "days": 0},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_records"] == 1
+    assert data["rating_distribution"] == {"partial": 1}
+    assert data["section_distribution"] == {"analysis": 1}
+    assert data["prompt_versions"] == {"test-v1": 1}
+    assert data["repaired_rate"] == "100.0%"
+    assert "report_hash" not in data["recent"][0]
 
 
 def test_chart_api_returns_public_contract_shape(monkeypatch):

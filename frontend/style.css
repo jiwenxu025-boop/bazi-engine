@@ -923,6 +923,46 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
 .fusion-placeholder{color:var(--text-tertiary);font-size:13px}
 .fusion-cursor{animation:blink .8s infinite;color:var(--accent);font-weight:100}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.fusion-feedback{
+  margin-top:20px;padding-top:16px;border-top:1px solid var(--border);
+}
+.fusion-feedback[hidden],.fusion-feedback-detail[hidden]{display:none}
+.fusion-feedback-title{
+  font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;
+}
+.fusion-rating-options{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;
+}
+.fusion-rating-options button,.fusion-section-options button{
+  min-height:36px;padding:7px 8px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--text-secondary);font-size:12px;cursor:pointer;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.fusion-rating-options button:hover,.fusion-section-options button:hover{
+  border-color:var(--border-hover);color:var(--text);
+}
+.fusion-rating-options button.active{
+  background:var(--accent);border-color:var(--accent);color:var(--accent-text);
+}
+.fusion-rating-options button:disabled,.fusion-section-options button:disabled{
+  cursor:default;opacity:.65;
+}
+.fusion-feedback-detail{margin-top:14px}
+.fusion-feedback-detail>span{
+  display:block;font-size:12px;color:var(--text-tertiary);margin-bottom:8px;
+}
+.fusion-section-options{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;
+}
+.fusion-section-options .fusion-feedback-skip{
+  grid-column:1/-1;min-height:32px;border-color:transparent;background:transparent;
+}
+.fusion-feedback-status{
+  min-height:20px;margin-top:8px;font-size:12px;color:var(--text-tertiary);
+}
+.fusion-feedback-thanks{
+  font-size:13px;color:var(--good);text-align:center;padding:6px 0;
+}
 
 /* 病药高亮卡片 */
 .bingyao-card{

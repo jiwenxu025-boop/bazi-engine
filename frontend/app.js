@@ -265,6 +265,7 @@ async function go(){
               clearTimeout(personalityEl._debounce);
               let finalText = msg.full || personalityText;
               personalityEl.innerHTML = md2html(finalText);
+              showFusionFeedback(finalText, msg.meta || {});
             }
           } else if (msg.phase === 'personality_error'){
             // 4b. 性格融合失败——仅融合模式才覆盖文本
@@ -963,6 +964,24 @@ function render(d){
       h += '</div>';
     }
     h += '</div>';
+
+    if (fusionReady){
+      h += '<div class=fusion-feedback hidden>';
+      h += '<div class=fusion-feedback-title>这份分析像你吗？</div>';
+      h += '<div class=fusion-rating-options role=group aria-label="报告命中度">';
+      h += '<button type=button data-rating=very onclick="selectFusionRating(\'very\',this)">很像</button>';
+      h += '<button type=button data-rating=partial onclick="selectFusionRating(\'partial\',this)">部分像</button>';
+      h += '<button type=button data-rating=low onclick="selectFusionRating(\'low\',this)">不太像</button>';
+      h += '</div>';
+      h += '<div class=fusion-feedback-detail hidden><span>哪部分偏差最大？</span>';
+      h += '<div class=fusion-section-options>';
+      h += '<button type=button onclick="submitFusionFeedback(\'core\')">核心画像</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'moments\')">三个瞬间</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'analysis\')">重点分析</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'misunderstood\')">容易被误解</button>';
+      h += '<button type=button class=fusion-feedback-skip onclick="submitFusionFeedback(\'\')">跳过</button>';
+      h += '</div></div><div class=fusion-feedback-status role=status></div></div>';
+    }
 
     // ── 融合/原始切换 ──
     if (fusionReady){
@@ -1703,6 +1722,67 @@ function copyBubble(btn){
 }
 
 /* ── LLM 融合引擎流式加载 ── */
+let FUSION_FEEDBACK_STATE = {reportText:'', generation:{}, rating:'', submitting:false};
+
+function showFusionFeedback(reportText, generation){
+  let box = document.querySelector('.fusion-feedback');
+  if (!box || !reportText) return;
+  FUSION_FEEDBACK_STATE = {reportText:reportText, generation:generation || {}, rating:'', submitting:false};
+  box.hidden = false;
+  let detail = box.querySelector('.fusion-feedback-detail');
+  let status = box.querySelector('.fusion-feedback-status');
+  if (detail) detail.hidden = true;
+  if (status) status.textContent = '';
+  box.querySelectorAll('button').forEach(function(btn){
+    btn.disabled = false;
+    btn.classList.remove('active');
+    if (btn.dataset.rating) btn.setAttribute('aria-pressed', 'false');
+  });
+}
+
+function selectFusionRating(rating, button){
+  if (FUSION_FEEDBACK_STATE.submitting) return;
+  FUSION_FEEDBACK_STATE.rating = rating;
+  let box = button.closest('.fusion-feedback');
+  box.querySelectorAll('[data-rating]').forEach(function(btn){
+    let active = btn === button;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  if (rating === 'very'){
+    submitFusionFeedback('');
+  } else {
+    box.querySelector('.fusion-feedback-detail').hidden = false;
+  }
+}
+
+async function submitFusionFeedback(section){
+  let state = FUSION_FEEDBACK_STATE;
+  let box = document.querySelector('.fusion-feedback');
+  if (!box || !state.rating || state.submitting) return;
+  state.submitting = true;
+  let status = box.querySelector('.fusion-feedback-status');
+  box.querySelectorAll('button').forEach(function(btn){ btn.disabled = true; });
+  if (status) status.textContent = '提交中...';
+  try{
+    let resp = await fetch('/api/personality/fusion/feedback', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        rating:state.rating,
+        inaccurate_section:section || '',
+        report_text:state.reportText,
+        generation:state.generation
+      })
+    });
+    if (!resp.ok) throw new Error('feedback ' + resp.status);
+    box.innerHTML = '<div class=fusion-feedback-thanks role=status>感谢反馈</div>';
+  }catch(e){
+    state.submitting = false;
+    box.querySelectorAll('button').forEach(function(btn){ btn.disabled = false; });
+    if (status) status.textContent = '提交失败，请稍后重试';
+  }
+}
+
 async function streamFusionReport(personality, family, lifeStage, dayMaster){
   let el = document.querySelector('.personality-text');
   if (!el) return;
@@ -1731,6 +1811,7 @@ async function streamFusionReport(personality, family, lifeStage, dayMaster){
         let data = line.slice(6);
         if (data === '[DONE]'){
           el.innerHTML = md2html(text) || initialText;
+          showFusionFeedback(text, {});
           return;
         }
         try{
@@ -1739,7 +1820,9 @@ async function streamFusionReport(personality, family, lifeStage, dayMaster){
             text += chunk.token;
             el.innerHTML = md2html(text) + '<span class=fusion-cursor>|</span>';
           } else if (chunk.done){
-            el.innerHTML = md2html(text) || initialText;
+            let finalText = chunk.full || text;
+            el.innerHTML = md2html(finalText) || initialText;
+            showFusionFeedback(finalText, chunk.meta || {});
             return;
           } else if (chunk.error){
             el.textContent = initialText;
@@ -1749,6 +1832,7 @@ async function streamFusionReport(personality, family, lifeStage, dayMaster){
       }
     }
     el.innerHTML = md2html(text) || initialText;
+    showFusionFeedback(text, {});
   }catch(e){
     el.textContent = initialText;
   }

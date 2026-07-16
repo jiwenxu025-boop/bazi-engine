@@ -621,8 +621,8 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
 
 def test_gender_luck_release_updates_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'href="style.css?v=20260715"' in html
-    assert 'src="app.js?v=20260715"' in html
+    assert 'href="style.css?v=20260716"' in html
+    assert 'src="app.js?v=20260716"' in html
 
 
 def test_chart_params_use_default_flow_range_without_empty_optional_numbers():
@@ -1411,3 +1411,45 @@ def test_chat_payload_uses_app_state_chart_instead_of_stale_legacy_field():
     result = run_node(f"(async () => {{ {script} }})().catch(e => {{ console.error(e.stack || e); process.exit(1); }});")
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_fusion_stream_prefers_cleaned_full_report_on_completion():
+    """独立融合入口完成时必须用服务端清洗全文覆盖原始 token。"""
+    from pathlib import Path
+
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    for script in (frontend / "app.js", frontend / "js" / "fusion.js"):
+        source = script.read_text(encoding="utf-8")
+        assert "let finalText = chunk.full || text;" in source
+        assert "el.innerHTML = md2html(finalText) || initialText;" in source
+        assert "showFusionFeedback(finalText" in source
+
+
+def test_fusion_feedback_ui_submission_contract():
+    """融合报告应提供三档评分、可选偏差板块和独立反馈接口。"""
+    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    app_source = (frontend / "app.js").read_text(encoding="utf-8")
+    display_source = (frontend / "js" / "display.js").read_text(encoding="utf-8")
+    fusion_source = (frontend / "js" / "fusion.js").read_text(encoding="utf-8")
+    css = (frontend / "style.css").read_text(encoding="utf-8")
+
+    for source in (app_source, display_source):
+        assert "这份分析像你吗？" in source
+        assert "data-rating=very" in source
+        assert "data-rating=partial" in source
+        assert "data-rating=low" in source
+        assert "核心画像" in source
+        assert "三个瞬间" in source
+        assert "重点分析" in source
+        assert "容易被误解" in source
+
+    for source in (app_source, fusion_source):
+        assert "function selectFusionRating" in source
+        assert "function submitFusionFeedback" in source
+        assert "'/api/personality/fusion/feedback'" in source
+        assert "report_text:state.reportText" in source
+        assert "generation:state.generation" in source
+
+    assert ".fusion-rating-options" in css
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
+    assert ".fusion-feedback-thanks" in css

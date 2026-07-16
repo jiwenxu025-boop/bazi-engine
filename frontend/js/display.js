@@ -236,6 +236,24 @@ function render(d){
     }
     h += '</div>';
 
+    if (fusionReady){
+      h += '<div class=fusion-feedback hidden>';
+      h += '<div class=fusion-feedback-title>这份分析像你吗？</div>';
+      h += '<div class=fusion-rating-options role=group aria-label="报告命中度">';
+      h += '<button type=button data-rating=very onclick="selectFusionRating(\'very\',this)">很像</button>';
+      h += '<button type=button data-rating=partial onclick="selectFusionRating(\'partial\',this)">部分像</button>';
+      h += '<button type=button data-rating=low onclick="selectFusionRating(\'low\',this)">不太像</button>';
+      h += '</div>';
+      h += '<div class=fusion-feedback-detail hidden><span>哪部分偏差最大？</span>';
+      h += '<div class=fusion-section-options>';
+      h += '<button type=button onclick="submitFusionFeedback(\'core\')">核心画像</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'moments\')">三个瞬间</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'analysis\')">重点分析</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'misunderstood\')">容易被误解</button>';
+      h += '<button type=button class=fusion-feedback-skip onclick="submitFusionFeedback(\'\')">跳过</button>';
+      h += '</div></div><div class=fusion-feedback-status role=status></div></div>';
+    }
+
     // ── 融合/原始切换 ──
     if (fusionReady){
       h += '<div class=personality-toggle><button class=toggle-btn onclick="togglePersonalityMode()" title="查看规则引擎原始数据">查看原始数据</button></div>';
