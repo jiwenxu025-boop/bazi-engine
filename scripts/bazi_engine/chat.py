@@ -3,6 +3,8 @@
 import json
 import os
 import re
+import tempfile
+import threading
 import time
 from collections.abc import AsyncGenerator
 from contextlib import suppress
@@ -16,6 +18,7 @@ import httpx
 from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL
 
 _ACTIVATION_FILE = Path(__file__).resolve().parent / "activation_codes.json"
+_RUNTIME_DATA_LOCK = threading.RLock()
 
 # ═══════════════════════════════════════════════════════════════
 # System Prompt
@@ -407,10 +410,32 @@ def _load_codes() -> dict:
 
 
 def _save_codes(codes: dict) -> None:
-    """保存激活码文件"""
-    _ACTIVATION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(_ACTIVATION_FILE, "w", encoding="utf-8") as f:
-        json.dump(codes, f, ensure_ascii=False, indent=2)
+    """原子保存激活码文件，避免中断时留下半写 JSON。"""
+    _atomic_json_write(_ACTIVATION_FILE, codes, ensure_ascii=False, indent=2)
+
+
+def _atomic_json_write(path: Path, data: dict, **json_kwargs) -> None:
+    """Write JSON through a same-directory temporary file before replacing it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_name = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temp_file:
+            temp_name = temp_file.name
+            json.dump(data, temp_file, **json_kwargs)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_name, path)
+    finally:
+        if temp_name:
+            with suppress(FileNotFoundError):
+                Path(temp_name).unlink()
 
 
 def validate_code(code: str) -> tuple[bool, int, str]:
@@ -427,13 +452,14 @@ def validate_code(code: str) -> tuple[bool, int, str]:
 
 def consume_code(code: str) -> tuple[bool, int]:
     """消耗一次激活码。返回 (成功?, 剩余次数)"""
-    codes = _load_codes()
-    entry = codes.get(code.strip().upper())
-    if not entry or entry.get("剩余", 0) <= 0:
-        return False, 0
-    entry["剩余"] -= 1
-    _save_codes(codes)
-    return True, entry["剩余"]
+    with _RUNTIME_DATA_LOCK:
+        codes = _load_codes()
+        entry = codes.get(code.strip().upper())
+        if not entry or entry.get("剩余", 0) <= 0:
+            return False, 0
+        entry["剩余"] -= 1
+        _save_codes(codes)
+        return True, entry["剩余"]
 
 
 # 免激活每日免费额度
@@ -459,10 +485,8 @@ def _load_free_usage() -> dict:
 
 
 def _save_free_usage(data: dict):
-    """保存免费使用记录到文件"""
-    _FREE_USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(_FREE_USAGE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    """原子保存免费使用记录。"""
+    _atomic_json_write(_FREE_USAGE_FILE, data)
 
 
 def check_free_quota(client_id: str) -> tuple[bool, int]:
@@ -472,39 +496,41 @@ def check_free_quota(client_id: str) -> tuple[bool, int]:
     IP 经哈希处理后存储，不保留原始 IP。
     注意: NAT/代理环境下多用户共用同一 IP，一个用户用完额度其他人也会被拦。
     """
-    today = time.strftime("%Y-%m-%d")
-    data = _load_free_usage()
-    key = _hash_ip(client_id)
+    with _RUNTIME_DATA_LOCK:
+        today = time.strftime("%Y-%m-%d")
+        data = _load_free_usage()
+        key = _hash_ip(client_id)
 
-    # 清理过期条目
-    stale = [k for k, v in data.items() if v.get("date") != today]
-    for k in stale:
-        del data[k]
+        # 清理过期条目
+        stale = [k for k, v in data.items() if v.get("date") != today]
+        for k in stale:
+            del data[k]
 
-    entry = data.get(key)
-    if not entry or entry.get("date") != today:
-        data[key] = {"date": today, "count": 0}
-        _save_free_usage(data)
-        return True, FREE_DAILY_LIMIT
+        entry = data.get(key)
+        if not entry or entry.get("date") != today:
+            data[key] = {"date": today, "count": 0}
+            _save_free_usage(data)
+            return True, FREE_DAILY_LIMIT
 
-    used = entry.get("count", 0)
-    remaining = FREE_DAILY_LIMIT - used
-    return remaining > 0, remaining
+        used = entry.get("count", 0)
+        remaining = FREE_DAILY_LIMIT - used
+        return remaining > 0, remaining
 
 
 def consume_free_quota(client_id: str) -> int:
     """消耗一次免费额度。返回剩余次数"""
-    today = time.strftime("%Y-%m-%d")
-    data = _load_free_usage()
-    key = _hash_ip(client_id)
+    with _RUNTIME_DATA_LOCK:
+        today = time.strftime("%Y-%m-%d")
+        data = _load_free_usage()
+        key = _hash_ip(client_id)
 
-    entry = data.get(key)
-    if not entry or entry.get("date") != today:
-        data[key] = {"date": today, "count": 1}
+        entry = data.get(key)
+        if not entry or entry.get("date") != today:
+            data[key] = {"date": today, "count": 1}
+            _save_free_usage(data)
+            return FREE_DAILY_LIMIT - 1
+
+        entry["count"] = entry.get("count", 0) + 1
+        data[key] = entry
         _save_free_usage(data)
-        return FREE_DAILY_LIMIT - 1
-
-    entry["count"] = entry.get("count", 0) + 1
-    data[key] = entry
-    _save_free_usage(data)
-    return FREE_DAILY_LIMIT - entry["count"]
+        return FREE_DAILY_LIMIT - entry["count"]

@@ -3,6 +3,7 @@
 import importlib
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -174,6 +175,33 @@ def test_public_mode_ignores_persisted_demo_codes(monkeypatch, tmp_path):
     monkeypatch.setattr(chat_module, "_ACTIVATION_FILE", codes_file)
 
     assert chat_module._load_codes() == {"PAID001": {"剩余": 5}}
+
+
+def test_runtime_json_state_handles_concurrent_quota_consumption(monkeypatch, tmp_path):
+    import bazi_engine.chat as chat_module
+
+    codes_file = tmp_path / "activation_codes.json"
+    usage_file = tmp_path / "free_usage.json"
+    codes_file.write_text(
+        json.dumps({"PAID001": {"剩余": 5, "备注": "test"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ACTIVATION_CODES", raising=False)
+    monkeypatch.setattr(chat_module, "_ACTIVATION_FILE", codes_file)
+    monkeypatch.setattr(chat_module, "_FREE_USAGE_FILE", usage_file)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        code_results = list(executor.map(lambda _: chat_module.consume_code("PAID001"), range(8)))
+        quota_results = list(executor.map(lambda _: chat_module.consume_free_quota("203.0.113.10"), range(8)))
+
+    persisted_codes = json.loads(codes_file.read_text(encoding="utf-8"))
+    persisted_usage = json.loads(usage_file.read_text(encoding="utf-8"))
+    usage_key = chat_module._hash_ip("203.0.113.10")
+
+    assert sum(result[0] for result in code_results) == 5
+    assert persisted_codes["PAID001"]["剩余"] == 0
+    assert persisted_usage[usage_key]["count"] == 8
+    assert sorted(quota_results) == list(range(-5, 3))
 
 
 def test_fusion_stream_sends_cleaned_full_report(monkeypatch):
