@@ -1164,6 +1164,8 @@ def admin_fusion_feedback(
         if len(records) >= 1000:
             break
 
+    synthetic_excluded_count = sum(1 for record in records if record.get("synthetic"))
+    records = [record for record in records if not record.get("synthetic")]
     rating_distribution: dict[str, int] = {}
     section_distribution: dict[str, int] = {}
     prompt_versions: dict[str, int] = {}
@@ -1193,6 +1195,7 @@ def admin_fusion_feedback(
     ]
     return {
         "total_records": total,
+        "synthetic_excluded_count": synthetic_excluded_count,
         "rating_distribution": rating_distribution,
         "section_distribution": section_distribution,
         "prompt_versions": prompt_versions,
@@ -1229,6 +1232,8 @@ def admin_fusion_generations(
         if len(records) >= 1000:
             break
 
+    synthetic_excluded_count = sum(1 for record in records if record.get("synthetic"))
+    records = [record for record in records if not record.get("synthetic")]
     outcome_distribution: dict[str, int] = {}
     error_distribution: dict[str, int] = {}
     prompt_versions: dict[str, int] = {}
@@ -1258,6 +1263,7 @@ def admin_fusion_generations(
     success_count = outcome_distribution.get("success", 0)
     return {
         "total_records": total,
+        "synthetic_excluded_count": synthetic_excluded_count,
         "success_count": success_count,
         "success_rate": f"{success_count / total * 100:.1f}%" if total else "0%",
         "average_duration_ms": round(duration_total / total) if total else 0,

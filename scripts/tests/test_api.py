@@ -364,17 +364,31 @@ def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_pat
     monkeypatch.setattr(api_module, "_ADMIN_KEY", "admin-test")
     feedback_file = tmp_path / f"fusion_feedback_{date.today().isoformat()}.jsonl"
     feedback_file.write_text(
-        json.dumps({
-            "timestamp": "2026-07-16T12:00:00",
-            "rating": "partial",
-            "inaccurate_section": "analysis",
-            "report_hash": "secret-hash",
-            "report_length": 800,
-            "prompt_version": "test-v1",
-            "model": "deepseek-chat",
-            "temperature": 0.3,
-            "repaired": True,
-        }, ensure_ascii=False) + "\n",
+        "\n".join([
+            json.dumps({
+                "timestamp": "2026-07-16T12:00:00",
+                "rating": "partial",
+                "inaccurate_section": "analysis",
+                "report_hash": "secret-hash",
+                "report_length": 800,
+                "prompt_version": "test-v1",
+                "model": "deepseek-chat",
+                "temperature": 0.3,
+                "repaired": True,
+            }, ensure_ascii=False),
+            json.dumps({
+                "timestamp": "2026-07-16T12:01:00",
+                "rating": "low",
+                "inaccurate_section": "core",
+                "report_hash": "synthetic-hash",
+                "report_length": 700,
+                "prompt_version": "test-v1",
+                "model": "deepseek-chat",
+                "temperature": 0.3,
+                "repaired": False,
+                "synthetic": True,
+            }, ensure_ascii=False),
+        ]) + "\n",
         encoding="utf-8",
     )
 
@@ -388,6 +402,7 @@ def test_admin_fusion_feedback_returns_privacy_safe_summary(monkeypatch, tmp_pat
     assert response.status_code == 200
     data = response.json()
     assert data["total_records"] == 1
+    assert data["synthetic_excluded_count"] == 1
     assert data["rating_distribution"] == {"partial": 1}
     assert data["section_distribution"] == {"analysis": 1}
     assert data["prompt_versions"] == {"test-v1": 1}
@@ -429,6 +444,18 @@ def test_admin_fusion_generations_requires_auth_and_returns_summary(monkeypatch,
                 "repaired": False,
                 "error_class": "timeout",
             }, ensure_ascii=False),
+            json.dumps({
+                "timestamp": "2026-07-16T12:02:00",
+                "generation_id": "c" * 32,
+                "generation_type": "fusion",
+                "outcome": "success",
+                "duration_ms": 900,
+                "prompt_version": "test-v1",
+                "model": "deepseek-chat",
+                "temperature": 0.3,
+                "repaired": False,
+                "synthetic": True,
+            }, ensure_ascii=False),
         ]) + "\n",
         encoding="utf-8",
     )
@@ -445,6 +472,7 @@ def test_admin_fusion_generations_requires_auth_and_returns_summary(monkeypatch,
     assert response.status_code == 200
     data = response.json()
     assert data["total_records"] == 2
+    assert data["synthetic_excluded_count"] == 1
     assert data["success_count"] == 1
     assert data["success_rate"] == "50.0%"
     assert data["average_duration_ms"] == 500
