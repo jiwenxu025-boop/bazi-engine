@@ -55,7 +55,7 @@ def test_practical_response_keeps_evidence_view_and_withholds_unreviewed_persona
             "profile": "未经验证",
             "traits": {"内心": "未经验证"},
             "stress_profile": {"warning": "深度焦虑"},
-            "special_combos": ["克夫倾向"],
+            "special_combos": ["未复核组合"],
             "sub_traits": [{"description": "未经验证"}],
             "combo_traits": [{"description": "未经验证"}],
             "dizhi_traits": [{"description": "敏感多思"}],
@@ -126,6 +126,32 @@ def test_public_chart_endpoint_forces_practical_copy_without_mutating_chart(monk
     assert "strength_label" not in public_personality
     assert chart.personality_result["profile"] == "未经复核的人格断言"
     assert chart.personality_result["weighted_shishen"]["scores"]["偏印"] == 8.0
+
+
+def test_batch_endpoint_strips_unreviewed_personality_internals(monkeypatch):
+    import bazi_engine.api as api_module
+
+    class FakeChart:
+        def to_dict(self):
+            return {
+                "personality": {
+                    "evidence_view": {"status": {"strength": "偏强"}},
+                    "stress_profile": {"warning": "未经复核"},
+                    "special_combos": ["未经复核"],
+                },
+            }
+
+    monkeypatch.setattr(api_module, "_IS_PUBLIC", False)
+    monkeypatch.setattr(api_module, "build_chart", lambda **_kwargs: FakeChart())
+
+    result = api_module.batch_api([{
+        "name": "test", "gender": "男", "year": 2000, "month": 1, "day": 1,
+    }])
+
+    personality = result["results"][0]["data"]["personality"]
+    assert personality["evidence_view"]["status"]["strength"] == "偏强"
+    assert "stress_profile" not in personality
+    assert "special_combos" not in personality
 
 
 def test_api_module_imports_app():

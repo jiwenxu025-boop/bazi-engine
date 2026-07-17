@@ -59,6 +59,15 @@ def compute_start_age(birth_dt: datetime, direction: str,
     return age, remainder, warnings
 
 
+def compute_start_age_exact(birth_dt: datetime, direction: str) -> tuple[float, list[str]]:
+    """返回起运精确年龄（年），用于大运边界而非仅供展示。"""
+    if direction == "顺排":
+        days_float, warnings = distance_to_next_jie(birth_dt)
+    else:
+        days_float, warnings = distance_to_prev_jie(birth_dt)
+    return max(0.0, days_float / 3.0), list(warnings)
+
+
 def compute_jiaoyun_detail(birth_dt: datetime, direction: str) -> tuple[dict, list[str]]:
     """Return detailed jiaoyun conversion from jieqi distance."""
     if direction == "顺排":
@@ -68,12 +77,10 @@ def compute_jiaoyun_detail(birth_dt: datetime, direction: str) -> tuple[dict, li
         days_float, warnings = distance_to_prev_jie(birth_dt)
         reference = "上一节"
 
-    total_hours = max(0, round(days_float * 24))
-    total_days = total_hours // 24
-    hours = total_hours % 24
-    years = total_days // 3
-    remainder_days = total_days % 3
-    months = remainder_days * 4
+    # 传统折算为三天一岁、一天四个月。将小时折入月数，避免展示和
+    # 实际扫描都把交运时刻压成整岁。
+    total_months = max(0, round(days_float * 4))
+    years, months = divmod(total_months, 12)
 
     return {
         "reference": reference,
@@ -81,7 +88,8 @@ def compute_jiaoyun_detail(birth_dt: datetime, direction: str) -> tuple[dict, li
         "years": years,
         "months": months,
         "days": 0,
-        "hours": hours,
+        "hours": 0,
+        "start_age_exact": total_months / 12,
         "formula": "三天折一岁，余一天折四个月",
     }, list(warnings)
 
@@ -98,7 +106,7 @@ def format_luck_periods(start_age: int, luck_pillars: list[tuple[Tiangan, Dizhi]
             "天干": tg,
             "地支": dz,
             "序": i + 1,
-            "weight_note": "大运重地支（60%），天干辅象（40%）。地支定十年吉凶本质，天干主前五年表象。",
+            "weight_note": "大运干支关系由引擎综合展示；不把固定百分比或前后五年划分表述为古籍定论。",
         })
     return periods
 
@@ -126,18 +134,13 @@ def format_xiaoyun_periods(xiaoyun_pillars: list[tuple[Tiangan, Dizhi]]) -> list
 def describe_dayun_weight(dayun_stem: Tiangan, dayun_branch: Dizhi) -> str:
     """返回大运权重说明文本。
 
-    规则: 《三命通会》「凡行运在干，兼用地支之神；在支，则弃天干之物。
-    盖大运重地支，故有行南方、东方、西方、北方之辨。」
-
-    大运地支为体（60%），决定十年吉凶本质；
-    大运天干为用（40%），体现前五年的具体表现。
+    固定权重是项目工程启发式，不是古籍量化结论。
     """
     branch_wx = dayun_branch.wuxing.value
     stem_wx = dayun_stem.wuxing.value
     return (
-        f"大运重地支——{dayun_branch.value}({branch_wx})为体，定十年吉凶本质（约60%）；"
-        f"天干{dayun_stem.value}({stem_wx})为用，主前五年表象（约40%）。"
-        f"地支助喜用则十年根基好，地支助忌神则十年根基差。"
+        f"工程提示：大运地支{dayun_branch.value}({branch_wx})与天干{dayun_stem.value}({stem_wx})"
+        "共同参与分析；不使用固定百分比或前后五年断语。"
     )
 
 
@@ -183,6 +186,7 @@ class DayunModulation:
             "theme": self.theme,
             "theme_weight": self.theme_weight,
             "modulation_note": self.modulation_note,
+            "rule_source": "工程启发式",
         }
 
 
@@ -248,7 +252,7 @@ class DayunModulator:
         stem_fav = self._check_stem_favorability(tg)
         branch_fav = self._check_branch_favorability(dz)
 
-        # 3. 基线偏移: 地支60% + 天干40%
+        # 3. 基线偏移：工程启发式，不能视为古籍量化规则。
         branch_score = 1 if branch_fav is True else (-1 if branch_fav is False else 0)
         stem_score = 1 if stem_fav is True else (-1 if stem_fav is False else 0)
         weighted = branch_score * 0.6 + stem_score * 0.4
@@ -311,7 +315,7 @@ class DayunModulator:
             pair = (dayun_stem, natal_stem)
             if pair in TIANGAN_WUHE:
                 hua_wx = TIANGAN_WUHE[pair]
-                inters.append(f"与原局{natal_stem.value}合化{hua_wx.value}")
+                inters.append(f"与原局{natal_stem.value}五合{hua_wx.value}候选")
         return inters
 
     def _check_branch_interactions(self, dayun_branch) -> list[str]:

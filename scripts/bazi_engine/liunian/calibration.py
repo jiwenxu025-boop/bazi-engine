@@ -70,18 +70,13 @@ SHISHEN_YEAR_SOURCES = {
 
 def apply_shishen_year_notes(events: list[EventSignal],
                               shishen_name: str | None) -> None:
-    """为所有事件追加流年十神权威出处"""
-    if not shishen_name:
-        return
-    # "七杀" → "偏官" 别名（Shishen 枚举统一用"偏官"）
-    lookup_name = "偏官" if shishen_name == "七杀" else shishen_name
-    info = SHISHEN_YEAR_SOURCES.get(lookup_name)
-    if not info:
-        return
-    label, source = info
-    note_text = f"[{label}] {source}"
-    for e in events:
-        e.notes.append(note_text)
+    """停用未逐句核验的十神引文自动注入。
+
+    ``SHISHEN_YEAR_SOURCES`` 作为待审历史资料保留，不能把其中的项目释义或
+    未核对版本的引文附加到用户事件输出。待完成版本、篇章与原文核验后，才可按
+    ``古籍摘要`` 的来源等级重新启用。
+    """
+    del events, shishen_name
 
 def apply_personality_notes(events: list[EventSignal],
                             ctx: dict) -> None:

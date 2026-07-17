@@ -66,17 +66,10 @@ def detect_zhuangtai_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         notes.append("自身状态低迷/需休养")
 
     # 日柱伏吟（流年与日柱相同→个人重大节点）
-    if ln_branch == day_branch:
-        strength = max(strength, 2)
+    if ln_stem == day_master and ln_branch == day_branch:
+        strength = max(strength, 3)
         triggers.append("流年伏吟日柱")
         notes.append("日柱伏吟→个人状态转折点/情绪波动 (textbook)")
-
-    # 枭神夺食（偏印年+日主食神受制）
-    if ln_shishen == Shishen.偏印 and fav is False:
-        # 简化: 偏印年本身就压抑
-        strength = max(strength, 2)
-        triggers.append("枭神夺食→思维受限")
-        notes.append("偏印为忌→思虑过度/钻牛角尖/情绪压抑")
 
     if triggers:
         # 方向判断

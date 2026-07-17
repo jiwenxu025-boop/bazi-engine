@@ -1,5 +1,7 @@
 """四柱计算: 年柱 月柱 日柱 时柱"""
 
+from datetime import datetime, timedelta
+
 from ._constants import (
     MONTH_TO_DIZHI_APPROX,
     WUHU_DUNYUAN,
@@ -11,6 +13,7 @@ from .enums import Dizhi, Tiangan, dizhi_by_index, tiangan_by_index
 WARNING_DAY_PILLAR = ""  # JDN 公式精确，不再需要此警告
 WARNING_YEAR_BOUNDARY = "出生日期在立春前，年柱已自动使用上一年"
 WARNING_MONTH_BOUNDARY = ""  # 精确节气已消除月柱边界歧义
+WARNING_NIGHT_ZI = "夜子时按次日日柱计算；月柱和年柱仍按实际出生时刻判定"
 
 
 def compute_year_pillar(gregorian_year: int, gregorian_month: int, gregorian_day: int,
@@ -47,24 +50,30 @@ def compute_month_pillar(year_stem: Tiangan, gregorian_month: int, gregorian_day
 
     用精确节气区间确定月支，五虎遁确定月干。
     """
-    from datetime import datetime
     warnings: list[str] = []
 
-    # 尝试精确节气区间
-    if gregorian_year is not None:
-        try:
-            birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour)
-            month_dz = _month_branch_from_jieqi(birth_dt, gregorian_year)
-        except Exception:
-            month_dz = MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
-    else:
-        month_dz = MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
+    month_dz = month_branch_for_datetime(
+        gregorian_year, gregorian_month, gregorian_day, birth_hour,
+    )
 
     yin_stem = WUHU_DUNYUAN[year_stem]
-    offset = (month_dz.index - Dizhi.寅.index) % 10
+    # 五虎遁以寅月为起点，月支在十二支中的实际月序不能先模十。
+    offset = (month_dz.index - Dizhi.寅.index) % 12
     month_tg = tiangan_by_index((yin_stem.index + offset) % 10)
 
     return month_tg, month_dz, warnings
+
+
+def month_branch_for_datetime(gregorian_year: int | None, gregorian_month: int,
+                              gregorian_day: int, birth_hour: int = 12) -> Dizhi:
+    """按节气返回月支；没有年份时才回退到近似月表。"""
+    if gregorian_year is None:
+        return MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
+    try:
+        birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour)
+        return _month_branch_from_jieqi(birth_dt, gregorian_year)
+    except Exception:
+        return MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
 
 
 def _month_branch_from_jieqi(birth_dt, gregorian_year: int) -> Dizhi:
@@ -76,6 +85,11 @@ def _month_branch_from_jieqi(birth_dt, gregorian_year: int) -> Dizhi:
         Dizhi.申, Dizhi.酉, Dizhi.戌, Dizhi.亥, Dizhi.子, Dizhi.丑,
     ]
 
+    # 小寒属于上一年的第十二个“节”。小寒前仍是子月，小寒起才进入丑月。
+    previous_xiaohan = get_jie_datetime(gregorian_year - 1, 11)
+    if birth_dt < previous_xiaohan:
+        return Dizhi.子
+
     for i in range(12):
         jie_dt = get_jie_datetime(gregorian_year, i)
         if birth_dt < jie_dt:
@@ -83,7 +97,7 @@ def _month_branch_from_jieqi(birth_dt, gregorian_year: int) -> Dizhi:
             prev = (i - 1) % 12
             return month_branches[prev]
 
-    # 出生在12月小寒之后 → 属于丑月
+    # 理论上会在次年立春前的循环分支返回；此处仅作防御性回退。
     return Dizhi.丑
 
 
@@ -134,16 +148,22 @@ def build_four_pillars(
     all_warnings.extend(y_w)
 
     # 月柱
-    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour)
+    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour, gregorian_year=year)
     all_warnings.extend(m_w)
 
     # 日柱
+    civil_birth = datetime(year, month, day, hour)
+    day_pillar_date = civil_birth + timedelta(days=1) if hour >= 23 else civil_birth
+    if hour >= 23:
+        all_warnings.append(WARNING_NIGHT_ZI)
     if day_pillar_override:
         d_tg = Tiangan(day_pillar_override[0])
         d_dz = Dizhi(day_pillar_override[1])
         d_w = []
     else:
-        d_tg, d_dz, d_w = compute_day_pillar(year, month, day)
+        d_tg, d_dz, d_w = compute_day_pillar(
+            day_pillar_date.year, day_pillar_date.month, day_pillar_date.day,
+        )
     all_warnings.extend(d_w)
 
     # 时柱

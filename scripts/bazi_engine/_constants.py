@@ -457,7 +457,7 @@ def get_nayin(stem: Tiangan, branch: Dizhi) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 ZAISHA: dict[Dizhi, Dizhi] = {
-    Dizhi.子: Dizhi.午, Dizhi.丑: Dizhi.酉, Dizhi.寅: Dizhi.子, Dizhi.卯: Dizhi.酉,
+    Dizhi.子: Dizhi.午, Dizhi.丑: Dizhi.卯, Dizhi.寅: Dizhi.子, Dizhi.卯: Dizhi.酉,
     Dizhi.辰: Dizhi.午, Dizhi.巳: Dizhi.卯, Dizhi.午: Dizhi.子, Dizhi.未: Dizhi.酉,
     Dizhi.申: Dizhi.午, Dizhi.酉: Dizhi.卯, Dizhi.戌: Dizhi.子, Dizhi.亥: Dizhi.酉,
 }

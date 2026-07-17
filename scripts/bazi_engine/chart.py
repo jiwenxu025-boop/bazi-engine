@@ -88,6 +88,7 @@ class BaziChart:
     luck_pillars: list[tuple[Tiangan, Dizhi]] = field(default_factory=list)
     luck_periods: list[dict] = field(default_factory=list)
     start_age: int = 0
+    start_age_exact: float = 0.0
     dayun_direction_str: str = ""
     jiaoyun_detail: dict = field(default_factory=dict)
     xiaoyun_pillars: list[tuple[Tiangan, Dizhi]] = field(default_factory=list)
@@ -179,6 +180,7 @@ class BaziChart:
             "dayun": {
                 "direction": self.dayun_direction_str,
                 "start_age": self.start_age,
+                "start_age_exact": self.start_age_exact,
                 "jiao_yun": self.jiaoyun_detail,
                 "periods": [
                     {"stem": tg.value, "branch": dz.value, "age": lp["年龄"], "order": i + 1}
@@ -478,7 +480,9 @@ def _compute_tiaohou_health_stage(
         from .tiaohou import get_tiaohou_health_profile, get_wuxing_balance_health
         tiaohou_health = get_tiaohou_health_profile(chart.tiaohou_result)
         all_branches_list = list(all_branches) if not isinstance(all_branches, list) else all_branches
-        wuxing_risks = get_wuxing_balance_health(all_branches_list, chart.day_master)
+        wuxing_risks = get_wuxing_balance_health(
+            all_branches_list, chart.day_master, all_stems=all_stems,
+        )
         chart.health_profile = {
             "tiaohou_label": tiaohou_health["label"],
             "tiaohou_risks": tiaohou_health["risks"],
@@ -543,6 +547,7 @@ def _compute_dayun_stage(chart: BaziChart, gender: str) -> int:
     chart.warnings.extend(age_w)
     jiaoyun, jy_w = compute_jiaoyun_detail(chart.birth_dt, chart.dayun_direction_str)
     chart.jiaoyun_detail = jiaoyun
+    chart.start_age_exact = jiaoyun["start_age_exact"]
     chart.warnings.extend(jy_w)
     chart.start_age = start_age
     chart.luck_periods = format_luck_periods(start_age, chart.luck_pillars)
@@ -679,6 +684,7 @@ def _compute_liunian_stage(
         chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
         on_llm_result=on_llm_result,
         on_llm_token=on_llm_token,
+        start_age_exact=chart.start_age_exact,
     )
 
 

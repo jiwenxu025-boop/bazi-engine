@@ -42,14 +42,12 @@ def detect_banqian_signals(ln_branch: Dizhi,
     # 驒马逢冲（流年驿马与原局/大运相冲）
     if is_yima_yr:
         chong_dz = chong_pair(ln_branch)
-        chong_yuanju = _has_branch_interaction(year_branch, chong_dz, "六冲") or \
-                       _has_branch_interaction(day_branch, chong_dz, "六冲") or \
-                       _has_branch_interaction(month_branch, chong_dz, "六冲")
-        chong_dayun = dayun_branch and _has_branch_interaction(dayun_branch, chong_dz, "六冲")
+        chong_yuanju = chong_dz in (year_branch, day_branch, month_branch, hour_branch)
+        chong_dayun = dayun_branch == chong_dz
         if chong_yuanju or chong_dayun:
             strength = max(strength, 2)
             triggers.append("流年驿马逢冲")
-            notes.append("驿马逢冲→必动 (textbook)")
+            notes.append("驿马受冲可作为出行、环境调整的文化参考，不作必然事件断言。")
 
     # 驿马年
     if is_yima_yr:

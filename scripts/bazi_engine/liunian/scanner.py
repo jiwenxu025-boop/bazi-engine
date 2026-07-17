@@ -150,6 +150,7 @@ class ScanConfig:
     birth_date: date
     start_year: int
     end_year: int
+    start_age_exact: float | None = None
     known_events: dict[int, str] | None = None
     favorable: set[str] | None = None
     personality_ctx: dict | None = None
@@ -189,6 +190,7 @@ def scan_years_from_config(config: ScanConfig) -> list[AnnualScan]:
         chart_data=config.chart_data,
         on_llm_result=config.on_llm_result,
         on_llm_token=config.on_llm_token,
+        start_age_exact=config.start_age_exact,
     )
 
 
@@ -219,6 +221,7 @@ def scan_years(
     chart_data: dict | None = None,
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, llm_events)
     on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
+    start_age_exact: float | None = None,
 ) -> list[AnnualScan]:
     """逐年扫描，返回每年所有事件信号
 
@@ -254,23 +257,38 @@ def scan_years(
     for year in range(start_year, end_year + 1):
         ln_tg, ln_dz = compute_liunian_pillar(year)
 
-        # 确定当前大运
+        # 确定当前大运。年度扫描不能把交运前或交运中的整年强行套入第一步大运。
         age = year - birth_date.year
-        dayun_idx = (age - start_age) // 10
-        dayun_idx = max(0, min(dayun_idx, len(luck_pillars) - 1))
-        dn_tg, dn_dz = luck_pillars[dayun_idx] if luck_pillars else (None, None)
+        effective_start_age = float(start_age if start_age_exact is None else start_age_exact)
+        year_start_age = (date(year, 1, 1) - birth_date).days / 365.2425
+        year_end_age = (date(year, 12, 31) - birth_date).days / 365.2425
+        dayun_idx: int | None = None
+        if not luck_pillars or year_end_age < effective_start_age:
+            dn_tg, dn_dz = None, None
+            dn_weight_note = "未交大运（童限/小运另列），不强行套用第一步大运"
+        elif year_start_age < effective_start_age <= year_end_age:
+            dn_tg, dn_dz = None, None
+            dn_weight_note = "本年交运，大运前后分段；年度扫描不单列大运干支"
+        else:
+            start_idx = int((year_start_age - effective_start_age) // 10)
+            end_idx = int((year_end_age - effective_start_age) // 10)
+            if start_idx != end_idx:
+                dn_tg, dn_dz = None, None
+                dn_weight_note = "本年换运，大运前后分段；年度扫描不单列大运干支"
+            else:
+                dayun_idx = max(0, min(start_idx, len(luck_pillars) - 1))
+                dn_tg, dn_dz = luck_pillars[dayun_idx]
 
         # 流年干支分论: 权重分配
         sb_rel, sb_sw, sb_bw = classify_sb_relation(ln_tg, ln_dz)
 
-        # 大运重地支/流年重天干: 权重说明
+        # 大运与流年关系的工程说明，不使用古籍化的固定百分比。
         if dn_dz:
-            dn_wx = dn_dz.wuxing.value
             dn_weight_note = (
-                f"大运重地支（60%），{dn_dz.value}为{dn_wx}，定十年基调；"
-                f"流年{ln_tg.value}为主象，当年主题看天干"
+                f"工程提示：大运{dn_tg.value}{dn_dz.value}与流年{ln_tg.value}{ln_dz.value}共同参照；"
+                "不使用固定百分比断语"
             )
-        else:
+        elif not dn_weight_note:
             dn_weight_note = "大运未定，流年干支并重"
 
         # 已知事件状态：前一年是否恋爱中（校准数据按年存储的是"该年状态"）
@@ -297,6 +315,7 @@ def scan_years(
         ))
         events.extend(detect_caiyun_signals(
             ln_tg, ln_dz, day_master, year_branch, day_branch, favorable,
+            (year_branch, month_branch, day_branch, hour_branch),
         ))
         events.extend(detect_jiankang_signals(
             ln_tg, ln_dz, day_branch, day_master, year_branch, dn_tg, dn_dz, favorable,
@@ -417,20 +436,11 @@ def scan_years(
 
         # ── 大运调制（v0.8.0: 方向二—基线偏移 + 主题加权）──
         current_dayun_mod = None
-        if dayun_modulations:
-            for mod in dayun_modulations:
-                age_range = mod.get("age_range", "")
-                if age_range:
-                    parts = age_range.replace("岁", "").split("-")
-                    if len(parts) == 2:
-                        try:
-                            rng_start = int(parts[0])
-                            rng_end = int(parts[1])
-                            if rng_start <= age <= rng_end:
-                                current_dayun_mod = mod
-                                break
-                        except ValueError:
-                            pass
+        if dayun_modulations and dayun_idx is not None:
+            current_dayun_mod = next(
+                (mod for mod in dayun_modulations if mod.get("period_index") == dayun_idx),
+                None,
+            )
 
         if current_dayun_mod:
             baseline = current_dayun_mod.get("baseline_offset", 0)

@@ -42,9 +42,19 @@ def test_section_partition():
 
 def test_chunk_contains_late_keywords():
     _reload()
-    ref_chunks = [c for c in rag._chunks if c["kind"] == "reference"]
+    ref_chunks = [c for c in rag._chunks if c["kind"] in {"reference", "engine_heuristic"}]
     texts = " ".join(c["text"] for c in ref_chunks)
     assert "天克地冲" in texts
+
+
+def test_personality_reference_excludes_harm_to_relatives_claims():
+    _reload()
+    texts = " ".join(
+        chunk["text"] for chunk in rag._chunks
+        if chunk["source"] == "personality-rules.md"
+    )
+    assert "克父" not in texts
+    assert "克妻" not in texts
 
 
 def test_retrieve_suiyun_jiaozhan():
@@ -93,12 +103,12 @@ def test_personality_prompt_keeps_ungraded_rag_opt_in(monkeypatch):
     prompt = build_fusion_user_prompt(dp)
     assert "【结构化数据】" in prompt, "应包含数据区"
     assert "【输出要求】" in prompt, "应包含结尾输出约束"
-    assert "参考规则/校准" not in prompt
+    assert "参考材料（已分级" not in prompt
 
     monkeypatch.setenv("BAZI_PERSONALITY_RAG", "1")
     prompt_with_rag = build_fusion_user_prompt(dp)
-    assert "参考规则/校准" in prompt_with_rag
-    assert prompt_with_rag.find("【结构化数据】") < prompt_with_rag.find("参考规则/校准")
+    assert "参考材料（已分级" in prompt_with_rag
+    assert prompt_with_rag.find("【结构化数据】") < prompt_with_rag.find("参考材料（已分级")
     assert prompt_with_rag.find("参考规则/校准") < prompt_with_rag.find("【输出要求】")
 
 

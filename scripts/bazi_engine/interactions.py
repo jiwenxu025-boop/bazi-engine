@@ -1,7 +1,4 @@
-"""合冲刑害检测
-
-v0.8.0: +墓库相冲核爆检测（辰戌/丑未冲 → 土气激增 + 杂气损毁）
-"""
+"""合冲刑害检测。"""
 
 from dataclasses import dataclass, field
 
@@ -50,7 +47,8 @@ def find_tiangan_wuhe(stems_and_labels: list[tuple[Tiangan, str]]) -> list[Inter
                     inter_type="天干五合",
                     participants=(key[0], key[1]),
                     pillar_labels=(stems_and_labels[i][1], stems_and_labels[j][1]),
-                    result=f"化{TIANGAN_WUHE[key].value}",
+                    result=f"合{TIANGAN_WUHE[key].value}候选",
+                    notes=["是否化气须另验月令、通根、透干与破合条件。"],
                 ))
     return results
 
@@ -67,7 +65,8 @@ def find_dizhi_liuhe(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Inter
                     inter_type="地支六合",
                     participants=(key[0], key[1]),
                     pillar_labels=(branches_and_labels[i][1], branches_and_labels[j][1]),
-                    result=f"化{DIZHI_LIUHE[key].value}",
+                    result=f"合{DIZHI_LIUHE[key].value}候选",
+                    notes=["六合成立不等于化局，是否化气须结合全局判断。"],
                 ))
     return results
 
@@ -80,14 +79,15 @@ def find_dizhi_sanhe(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Inter
     labels_by_b = {b: lb for b, lb in branches_and_labels}
 
     for trio_set, wx in DIZHI_SANHE.items():
-        trio = list(trio_set)
+        trio = sorted(trio_set, key=lambda branch: branch.index)
         match_count = sum(1 for b in trio if b in b_set)
         if match_count == 3:
             results.append(Interaction(
                 inter_type="三合",
                 participants=tuple(trio),
                 pillar_labels=tuple(labels_by_b[b] for b in trio if b in labels_by_b),
-                result=f"合{getattr(wx, 'value', str(wx))}",
+                result=f"三合{getattr(wx, 'value', str(wx))}局候选",
+                notes=["三支齐全仅表示组合成立，是否化局须结合月令及冲破。"],
             ))
         elif match_count == 2:
             # 检查是否为半合（前后半合）
@@ -98,8 +98,8 @@ def find_dizhi_sanhe(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Inter
                     inter_type="半合",
                     participants=tuple(matched),
                     pillar_labels=tuple(labels_by_b[b] for b in matched),
-                    result=f"合{getattr(wx, 'value', str(wx))}",
-                    notes=["半合力量减半"],
+                    result=f"半合{getattr(wx, 'value', str(wx))}候选",
+                    notes=["半合不等于化局，且须结合月令及冲破。"],
                 ))
     return results
 
@@ -111,15 +111,15 @@ def find_dizhi_sanhui(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Inte
     labels_by_b = {b: lb for b, lb in branches_and_labels}
 
     for trio_set, wx in DIZHI_SANHUI.items():
-        trio = list(trio_set)
+        trio = sorted(trio_set, key=lambda branch: branch.index)
         match_count = sum(1 for b in trio if b in b_set)
         if match_count == 3:
             results.append(Interaction(
                 inter_type="三会",
                 participants=tuple(trio),
                 pillar_labels=tuple(labels_by_b[b] for b in trio),
-                result=f"会{getattr(wx, 'value', str(wx))}",
-                notes=["三会局力量大于三合局"],
+                result=f"三会{getattr(wx, 'value', str(wx))}方候选",
+                notes=["三会关系不自动改变五行权重，须结合月令及冲破。"],
             ))
     return results
 
@@ -204,37 +204,19 @@ def find_all_dizhi_interactions(branches_and_labels: list[tuple[Dizhi, str]]) ->
 
 
 # ═══════════════════════════════════════════════════════════════
-# 墓库相冲「核爆」检测（v0.8.0）
+# 墓库六冲关系记录
 # ═══════════════════════════════════════════════════════════════
 
-# 墓库冲配对: 辰戌 / 丑未
+# 墓库冲配对: 辰戌 / 丑未。仅记录实际六冲，不作额外强度推断。
 _MUKU_CHONG_PAIRS: dict[frozenset[Dizhi], dict] = {
     frozenset({Dizhi.辰, Dizhi.戌}): {
         "name": "辰戌冲",
-        "tu_boost": 3,     # 土气指数级放大 (3倍)
-        "zaqi_damaged": {  # 杂气损毁明细
-            Dizhi.辰: ["乙木", "癸水"],   # 辰藏乙木+癸水被挤出
-            Dizhi.戌: ["丁火", "辛金"],   # 戌藏丁火+辛金被损毁
-        },
-        "note": "辰为湿土(水库)，戌为燥土(火库)，两库相冲→土气暴增+杂气挤出。越冲越旺。",
+        "note": "辰戌为一组实际六冲；是否涉及墓库作用须结合原局和流年位置判断。",
     },
     frozenset({Dizhi.丑, Dizhi.未}): {
         "name": "丑未冲",
-        "tu_boost": 3,
-        "zaqi_damaged": {
-            Dizhi.丑: ["癸水", "辛金"],   # 丑藏癸水+辛金被挤出
-            Dizhi.未: ["丁火", "乙木"],   # 未藏丁火+乙木被损毁
-        },
-        "note": "丑为寒土(金库)，未为热土(木库)，两库相冲→土气暴增+杂气挤出。越冲越旺。",
+        "note": "丑未为一组实际六冲；是否涉及墓库作用须结合原局和流年位置判断。",
     },
-}
-
-# 土五行对应的健康/财运影响（杂气受伤的后果）
-_ZAQI_DAMAGE_CONSEQUENCES: dict[str, str] = {
-    "乙木": "肝胆/筋骨受损",
-    "癸水": "肾/泌尿系统受损",
-    "丁火": "心血管/眼睛受损",
-    "辛金": "肺/呼吸系统受损",
 }
 
 
@@ -262,11 +244,7 @@ class MukuChongResult:
 
 
 def find_muku_chong(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Interaction]:
-    """检测墓库相冲，标记为六冲的升级版。
-
-    规则: 辰戌冲、丑未冲不是普通冲——土气不散反聚，指数级放大。
-    同时对杂气（藏干中的非土五行）产生挤出/损毁效果。
-    """
+    """检测辰戌、丑未两组墓库六冲，作为关系标签而非强度倍增器。"""
     results: list[Interaction] = []
     n = len(branches_and_labels)
     for i in range(n):
@@ -276,14 +254,11 @@ def find_muku_chong(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Intera
             if pair in _MUKU_CHONG_PAIRS:
                 info = _MUKU_CHONG_PAIRS[pair]
                 results.append(Interaction(
-                    inter_type="墓库相冲",
+                    inter_type="墓库六冲",
                     participants=(bi, bj),
                     pillar_labels=(branches_and_labels[i][1], branches_and_labels[j][1]),
-                    result=f"土气×{info['tu_boost']}+杂气损毁",
-                    notes=[info["note"]] + [
-                        f"{dz.value}藏{'/'.join(zaqi)}被挤出/损毁"
-                        for dz, zaqi in info["zaqi_damaged"].items()
-                    ],
+                    result="墓库关系待验",
+                    notes=[info["note"]],
                 ))
     return results
 
@@ -291,9 +266,10 @@ def find_muku_chong(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Intera
 def analyze_muku_chong(all_branches: list[Dizhi],
                        day_master: Tiangan,
                        caiku_branch: Dizhi | None = None) -> list[MukuChongResult]:
-    """分析墓库相冲的完整影响（健康+财运+体质）。
+    """分析墓库六冲的结构关系。
 
-    用于 liunian.py 和健康模块消费。
+    不以墓库冲直接推断健康、财运或五行倍增；调用方若要作财库解释，
+    必须显式传入原局已存在的财库支。
 
     Args:
         all_branches: 所有需要检查的地支列表（原局+大运+流年）
@@ -313,36 +289,17 @@ def analyze_muku_chong(all_branches: list[Dizhi],
                 continue
 
             info = _MUKU_CHONG_PAIRS[pair]
-            # 收集被损杂气五行
-            damaged_wx: set[str] = set()
-            health_notes: list[str] = []
-            for dz, zaqi_list in info["zaqi_damaged"].items():
-                for zaqi in zaqi_list:
-                    damaged_wx.add(zaqi)
-                    cons = _ZAQI_DAMAGE_CONSEQUENCES.get(zaqi, "")
-                    if cons:
-                        health_notes.append(f"{dz.value}藏{zaqi}被挤出→{cons}")
-
-            # 财运分析：墓库冲是否涉及财库
+            # 仅在调用方已经确认原局财库时，保留中性的财务主题备注。
             wealth_note = ""
             if caiku_branch and caiku_branch in pair:
-                wealth_note = (
-                    f"墓库相冲涉及财库{caiku_branch.value}→"
-                    f"财库被冲开，财运重大变动。"
-                    f"喜土则暴富，忌土则大破。"
-                )
-            elif caiku_branch:
-                wealth_note = (
-                    f"墓库相冲虽不直冲财库，但土气暴增{info['tu_boost']}倍，"
-                    f"全局五行失衡→间接影响财运分布"
-                )
+                wealth_note = f"关系涉及已确认的财库{caiku_branch.value}，可作为财务事项调整的文化参考。"
 
             results.append(MukuChongResult(
                 pair=(bi, bj),
                 name=info["name"],
-                tu_boost=info["tu_boost"],
-                zaqi_damaged=list(damaged_wx),
-                health_note="; ".join(health_notes) if health_notes else "土气暴增，脾胃负担加重",
+                tu_boost=1,
+                zaqi_damaged=[],
+                health_note="墓库六冲仅作结构关系记录，不推断健康。",
                 wealth_note=wealth_note,
                 note=info["note"],
             ))

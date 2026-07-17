@@ -36,12 +36,30 @@ _SOURCE_SECTIONS: dict[str, list[str]] = {
     "classical-texts.md":       ["chat", "liunian_review", "dayun", "personality"],
     "shichen-table.md":         ["chat", "liunian_review", "dayun"],
     "modern-vs-engine.md":      ["dayun", "liunian_review"],
+    "rule-provenance.md":       ["internal_provenance"],
 }
 _DEFAULT_SECTIONS = ["chat", "liunian_review"]
+
+# 来源等级决定注入时的提示语，防止项目解释或案例观察被叙述成古籍原文。
+_SOURCE_KINDS: dict[str, str] = {
+    "classical-texts.md": "classical_summary",
+    "calibration-notes.md": "calibration",
+    "calibration_store.json": "calibration",
+    "dayun-rules.md": "engine_heuristic",
+    "personality-rules.md": "engine_heuristic",
+    "family-background.md": "engine_heuristic",
+    "advanced-techniques.md": "engine_heuristic",
+    "modern-vs-engine.md": "engine_heuristic",
+    "rule-provenance.md": "provenance_policy",
+}
 
 
 def _sections_for_source(source: str) -> list[str]:
     return _SOURCE_SECTIONS.get(source, _DEFAULT_SECTIONS)
+
+
+def _kind_for_source(source: str) -> str:
+    return _SOURCE_KINDS.get(source, "reference")
 
 
 # ── 同义词映射：任一词命中即可展开全组 ──
@@ -163,6 +181,7 @@ def _load_all():
 
 
 def _chunk_markdown_section(source: str, heading: str, body: str, sections: list[str],
+                             kind: str,
                              min_chars: int = 100, max_chars: int = 800):
     paragraphs = re.split(r'\n{2,}', body)
     current_text = ""
@@ -181,7 +200,7 @@ def _chunk_markdown_section(source: str, heading: str, body: str, sections: list
                     if len(sub_text) + len(part) > max_chars and sub_text:
                         _chunks.append({
                             "source": source, "heading": heading,
-                            "text": sub_text.strip(), "kind": "reference",
+                            "text": sub_text.strip(), "kind": kind,
                             "sections": sections,
                         })
                         sub_text = part
@@ -190,13 +209,13 @@ def _chunk_markdown_section(source: str, heading: str, body: str, sections: list
                 if sub_text.strip():
                     _chunks.append({
                         "source": source, "heading": heading,
-                        "text": sub_text.strip(), "kind": "reference",
+                        "text": sub_text.strip(), "kind": kind,
                         "sections": sections,
                     })
             else:
                 _chunks.append({
                     "source": source, "heading": heading,
-                    "text": text, "kind": "reference",
+                    "text": text, "kind": kind,
                     "sections": sections,
                 })
         current_text = ""
@@ -230,6 +249,7 @@ def _load_references():
             continue
         source = fpath.name
         sections = _sections_for_source(source)
+        kind = _kind_for_source(source)
         for sec in re.split(r"\n(?=## )", text):
             sec = sec.strip()
             if not sec:
@@ -239,7 +259,7 @@ def _load_references():
             body = sec[heading_match.end():].strip() if heading_match else sec
             if not body:
                 continue
-            _chunk_markdown_section(source, heading, body, sections)
+            _chunk_markdown_section(source, heading, body, sections, kind)
 
 
 def _load_calibration():
@@ -274,7 +294,7 @@ def _load_calibration():
             "kind": "calibration",
             "categories": list(set(s.get("category", "") for s in case.get("verified_signals", []))),
             "match": all(s.get("match", False) for s in case.get("verified_signals", [])),
-            "priority": 1.2,
+            "priority": 0.4,
             "sections": sections_cal,
         })
 
@@ -524,13 +544,20 @@ def retrieve_for_generation(section: str, chart_or_ctx: dict,
 def format_snippets(snippets: list[dict], max_chars: int = 1800) -> str:
     if not snippets:
         return ""
-    lines = ["## 参考规则/校准"]
+    lines = ["## 参考材料（已分级；不得将项目解释或案例观察表述为古籍原文）"]
     total = 0
     for sn in snippets:
         source = sn.get("source", "?")
         heading = sn.get("heading", "")
         text = sn.get("text", "")
-        entry = f"[{source}] {heading}: {text}"
+        kind_label = {
+            "classical_summary": "古籍摘要，待审校",
+            "engine_heuristic": "工程/现代解释",
+            "calibration": "案例观察，非通用规则",
+            "provenance_policy": "规则来源政策",
+            "reference": "参考资料",
+        }.get(sn.get("kind", "reference"), "参考资料")
+        entry = f"[{source}] [{kind_label}] {heading}: {text}"
         if total + len(entry) > max_chars:
             entry = entry[:max_chars - total - 3] + "..."
             lines.append(entry)

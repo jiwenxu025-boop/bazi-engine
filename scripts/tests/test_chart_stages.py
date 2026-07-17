@@ -207,8 +207,7 @@ def test_compute_nayin_relations_sets_known_case_relations():
 
     _compute_nayin_relations(chart)
 
-    relation_types = [r.relation_type for r in chart.nayin_relations]
-    assert relation_types == ["同类比和", "年纳音克他柱", "年纳音生他柱"]
+    assert chart.nayin_relations == []
 
 
 def test_compute_yongshen_stage_sets_result_and_returns_pillar_lists():
@@ -232,7 +231,7 @@ def test_compute_yongshen_stage_sets_result_and_returns_pillar_lists():
     assert all_stems == [Tiangan.丁, Tiangan.戊, Tiangan.壬, Tiangan.庚]
     assert all_branches == [Dizhi.亥, Dizhi.申, Dizhi.辰, Dizhi.戌]
     assert chart._yongshen_result["strength"] == "强"
-    assert chart._yongshen_result["score"] == 5.5
+    assert chart._yongshen_result["score"] == 5.0
     assert chart._yongshen_result["favorable"] == ["正印"]
     assert chart._yongshen_result["harmful"] == ["偏印", "劫财", "正印", "比肩"]
 
@@ -264,10 +263,10 @@ def test_compute_tiaohou_health_stage_sets_known_case_results():
         "reason": "",
         "priority_note": "原局寒暖燥湿适中，调候无忧。",
     }
-    assert chart.health_profile["tiaohou_label"] == "寒暖适中（基础体质良好）"
+    assert chart.health_profile["tiaohou_label"] == "调候倾向：中和（文化参考）"
     assert chart.health_profile["tiaohou_risks"] == []
-    assert chart.health_profile["tiaohou_advice"] == "无特殊偏颇，保持均衡饮食和适度运动即可"
-    assert [risk["wuxing"] for risk in chart.health_profile["wuxing_risks"]] == ["木", "火"]
+    assert "不构成健康评估" in chart.health_profile["tiaohou_advice"]
+    assert all(risk["type"].startswith("symbolic_") for risk in chart.health_profile["wuxing_risks"])
 
 
 def test_compute_ten_gods_stage_sets_visible_and_hidden_ten_gods():
@@ -370,7 +369,7 @@ def test_compute_void_gods_stage_sets_month_hidden_unrevealed_gods():
         for vg in void_gods
     ] == [
         ("丁", "午", "本气", "偏官", False),
-        ("己", "午", "中气", "偏印", False),
+            ("己", "午", "中气", "偏印", True),
     ]
     assert "月支午藏丁" in void_gods[0]["interpretation"]
     assert "月支午藏己" in void_gods[1]["interpretation"]
@@ -436,7 +435,8 @@ def test_compute_dayun_modulation_stage_sets_known_case_modulations():
     assert first["dayun_stem"] == "丁"
     assert first["dayun_branch"] == "未"
     assert first["age_range"] == "6-15岁"
-    assert first["stem_interactions"] == ["与原局壬合化木"]
+    assert first["stem_interactions"] == ["与原局壬五合木候选"]
+    assert first["rule_source"] == "工程启发式"
     assert first["branch_interactions"] == ["与原局亥半合木"]
     assert first["stem_is_favorable"] is True
     assert first["branch_is_favorable"] is True
@@ -487,8 +487,8 @@ def test_compute_interactions_stage_sets_interactions_and_returns_labels():
             "type": "天干五合",
             "participants": ["丁", "壬"],
             "pillars": ["年柱", "日柱"],
-            "result": "化木",
-            "notes": [],
+            "result": "合木候选",
+            "notes": ["是否化气须另验月令、通根、透干与破合条件。"],
         }
     ]
     dizhi_relations = {
@@ -498,7 +498,7 @@ def test_compute_interactions_stage_sets_interactions_and_returns_labels():
     assert {
         ("六冲", frozenset({"辰", "戌"})),
         ("相害", frozenset({"亥", "申"})),
-        ("墓库相冲", frozenset({"辰", "戌"})),
+        ("墓库六冲", frozenset({"辰", "戌"})),
     }.issubset(dizhi_relations)
     half_relations = {relation for relation in dizhi_relations if relation[0] == "半合"}
     assert half_relations in ({("半合", frozenset({"申", "辰"}))}, set())
@@ -545,15 +545,15 @@ def test_compute_liunian_stage_scans_known_two_year_range(monkeypatch):
     assert [scan.year for scan in chart.annual_scans] == [2023, 2024]
     assert [scan.age for scan in chart.annual_scans] == [16, 17]
     assert [scan.to_dict()["liunian"] for scan in chart.annual_scans] == ["癸卯", "甲辰"]
-    assert [scan.to_dict()["dayun"] for scan in chart.annual_scans] == ["丙午", "丙午"]
+    assert [scan.to_dict()["dayun"] for scan in chart.annual_scans] == [None, "丙午"]
+    assert "换运" in chart.annual_scans[0].dayun_weight_note
     assert [
         (event.category, event.direction, event.strength)
         for event in chart.annual_scans[0].events[:4]
     ] == [
-        ("桃花", "中性", 2),
+        ("桃花", "正面", 2),
         ("财运", "负面", 2),
         ("人际", "负面", 2),
-        ("状态", "负面", 2),
     ]
     second_year_events = {
         (event.category, event.direction, event.strength)
@@ -646,7 +646,7 @@ def test_compute_personality_family_stage_sets_analysis_and_returns_context(monk
 
     assert pd is not None
     assert set(interactions_dict) == {"tiangan_wuhe", "dizhi"}
-    assert chart.personality_result["strength_label"] == "强（5.5分）"
+    assert chart.personality_result["strength_label"] == "强（5.0分）"
     assert chart.personality_result["pattern_validation"]["status"] == "成格"
     assert "忌神面" in chart.personality_result["pattern_influence"]
     assert all(item["relation"] != "多自刑" for item in chart.personality_result["dizhi_traits"])

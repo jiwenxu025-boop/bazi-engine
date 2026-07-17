@@ -23,15 +23,14 @@ from ._constants import (
     DIZHI_XIANGXING,
     FUXING_GUIREN,
     HONGLUAN,
-    KONGWANG,
     STEM_TO_WUXING,
     TIANGAN_WUHE_PAIRS,
     WENCHANG,
     YIMA,
     tianyi_guiren_by_stem,
 )
-from .day_pillar_db import lookup_day_pillar
 from .enums import Dizhi, Tiangan
+from .pillars import compute_day_pillar, month_branch_for_datetime
 
 # ═══════════════════════════════════════════════════════════════
 # 十二建除 — 以月支定建日，推算每日建除
@@ -57,14 +56,14 @@ _DZ_BY_INDEX = {v: k for k, v in _DZ_INDEX.items()}
 
 
 def _day_ganzhi(d: date) -> tuple[Tiangan, Dizhi]:
-    """查表获取任意日期的干支"""
-    tg_str, dz_str = lookup_day_pillar(d.year, d.month, d.day)
-    return Tiangan(tg_str), Dizhi(dz_str)
+    """与四柱排盘共用同一日柱算法，避免两个日期底座漂移。"""
+    tg, dz, _warnings = compute_day_pillar(d.year, d.month, d.day)
+    return tg, dz
 
 
-def _month_dz(month: int) -> Dizhi:
-    """月支：寅=1月...丑=12月"""
-    return _DZ_BY_INDEX[((month - 1) % 12) + 1]
+def _month_dz(d: date) -> Dizhi:
+    """按节气确定月支；不能把公历月份直接等同于月建。"""
+    return month_branch_for_datetime(d.year, d.month, d.day)
 
 
 def _jianchu(day_dz: Dizhi, month_dz: Dizhi) -> str:
@@ -79,9 +78,8 @@ def _xun_index(day_tg: Tiangan, day_dz: Dizhi) -> int:
     """计算旬序号 (0-5)，用于查空亡"""
     tg_idx = list(Tiangan).index(day_tg)
     dz_idx = list(Dizhi).index(day_dz)
-    # 旬序 = floor(tg_idx / 2) but adjusted for 甲子旬=0
-    # 甲子旬: 甲子→0, 甲戌旬: 甲戌→1, ... 甲寅旬: 甲寅→5
-    return ((tg_idx - dz_idx) % 10) // 2
+    # 甲子、甲戌、甲申、甲午、甲辰、甲寅六旬分别为 0..5。
+    return ((tg_idx - dz_idx) % 12) // 2
 
 
 def _check_spirit(day_dz: Dizhi, day_tg: Tiangan, chart_tg_zhi: list[tuple[Tiangan, Dizhi]]) -> list[str]:
@@ -167,7 +165,7 @@ def pick_good_dates(
     for n in range((end_date - start_date).days + 1):
         d = start_date + timedelta(days=n)
         day_tg, day_dz = _day_ganzhi(d)
-        month_dz = _month_dz(d.month)
+        month_dz = _month_dz(d)
 
         score = 0
         good_tags = []
@@ -266,14 +264,6 @@ def pick_good_dates(
                         break
                 if day_master_dz == b or day_dz == b:
                     break
-
-        # 10. 空亡日 — 当日干支所在旬的空亡地支
-        xun = _xun_index(day_tg, day_dz)
-        kong_dz = KONGWANG.get(xun, ())
-        if day_dz in kong_dz:
-            score -= 2
-            bad_tags.append("空亡日")
-            reasons.append(f"当日{day_dz.value}值旬空——诸事虚而不实")
 
         results.append({
             "date": d.isoformat(),

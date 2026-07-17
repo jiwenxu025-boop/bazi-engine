@@ -218,8 +218,10 @@ def detect_nayin_chain(year_nayin: str, month_nayin: str,
 
 def find_all_nayin_relations(year_nayin: str, month_nayin: str,
                               day_nayin: str, hour_nayin: str) -> list[NayinRelation]:
-    """收集器: 检测所有纳音关系"""
-    results: list[NayinRelation] = []
-    results.extend(detect_nayin_pillar_relations(year_nayin, month_nayin, day_nayin, hour_nayin))
-    results.extend(detect_nayin_chain(year_nayin, month_nayin, day_nayin, hour_nayin))
-    return results
+    """停用纳音生克链的人生推断，保留四柱原始纳音供展示。
+
+    旧实现把两柱、三柱和四柱的部分关系同时包装成“完整链”，并从中
+    推出祖业、富贵、破败等结论。该类推断未完成来源与反例审校，故在
+    审校完成前不生成派生关系。
+    """
+    return []

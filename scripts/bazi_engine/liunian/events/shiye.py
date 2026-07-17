@@ -101,10 +101,6 @@ def detect_shiye_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         s.add(-1, "伤官透干→想改变/离职风险", "伤官=变革冲动 (textbook)", fixed=True)
         s.guarantee(2)
 
-    if ln_shishen == Shishen.偏印 and is_shishang:
-        s.add(-2, "枭神夺食→决策失误/事业受阻", fixed=True)
-        s.guarantee(2)
-
     if dayun_branch and _has_branch_interaction(dayun_branch, ln_branch, "六冲"):
         tianke = dayun_stem and ln_stem and _is_ke_wx(ln_stem.wuxing, dayun_stem.wuxing)
         s.add(-2 if tianke else -1, "天克地冲→重大变动" if tianke else "大运流年冲→环境变化", fixed=True)

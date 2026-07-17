@@ -41,18 +41,15 @@ class TestDayPillar:
 
 
 class TestNayinChain:
-    """纳音生克链测试"""
+    """纳音链派生结论已停用，保留原始纳音展示。"""
 
     def test_sheng_chain(self):
         rels = find_all_nayin_relations("海中金", "泉中水", "松柏木", "霹雳火")
-        chains = [r.relation_type for r in rels]
-        assert "顺生链" in chains, "金->水->木->火 should be 顺生链"
+        assert rels == []
 
     def test_sheng_relation(self):
         rels = find_all_nayin_relations("海中金", "炉中火", "大林木", "路旁土")
-        types = [r.relation_type for r in rels]
-        assert "他柱克年纳音" in types, "火克金"
-        assert "年纳音克他柱" in types, "金克木"
+        assert rels == []
 
 
 class GetTenGod:

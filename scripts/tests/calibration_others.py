@@ -1,4 +1,4 @@
-"""人际/状态/搬迁/健康 综合验证集"""
+"""人际/状态/搬迁探索性时点覆盖集 — 不构成具体事件或方向准确率。"""
 import os
 import sys
 
@@ -37,20 +37,6 @@ CASES = {
         {"name": "M6-中年婚变女迁", "gender": "女", "year": 1977, "month": 11, "day": 4, "hour": 12,
          "events": {2007: "搬迁"}, "notes": "2007结婚+搬家"},
     ],
-    "健康": [
-        {"name": "案例A-健康", "gender": "男", "year": 2007, "month": 8, "day": 26, "hour": 20,
-         "events": {2026: "健康"}, "notes": "2026暂无健康问题(校准库中性)"},
-        {"name": "S5-入狱男健康", "gender": "男", "year": 1963, "month": 4, "day": 15, "hour": 20,
-         "events": {2016: "健康"}, "notes": "2016被捕入狱(重大事件)"},
-        {"name": "乳腺癌手术女", "gender": "女", "year": 1952, "month": 8, "day": 2, "hour": 12,
-         "events": {2001: "健康"}, "notes": "1952/08/02午时。2001辛巳乳腺癌手术(羊刃聚会)"},
-        {"name": "高血压中风男", "gender": "男", "year": 1947, "month": 5, "day": 8, "hour": 10,
-         "events": {2002: "健康"}, "notes": "1947润三月十八巳时≈5/8。2002壬午高血压中风(五羊刃)"},
-        {"name": "肺癌手术女", "gender": "女", "year": 1950, "month": 11, "day": 4, "hour": 9,
-         "events": {2006: "健康", 2007: "健康"}, "notes": "1950/11/04巳时。2006丙戌肺癌,2007丁亥手术"},
-        {"name": "躁狂症转抑郁男", "gender": "男", "year": 1975, "month": 12, "day": 16, "hour": 8,
-         "events": {2007: "健康"}, "notes": "1975/12/16辰时。2007躁狂症,2008抑郁症"},
-    ],
 }
 
 if __name__ == "__main__":
@@ -59,6 +45,7 @@ if __name__ == "__main__":
     for module, cases in CASES.items():
         print(f'\n=== {module} ===')
         results = []
+        print("  仅检查类别在该时点是否出现；不校验方向或具体事件。")
         for case in cases:
             try:
                 chart = build_chart(name=case["name"], gender=case["gender"],
@@ -74,14 +61,13 @@ if __name__ == "__main__":
                                 if e["category"] == expected_cat:
                                     found = e
                                     break
-                    hit = "HIT" if found and found["strength"] >= 2 else ("WEAK" if found else "MISS")
+                    hit = "COVER" if found and found["strength"] >= 2 else ("WEAK" if found else "MISS")
                     d = f'{found["direction"]} *{found["strength"]} [{", ".join(found["triggers"][:2])}]' if found else "-"
                     results.append((hit, d))
                     print(f'  {case["name"]:<16} {year} {hit:<5} {d[:70]}')
             except Exception as e:
                 print(f'  {case["name"]:<16} ERR: {e}')
-        hits = sum(1 for r in results if r[0] == "HIT")
+        hits = sum(1 for r in results if r[0] == "COVER")
         weak = sum(1 for r in results if r[0] == "WEAK")
         total = len(results)
-        pct = (hits+weak*0.5)/total*100 if total > 0 else 0
-        print(f'  --- {module}: {hits}H + {weak}W / {total} ≈ {pct:.0f}% ---')
+        print(f'  --- {module}时点覆盖: {hits}C + {weak}W / {total} ---')

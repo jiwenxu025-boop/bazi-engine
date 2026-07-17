@@ -28,7 +28,7 @@ def test_build_fusion_data_package_excludes_unreviewed_sources_and_directives():
             "strength_label": "偏强（7.2分）",
             "pattern_validation": {"status": "成格", "note": "压力喂养安全系统"},
             "bingyao_combos": [{"combo": "印重身滞", "directive": "唯一破局：马上行动"}],
-            "special_combos": ["克夫倾向", "食神制杀"],
+            "special_combos": ["未复核组合", "食神制杀"],
             "sub_traits": [
                 {"trait_name": "杀伐决断", "description": "desc", "shishen": "偏官", "score": 8.0},
                 {"trait_name": "匠心独运", "description": "desc", "source_type": "月支藏干", "score": 2.5},

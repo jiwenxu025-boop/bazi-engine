@@ -1,5 +1,4 @@
-"""财运验证集 — 区分巨富/破财/普通财运
-"""
+"""财运探索性时点覆盖集 — 不构成财富量级或方向准确率。"""
 import os
 import sys
 
@@ -125,7 +124,7 @@ if __name__ == "__main__":
                                     found = e
                                     break
 
-                hit = "HIT" if found and found.get("strength",0) >= 2 else ("WEAK" if found else "MISS")
+                hit = "COVER" if found and found.get("strength",0) >= 2 else ("WEAK" if found else "MISS")
                 det_mag = found.get("magnitude", "") if found else ""
                 detail = f"{found.get('direction','')} ★{found.get('strength','')} [{det_mag}] " if found else "-"
                 if found:
@@ -138,10 +137,11 @@ if __name__ == "__main__":
         except Exception as ex:
             results.append({"case": case["name"], "year": 0, "magnitude": "?", "status": "ERR", "detail": str(ex)})
 
+    print("财运探索性时点覆盖（不校验方向、财富量级或具体事件，不能视为准确率）")
     print(f"{'Case':<18} {'Year':<6} {'Mag':<12} {'Status':<6} {'Detail'}")
     print("-" * 100)
-    total_hit = sum(1 for r in results if r["status"] == "HIT")
+    total_hit = sum(1 for r in results if r["status"] == "COVER")
     total_exp = len(results)
     for r in results:
         print(f"{r['case']:<18} {r['year']:<6} {r['magnitude']:<12} {r['status']:<6} {r['detail'][:60]}")
-    print(f"\n总计: {total_hit}/{total_exp} ({total_hit/total_exp*100:.0f}%)")
+    print(f"\n财运时点覆盖: {total_hit}/{total_exp}")

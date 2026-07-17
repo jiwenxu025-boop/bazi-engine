@@ -2,7 +2,6 @@
 from ..enums import Dizhi, Tiangan, Wuxing
 from .constants import FAMILY_LEVELS
 from .dataclasses import FamilyResult
-from .special_combos import _yangren_branch
 
 
 def _find_parent_star(stars: list[str], pillars_data: list[dict]) -> dict:
@@ -288,12 +287,6 @@ def analyze_family(
         pos_str = "；".join(pos_details) if pos_details else "父亲有一定影响力"
         result.father = f"父星（{father_star}）见于{'、'.join(father_positions)}→ {pos_str}"
 
-    # 年支藏比肩 + 偏财不显 → 父亲财务问题（校准: 徐继文）
-    year_branch_hidden = year_p.get("hidden_ten_gods", [])
-    if "比肩" in year_branch_hidden and not father_found:
-        result.father += ("。年支藏比肩夺财+父星不显→ "
-                          "父亲可能有娱乐应酬过度、赌博或挥霍习惯，对家庭经济有负面消耗")
-
     # 母亲描述（细化）
     if not mother_found:
         result.mother = f"母星（{mother_star}）四柱不显→ 母缘较薄，母亲影响来得晚或较间接"
@@ -372,47 +365,8 @@ def analyze_family(
     if day_chong_year:
         result.inheritance += " 日年相冲→ 成年后离家发展，自力更生。"
 
-    # 正财合日主 → 家庭资源倾斜（校准: 徐继文）
-    for inter in interactions.get("tiangan", []):
-        if inter["type"] == "天干五合" and day_master_stem in inter["participants"]:
-            for p in pillars_data:
-                if p["stem"] in inter["participants"] and p["stem"] != day_master_stem and p.get("ten_god") in ("正财", "偏财"):
-                    result.inheritance += (
-                        f" {p['stem']}{day_master_stem}合，正财合身→"
-                        "家庭资源向命主倾斜，家里愿意在命主身上投入"
-                    )
-                    break
-            break
-
-    # ═══ 双亲寿元提示（来源：《滴天髓·六亲论》）═══
-    # "财气斩丧于时干者，先克父；印气斩丧于时支者，先克母"
-    health_notes = []
-    hour_tg = hour_p.get("ten_god", "")
-    if "财" in str(hour_tg) and father_found:
-        health_notes.append("时干见财—古籍提示宜关注父亲健康")
-    hour_hidden = hour_p.get("hidden_ten_gods", [])
-    if any("印" in h for h in hour_hidden) and mother_found:
-        health_notes.append("时支藏印—古籍提示宜关注母亲健康")
-    # 父母星入墓库
-    for p in pillars_data:
-        for hs in p.get("hidden_ten_gods", []):
-            if hs == father_star and p.get("branch") in ("辰", "戌", "丑", "未"):
-                # 父星在墓库支（辰戌丑未）
-                health_notes.append(f"父星入{p['pillar_type']}墓库—古籍提示宜关注父亲健康")
-            if hs == mother_star and p.get("branch") in ("辰", "戌", "丑", "未"):
-                health_notes.append(f"母星入{p['pillar_type']}墓库—古籍提示宜关注母亲健康")
-    # 财星坐羊刃
-    yr = _yangren_branch(day_master_stem)
-    for p in pillars_data:
-        if p.get("ten_god") == father_star and p.get("branch") == yr:
-            health_notes.append("父星坐羊刃—《渊海子平》：财坐刃，父有损伤")
-            break
-    # 比劫重重克父
-    bijie_total = sum(1 for p in pillars_data if p.get("ten_god") in ("比肩", "劫财"))
-    bijie_total += sum(1 for p in pillars_data for h in p.get("hidden_ten_gods", []) if h in ("比肩", "劫财"))
-    if bijie_total >= 3 and father_found:
-        health_notes.append(f"比劫较多({bijie_total}个)—古籍提示父子关系可能有摩擦，宜多沟通")
-    result.parents_health = "；".join(health_notes) if health_notes else "父母健康无明显古典警示"
+    # 不从命局推断父母健康、寿命或损伤，保留空字段以兼容既有 API。
+    result.parents_health = ""
 
     # ═══ 父母星旺衰（来源：《三命通会》长生十二宫）═══
     # 五行特定长生顺排：从长生位开始，顺数十二宫

@@ -79,33 +79,6 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             triggers.append(f"羊刃聚会({yr_count}重)→血光/手术/中风")
             notes.append("多柱羊刃汇聚→防意外血光/心脑血管 (textbook: 五羊刃聚会中风案)")
 
-    # ── 多柱联动: 墓库相冲核爆（v0.8.0）──
-    # 流年引动原局/大运中辰戌或丑未冲 → 土气激增+杂气损毁
-    # v0.10.1: 仅流年参与的墓库冲才触发年度健康信号（原局墓库冲是体质，非年度事件）
-    # v0.11.1: 去重——同一流年支可能与原局+大运中相同地支形成多对，只计一次
-    from ...interactions import analyze_muku_chong
-    muku_branches = list(all_branches)
-    if dayun_branch:
-        muku_branches.append(dayun_branch)
-    muku_branches.append(ln_branch)
-    muku_results = analyze_muku_chong(muku_branches, day_master)
-    seen_muku_names: set[str] = set()
-    for mr in muku_results:
-        if ln_branch not in mr.pair:
-            continue  # 流年未参与→原局体质特征，非年度健康事件
-        if mr.name in seen_muku_names:
-            continue  # 已处理过的墓库冲类型（如原局戌+流年辰与大运戌+流年辰重复）
-        seen_muku_names.add(mr.name)
-        if mr.zaqi_damaged:
-            strength = max(strength, 2)
-            triggers.append(f"流年引动墓库相冲({mr.name})→杂气损毁")
-            notes.append(mr.health_note)
-            notes.append(f"土气×{mr.tu_boost}倍暴增→脾胃消化系统负担加重")
-        if day_branch in mr.pair or (dayun_branch and dayun_branch in mr.pair):
-            strength = max(strength, 3)
-            triggers.append("墓库冲涉日柱/大运→重灾级")
-            notes.append("墓库冲直击日主根基→防突发重病/手术")
-
     # ═══ ★★★ 级别 ═══
 
     # 岁运并临+日柱受冲（需要第二个凶信号才3★）
@@ -259,35 +232,18 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         elif fav is False:
             notes.append("七杀为忌→注意压力")
 
-    # ── v0.10.0: 五行脏腑交叉引用 ──
-    # 已有健康触发时，附加对应脏腑风险提示
-    if triggers and health_profile:
-        wx_risks = health_profile.get("wuxing_risks", [])
-        if wx_risks:
-            high_risks = [r for r in wx_risks if r["severity"] == "高"]
-            if high_risks:
-                organ_labels = "、".join(r["organ"] for r in high_risks[:3])
-                notes.append(f"体质弱点（{organ_labels}）：{'; '.join(r['note'] for r in high_risks[:2])}")
-
-    # ── v0.10.0: 调候体质基线筛查（首年输出体质画像）──
-    if first_year and health_profile:
-        tiaohou_label = health_profile.get("tiaohou_label", "")
-        if "高风险" in tiaohou_label:
-            strength = max(strength, 1)
-            triggers.append(f"体质基线：{tiaohou_label}")
-            for risk in health_profile.get("tiaohou_risks", [])[:2]:
-                notes.append(risk)
-            if health_profile.get("tiaohou_advice"):
-                notes.append(health_profile["tiaohou_advice"])
-
     if triggers:
+        # 命理符号不用于疾病、脏腑或寿命推断。内部触发仅用于决定
+        # 是否给出一般生活提醒，输出层不暴露具有诊断性的历史文案。
+        safe_triggers = [trigger.split("→", 1)[0] for trigger in triggers]
+        safe_notes = ["该信号仅作生活节律与安全提醒，不构成健康评估或医疗建议。"]
         signals.append(EventSignal(
             category="健康",
             direction="负面",
             strength=min(strength, 3),
-            prediction=_make_prediction("健康", "负面", min(strength,3), triggers, notes),
-            triggers=triggers,
-            notes=notes,
+            prediction=_make_prediction("健康", "负面", min(strength,3), safe_triggers, safe_notes),
+            triggers=safe_triggers,
+            notes=safe_notes,
         ))
     return signals
 

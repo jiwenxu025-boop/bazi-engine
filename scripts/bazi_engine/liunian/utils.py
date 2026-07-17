@@ -292,48 +292,29 @@ def _make_prediction(category: str, direction: str, strength: int,
     elif category == "财运":
         if stage in ("中学", "大学", "深造"):
             if direction == "正面" and strength >= 3:
-                return "奖学金/家庭支持宽裕，可能有兼职收入"
+                return "财务主题较活跃，可记录奖学金、兼职或家庭支持等实际变化；不作金额预测"
             elif direction == "正面":
-                return "经济宽松，零花钱或生活费到位"
+                return "可关注预算与资源安排，结合现实收支作判断"
             elif direction == "负面" and strength >= 3:
-                return "注意控制消费，可能有意外大额开销"
+                return "建议提前核对预算、合同和消费计划，不据此推断具体支出"
             elif direction == "负面":
-                return "手头偏紧，建议节制非必要消费"
+                return "可复核近期收支与消费计划，避免仅凭命理信号决策"
             else:
-                return "财务状况有变动"
+                return "财务主题有变化候选，需以实际收支记录为准"
         else:
             if direction == "正面" and strength >= 3:
-                return "财运看好——加薪/副业/投资收益有机会，或有大额进账"
+                return "财务主题信号较强，可核对收入机会、合同与风险承受能力；不推断收益或金额"
             elif direction == "正面":
-                return "财运向好，正财偏财皆有收获，适合理财规划"
+                return "可关注预算、收入来源和合作安排，以实际信息判断后续行动"
             elif direction == "负面" and strength >= 3:
-                return "财务有较大波动——注意投资亏损、被借钱或大额意外支出"
+                return "建议审查预算、借贷和合同风险，不据此推断损失或支出规模"
             elif direction == "负面":
-                return "财运偏紧，开销增多或进账减少，宜控制支出"
+                return "可复核现金流与消费计划，避免仅凭该信号作出财务决定"
             else:
-                return "财务有变动——可能是换工作带来的收入变化或阶段性调整"
+                return "财务主题有变化候选，需结合现实收支和职业情况判断"
 
     elif category == "健康":
-        if stage in ("中学", "大学", "深造"):
-            if strength >= 3:
-                return "健康需重视——注意运动伤害、意外磕碰或突发疾病，及时就医"
-            elif strength >= 2:
-                return "注意作息规律和运动安全，避免熬夜和过量运动"
-            else:
-                return "精力尚可，但熬夜或饮食不规律需注意"
-        elif stage == "晚年":
-            if strength >= 3:
-                return "健康风险较高——务必定期体检，防范心脑血管、慢性病突发或跌倒"
-            elif strength >= 2:
-                return "建议体检复查，注意慢性病管理和换季保暖"
-            else:
-                return "注意养生保健，适度锻炼，保持良好作息"
-        if strength >= 3:
-            return "健康风险较高——建议体检排查，注意意外伤害或旧疾复发"
-        elif strength >= 2:
-            return "健康需留意——劳逸结合，避免过劳或情绪压力影响身体"
-        else:
-            return "注意小病小痛，保持良好生活习惯"
+        return "生活节律与安全提醒：留意作息、运动和出行安排；如有不适，请咨询专业人士。"
 
     elif category == "搬迁":
         if stage in ("中学", "大学", "深造"):
@@ -415,48 +396,29 @@ def _is_ke_wx(a, b) -> bool:
 
 def _wealth_magnitude(total: int, triggers: list[str] | None = None,
                      dayun_theme: str = "", is_cong_ge: bool = False) -> str:
-    """v0.13.0: 根据 ScoreAccumulator 总分 + 触发类型 + 格局判定财运量级。
+    """根据既有工程分数给出财务信号量级。
 
-    升级规则：
-    - 财库冲开 → +2 级（墓库核爆，资金放大器）
-    - 财来合我 → +1 级（最直接的得财信号）
-    - 大运主题=财运 → +1 级（十年财运共振）
-    - 从格 → +1 级（格局指向财富上限更高）
+    候选关系、财库、运势主题和从格都不再额外放大量级，避免把结构标签
+    误写成确定的资金结果。保留参数以兼容现有调用方。
     """
-    trigger_str = str(triggers or [])
-    has_caiku = "财库" in trigger_str or "冲开" in trigger_str
-    has_cailai = "财来合我" in trigger_str
-    is_wealth_dayun = "财运" in dayun_theme
 
     base_level = 0
     if total >= 7:
-        base_level = 3  # 大额
+        base_level = 3
     elif total >= 4:
-        base_level = 2  # 中额
+        base_level = 2
     elif total >= 2:
-        base_level = 1  # 小额
+        base_level = 1
     elif total <= -7:
-        base_level = -3  # 大破财
+        base_level = -3
     elif total <= -4:
-        base_level = -2  # 破财
+        base_level = -2
     elif total <= -2:
-        base_level = -1  # 小额破财
+        base_level = -1
 
-    # 正财：升级
-    if base_level > 0:
-        if has_caiku:
-            base_level += 2  # 财库冲开跳 2 级
-        if has_cailai:
-            base_level += 1
-        if is_wealth_dayun:
-            base_level += 1
-        if is_cong_ge:
-            base_level += 1
-
-    # 负财（破财）：降级不加重
     magnitude_map = {
-        1: "小额", 2: "中额", 3: "大额", 4: "大额", 5: "大额",
-        -1: "小额破财", -2: "破财", -3: "大破财",
+        1: "弱", 2: "中", 3: "较强",
+        -1: "弱", -2: "中", -3: "较强",
     }
-    return magnitude_map.get(base_level, "小额" if total > 0 else "小额破财")
+    return magnitude_map.get(base_level, "弱")
 

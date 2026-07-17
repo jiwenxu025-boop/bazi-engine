@@ -71,8 +71,9 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         star_label = spouse_name if ln_shishen == spouse_star else second_name
         s.add(4, f"流年{star_label}合日主→婚期最强信号", "配偶星合入日主 (段建业: 星宫同现)")
 
-    # 日柱天合地合 + 配偶星
-    if gong_he and ln_shishen == spouse_star:
+    # 日柱天合地合必须同时满足天干五合与地支六合。
+    has_stem_he = HEAVENLY_HE.get(day_master) == ln_stem
+    if gong_he and has_stem_he and ln_shishen == spouse_star:
         s.add(4, f"流年与日柱天合地合+{spouse_name}透干")
 
     # 天喜入命 + 合夫妻宫
@@ -148,10 +149,6 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             s.add(-1, "劫财夺财→感情竞争", "比劫争妻/注意第三者 (段建业)")
         else:
             s.add(-1, "劫财争合→感情竞争", "比劫争夫/注意三角关系 (段建业)")
-
-    # 伤官见官(女命)
-    if gender == "女" and ln_shishen == Shishen.伤官:
-        s.add(-3, "伤官克官→婚姻危机", "伤官年→女命婚姻高危年 (段建业)")
 
     # 夫妻宫被穿害 — v0.12.0: 实现穿害检测
     if all_branches:

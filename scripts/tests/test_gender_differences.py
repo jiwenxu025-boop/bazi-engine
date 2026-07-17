@@ -86,7 +86,7 @@ def test_static_pattern_text_branches_by_gender():
     male_sg = "；".join(_check_special_combos("丙", "火", shangguan_zhengguan, {}, "男", [], ""))
     female_sg = "；".join(_check_special_combos("丙", "火", shangguan_zhengguan, {}, "女", [], ""))
     assert "职场变动" in male_sg
-    assert "婚姻波折" in female_sg
+    assert "边界与沟通" in female_sg
 
     bijie_cai = [
         {"pillar_type": "年柱", "stem": "甲", "branch": "子", "ten_god": "比肩", "source": "stem", "hidden_ten_gods": []},
@@ -96,7 +96,7 @@ def test_static_pattern_text_branches_by_gender():
     ]
     male_bj = "；".join(_check_special_combos("丙", "火", bijie_cai, {}, "男", [], ""))
     female_bj = "；".join(_check_special_combos("丙", "火", bijie_cai, {}, "女", [], ""))
-    assert "克妻破财" in male_bj
+    assert "合作与财务安排" in male_bj
     assert "性格刚强" in female_bj
 
 

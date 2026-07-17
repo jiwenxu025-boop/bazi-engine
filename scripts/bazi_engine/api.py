@@ -703,7 +703,9 @@ def batch_api(records: list[dict]):
                 calibrate=use_calibrate,
                 life_stage_override=r.get("life_stage", ""),
             )
-            results.append({"name": r.get("name"), "status": "ok", "data": chart.to_dict()})
+            data = chart.to_dict()
+            _strip_technical(data)
+            results.append({"name": r.get("name"), "status": "ok", "data": data})
         except Exception as error:
             logger.exception("batch chart build failed type=%s", type(error).__name__)
             results.append({"name": r.get("name"), "status": "error", "error": "排盘暂时不可用"})

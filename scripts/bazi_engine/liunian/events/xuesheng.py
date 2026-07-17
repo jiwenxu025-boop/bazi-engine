@@ -43,13 +43,13 @@ def detect_xuesheng_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             notes.append("印星为忌→压力大但成绩未必差")
 
     # 官星得位+印星有力（textbook ★★★）
-    if is_guan and is_yin:
+    if is_guan:
         # 同柱官印相生（天干官+地支含印）
         for hs in DIZHI_CANGGAN.get(ln_branch, []):
             if get_ten_god(day_master, hs.stem) in (Shishen.正印, Shishen.偏印):
                 strength = max(strength, 3)
-                triggers.append("流年官印相生+文昌有力")
-                notes.append("官印相生→功名最利 (textbook)")
+                triggers.append("流年官星透干、地支见印")
+                notes.append("官印组合仅作学业环境的文化参考，仍需结合实际准备情况。")
                 break
 
     # ═══ ★★ 级别 ═══
@@ -63,12 +63,6 @@ def detect_xuesheng_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if ln_branch == wenchang:
         strength = max(strength, 2)
         triggers.append("流年文昌贵人入命")
-
-    # 巳亥冲+驿马→高考远行 (calibration: 2/2)
-    if ln_branch == yima and _has_branch_interaction(year_branch, ln_branch, "六冲"):
-        strength = max(strength, 2)
-        triggers.append(f"{year_branch.value}{ln_branch.value}冲+驿马→为学业远行")
-        notes.append("巳亥冲+驿马+升学年龄→高考异地 (校准 2/2: 案例A2025, 案例C2025)")
 
     # 文昌+驿马同现
     if ln_branch == yima and ln_branch == wenchang:

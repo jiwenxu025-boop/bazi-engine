@@ -94,7 +94,7 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
         gender_note = (
             "男命侧重职场变动、性格傲慢、官非诉讼风险。"
             if gender == "男"
-            else "女命侧重婚姻波折、对伴侣挑剔、克夫倾向。"
+            else "在亲密关系里可能更重视边界与沟通。"
         )
         combos.append("伤官见官→ 不喜约束，反叛权威，思维跳脱常规，适合自由职业。"
                       f"{gender_note}"
@@ -146,7 +146,7 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     has_bijie = "比肩" in all_names or "劫财" in all_names
     if has_bijie and has_cai:
         gender_note = (
-            "男命侧重克妻破财、冲动盲目。"
+            "合作与财务安排宜保留边界。"
             if gender == "男"
             else "女命侧重性格刚强、婚姻中过于强势。"
         )
@@ -304,39 +304,6 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
 
     # ═══ C. 五行调候 ═══
 
-    # ── 26. 五行缺一 ──
-    # 来源：《穷通宝鉴》调候法
-    all_wuxing_set = set()
-    for p in pillars_data:
-        all_wuxing_set.add(p.get("stem_wuxing", ""))
-        all_wuxing_set.add(p.get("branch_wuxing", ""))
-    all_wuxing_set.discard("")
-    five = {"木", "火", "土", "金", "水"}
-    missing_wx = five - all_wuxing_set
-    if len(missing_wx) == 1:
-        mx = next(iter(missing_wx))
-        # 五行缺一的现代解读（基于经典五行特质推断，非古籍原文）：
-        # 木主仁→决断/条理 火主礼→热情/社交 土主信→稳定/责任
-        # 金主义→原则/执行 水主智→灵动/适应
-        implications = {"木": "决断力偏弱或思维跳跃", "火": "热情不足或社交收敛",
-                        "土": "稳定性或责任感偏弱", "金": "原则性或执行力偏弱",
-                        "水": "灵动性或适应力偏弱"}
-        combos.append(f"五行缺{mx}→ {implications.get(mx, '该行特质偏弱')}。"
-                      f"《穷通宝鉴》：缺{mx}则需大运流年补足")
-
-    # ── 27. 寒暖燥湿 ──
-    # 来源：《穷通宝鉴》调候用神
-    cold_branches = {"亥", "子", "丑", "寅"}  # 冬+初春
-    hot_branches = {"巳", "午", "未"}          # 夏
-    n_cold = sum(1 for b in all_branches if b in cold_branches)
-    n_hot = sum(1 for b in all_branches if b in hot_branches)
-    if n_cold >= 3:
-        combos.append(f"命局偏寒（{n_cold}个寒支）→ 性格偏内敛保守，喜火暖局。"
-                      "《穷通宝鉴》：金水伤官喜见官，寒局需火调候")
-    elif n_hot >= 3:
-        combos.append(f"命局偏燥（{n_hot}个暖支）→ 性格偏急躁热烈，喜水润局。"
-                      "《穷通宝鉴》：火土燥烈，需水润泽方能成器")
-
     # ── 28. 水火既济 ──
     # 来源：《滴天髓》"水火既济，文明之象"
     n_shui = sum(1 for p in pillars_data if p.get("stem_wuxing") == "水" or p.get("branch_wuxing") == "水")
@@ -361,18 +328,16 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
                        "申酉戌": ("从革格（金专旺）", "金", "刚毅果断，义薄云天"),
                        "亥子丑": ("润下格（水专旺）", "水", "智慧深广，度量宽宏")}
     # 专旺需地支成会局 + 日主五行匹配
-    for sanhui_str, (ge_name, wx_, desc_) in zhuanwang_check.items():
+    for sanhui_str, (ge_name, wx_, _desc) in zhuanwang_check.items():
         chars = [sanhui_str[0], sanhui_str[1], sanhui_str[2]]
         if all(b in all_branches for b in chars) and day_master_wuxing == wx_:
-            combos.append(f"{ge_name}→ {desc_}，五行{wx_}极致纯粹，意志坚定不妥协。"
-                          f"《渊海子平》：{ge_name}，外十八格之一")
+            combos.append(f"{ge_name}候选：地支三会与日主五行相符；仍须排除克破杂气后才能论专旺。")
             break
 
     # 辰戌丑未全 + 日主土 = 稼穑格
     if siku.issubset(branches_set) and day_master_wuxing == "土" and not any("稼穑格" in c for c in combos):
         # 避免重复（已在上面的四库全中检测）
-        combos.append("稼穑格（土专旺）→ 稳重诚信，敦厚至诚，如大地承载万物。"
-                      "《渊海子平》：稼穑格，外十八格之一")
+        combos.append("稼穑格候选：四库全见且日主属土；仍须排除克破杂气后才能论专旺。")
 
     # ── 35-37. 从格检测 ──
     # 来源：《渊海子平》"弃命从财/从杀"
@@ -394,16 +359,15 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     # 来源：《三命通会》"金神入格，贵显"
     jin_shen_days = {"乙丑", "己巳", "癸酉"}
     day_pillar_str = f"{pillars_data[2].get('stem', '')}{pillars_data[2].get('branch', '')}" if len(pillars_data) > 2 else ""
-    if day_pillar_str in jin_shen_days:
-        combos.append(f"金神格（{day_pillar_str}日）→ 性格刚强执拗，有成大事的潜质，破而后立。"
-                      "《三命通会》：「金神入格，非富即贵」")
+    hour_pillar_str = f"{pillars_data[3].get('stem', '')}{pillars_data[3].get('branch', '')}" if len(pillars_data) > 3 else ""
+    if hour_pillar_str in jin_shen_days:
+        combos.append(f"金神时柱候选（{hour_pillar_str}时），是否入格须另验火制与全局条件。")
 
     # ── 39. 魁罡格 ──
     # 来源：《三命通会》"魁罡入命，刚强果断"
     kuigang_days = {"庚辰", "庚戌", "壬辰", "戊戌"}
     if day_pillar_str in kuigang_days:
-        combos.append(f"魁罡入命（{day_pillar_str}日）→ 刚强果断，不惧权威，宁折不弯，天生反骨。"
-                      "《三命通会》：「魁罡者，刚毅果断，不畏强权」")
+        combos.append(f"魁罡日标记（{day_pillar_str}日）：须结合财官、刑冲与全局配置，不单独推断性格或吉凶。")
 
     # ── 40. 日德格 ──
     # 来源：《三命通会》"日德者，五阳干坐禄"
@@ -477,8 +441,8 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
     yr = _yangren_branch(day_master_stem)
     yr_count = sum(1 for p in pillars_data if p.get("branch") == yr)
     if yr_count >= 2:
-        combos.append(f"羊刃重重（{yr}×{yr_count}）→ 性格刚烈，不服管束，执行力极强但也易与人冲突。"
-                      "《渊海子平》：「羊刃重重，克妻刑子，性格刚烈」")
+        combos.append(f"羊刃重重（{yr}×{yr_count}）→ 性格刚烈，不服管束，执行力较强，也容易与人冲突。"
+                      "传统口诀仅作文化参考，不推断配偶或子女的具体遭遇。")
 
     # ── 46-47. 孤辰寡宿 ──
     # 来源：《三命通会》孤辰寡宿
@@ -518,13 +482,7 @@ def _check_special_combos(day_master_stem: str, day_master_wuxing: str,
 
     # ── 49. 天罗地网 ──
     # 来源：《三命通会》"辰巳为天罗，戌亥为地网"
-    tianluo = {"辰", "巳"}
-    diwang = {"戌", "亥"}
-    has_tl = bool(tianluo & branches_set)
-    has_dw = bool(diwang & branches_set)
-    if has_tl and has_dw:
-        combos.append("天罗地网（辰巳+戌亥）入命→ 人生多困顿，破网则大成，意志坚韧。"
-                      "《三命通会》：「天罗地网，主困顿，破网则为贵人」")
+    # 天罗地网须纳命五行和男女等额外条件；当前输入不足，不作自动判定。
 
     return combos
 

@@ -1,5 +1,6 @@
-"""婚姻/桃花验证集 — 基于公开命例
-每个案例包含: 出生日期、事件年、期望信号类别和方向
+"""婚姻/桃花探索性时点覆盖集。
+
+只检查类别与时点附近是否出现信号，不校验事件方向或具体结果，不能视为准确率。
 """
 import os
 import sys
@@ -58,10 +59,10 @@ MARRIAGE_CASES = [
         "notes": "2012结婚,命师断2025-2026婚变。元亨利贞论坛"
     },
     {
-        "name": "案例M9-胡万林克夫案",
+        "name": "案例M9-婚姻变动女",
         "gender": "女", "year": 1966, "month": 7, "day": 15, "hour": 22,
         "events": {1988: "婚嫁", 1992: "桃花"},
-        "notes": "丙午 丁酉 甲戌 乙亥。段建业案例: 第一个丈夫坐牢离婚, 第二任胡万林也坐牢"
+        "notes": "丙午 丁酉 甲戌 乙亥。未核实命例：记录为两段婚姻变动；不用于亲属伤害规则。"
     },
     {
         "name": "案例M10-三婚女",
@@ -101,10 +102,10 @@ MARRIAGE_CASES = [
         "notes": "李玟 乙卯 戊寅 甲辰 癸酉。2011辛卯结婚。百度百家号"
     },
     {
-        "name": "案例M16-伤官克夫女",
+        "name": "案例M16-婚姻变动女（二）",
         "gender": "女", "year": 1966, "month": 8, "day": 25, "hour": 19,
         "events": {1988: "婚嫁", 1992: "桃花"},
-        "notes": "丙午 丁酉 甲戌 乙亥。段建业: 第一任坐牢离婚,第二任胡万林也坐牢。酉戌穿夫宫克夫"
+        "notes": "丙午 丁酉 甲戌 乙亥。未核实命例：记录为婚姻变动；不用于亲属伤害规则。"
     },
 ]
 
@@ -202,7 +203,7 @@ if __name__ == "__main__":
             results.append({"name": case["name"], "error": str(e), "matches": [], "tolerances": [], "misses": [], "score": "0/0"})
 
     print("=" * 60)
-    print("婚姻/桃花 验证结果")
+    print("婚姻/桃花探索性时点覆盖（不校验方向或具体结果）")
     print("=" * 60)
     total_strict = 0
     total_tolerance = 0
@@ -224,7 +225,7 @@ if __name__ == "__main__":
             status = f"X {hits}+{tol}/{exp}"
         print(f"\n{status} {r['name']}")
         for m in r["matches"]:
-            print(f"  [HIT] {m}")
+            print(f"  [COVER] {m}")
         for t in r.get("tolerances", []):
             print(f"  [TOL] {t}")
         for m in r["misses"]:
@@ -232,7 +233,7 @@ if __name__ == "__main__":
 
     print(f"\n{'=' * 60}")
     if total_expected > 0:
-        print(f"严格命中: {total_strict}/{total_expected} ({total_strict/total_expected*100:.0f}%)")
-        print(f"容差命中: {total_strict+total_tolerance}/{total_expected} ({(total_strict+total_tolerance)/total_expected*100:.0f}%)")
+        print(f"同年同类覆盖: {total_strict}/{total_expected}")
+        print(f"含容差覆盖: {total_strict+total_tolerance}/{total_expected}")
     else:
         print("无预期事件，跳过命中率计算")

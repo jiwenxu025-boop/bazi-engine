@@ -1,5 +1,4 @@
-"""事业验证集 — 晋升/跳槽/创业/离职
-"""
+"""事业探索性时点覆盖集 — 不构成方向或事件语义准确率。"""
 import os
 import sys
 
@@ -100,7 +99,7 @@ if __name__ == "__main__":
                             if e["category"] == expected_cat and e["strength"] >= 1:
                                 found = e
                                 break
-                hit = "HIT" if found and found.get("strength",0) >= 2 else ("WEAK" if found else "MISS")
+                hit = "COVER" if found and found.get("strength",0) >= 2 else ("WEAK" if found else "MISS")
                 detail = f"{found.get('direction','')} *{found.get('strength','')} [{', '.join(found.get('triggers',[])[:2])}]" if found else "-"
                 if expected_cat != "事业":
                     hit = "N/A"  # non-career event
@@ -112,13 +111,14 @@ if __name__ == "__main__":
         except Exception as ex:
             results.append({"case": case["name"], "year": 0, "type": "?", "status": "ERR", "detail": str(ex)})
 
+    print("事业探索性时点覆盖（不校验方向或具体事件，不能视为准确率）")
     print(f"{'Case':<18} {'Year':<6} {'Type':<12} {'Status':<6} {'Detail'}")
     print("-" * 100)
-    total_hit = sum(1 for r in results if r["status"] == "HIT")
+    total_hit = sum(1 for r in results if r["status"] == "COVER")
     total_career = sum(1 for r in results if r["status"] != "N/A")
     for r in results:
         if r["status"] == "N/A":
             continue
         print(f"{r['case']:<18} {r['year']:<6} {r['type']:<12} {r['status']:<6} {r['detail'][:60]}")
     career_hit = total_hit
-    print(f"\n事业事件: {career_hit}/{total_career} ({career_hit/total_career*100:.0f}%)" if total_career > 0 else "\n无数据")
+    print(f"\n事业时点覆盖: {career_hit}/{total_career}" if total_career > 0 else "\n无数据")

@@ -92,7 +92,7 @@ class EventSignal:
     notes: list[str] = field(default_factory=list)
     calibration_refs: list[str] = field(default_factory=list)
     personality_note: str = ""  # 性格联动备注
-    magnitude: str = ""         # v0.13.0: 财运量级 "大额"/"中额"/"小额"/"大破财"/"破财"
+    magnitude: str = ""         # 财务信号强度 "弱"/"中"/"较强"，不表示金额或损失规模
     source: str = "rule"        # v0.16.0: 信号来源 "rule"|"llm"
 
     def to_dict(self) -> dict:

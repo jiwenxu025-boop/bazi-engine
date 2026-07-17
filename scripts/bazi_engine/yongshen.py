@@ -7,7 +7,7 @@ v0.8.0: +假生陷阱修正 + 十二长生修正
 
 from contextlib import suppress
 
-from ._constants import CONG_GE_CHECKS, DIZHI_CANGGAN, SHIER_CHANGSHENG, TIANGAN_WUHE
+from ._constants import CONG_GE_CHECKS, DIZHI_CANGGAN, SHIER_CHANGSHENG
 from .enums import Dizhi, Shishen, Tiangan, Wuxing
 from .ten_gods import get_ten_god, wuxing_ke, wuxing_sheng
 
@@ -57,31 +57,10 @@ def _canggan_score(stem: Tiangan, day_master: Tiangan, level: str) -> float:
 def _check_tiangan_he_impact(all_stems: list[Tiangan]) -> dict[str, float]:
     """检测天干五合对五行力量的影响。
 
-    合化后，参与合的两干五行属性减弱。
+    未经化气条件验证时，五合不改变五行力量。
     返回: {五行: 力量调整值}
     """
-    adjustments: dict[str, float] = {}
-    checked = set()
-
-    for i, s1 in enumerate(all_stems):
-        for j, s2 in enumerate(all_stems):
-            if i >= j:
-                continue
-            pair = (s1, s2)
-            if pair in TIANGAN_WUHE:
-                key = tuple(sorted([s1.value, s2.value]))
-                skey = str(key)
-                if skey in checked:
-                    continue
-                checked.add(skey)
-                hua_wx = TIANGAN_WUHE[pair]
-                # 参与合的两干五行力量减弱，化神力量增强
-                for s in (s1, s2):
-                    wx = s.wuxing.value
-                    adjustments[wx] = adjustments.get(wx, 0) - 0.5
-                adjustments[hua_wx.value] = adjustments.get(hua_wx.value, 0) + 1.0
-
-    return adjustments
+    return {}
 
 
 def _seasonal_adjustment(day_master: Tiangan, month_branch: Dizhi) -> dict:
@@ -108,7 +87,7 @@ def _seasonal_adjustment(day_master: Tiangan, month_branch: Dizhi) -> dict:
         ("金", "夏"): {"wuxing": ["水"], "reason": "夏金喜水调候，火旺熔金需水救"},
         ("金", "冬"): {"wuxing": ["火"], "reason": "冬金喜火暖局，水冷金寒需火温"},
         ("木", "冬"): {"wuxing": ["火"], "reason": "冬木喜火暖局，水冷木寒需火调候"},
-        ("木", "秋"): {"wuxing": ["水"], "reason": "秋木凋零喜水滋润，金旺克木需水通关"},
+        ("木", "秋"): {"wuxing": ["火"], "reason": "秋木传统上先取丁火、次取丙火；均属火行，仅作调候参考。"},
         ("水", "夏"): {"wuxing": ["金"], "reason": "夏水喜金发源，火旺水涸需金生水"},
         ("水", "冬"): {"wuxing": ["火"], "reason": "冬水喜火暖局，水冷冰寒需火调候"},
         ("火", "冬"): {"wuxing": ["木"], "reason": "冬火喜木为薪，水旺火灭需木化水生火"},
@@ -134,8 +113,25 @@ def _detect_cong_ge(day_master: Tiangan, month_branch: Dizhi,
     - 两神相战结构识别
     """
     dm_wx = day_master.wuxing
-    dm_stems = [day_master]
-    all_tg = dm_stems + [s for s in all_stems if s != day_master]
+    parent_wx = _parent_wuxing(dm_wx).value
+
+    # 从格最基本的反条件是日主或印星有根、有帮扶。旧实现把这些
+    # 条件简化成五行数量，导致有根命局被误判为从格。
+    visible_support = any(
+        stem.wuxing.value in (dm_wx.value, parent_wx)
+        for index, stem in enumerate(all_stems)
+        if index != 2
+    )
+    hidden_support = any(
+        hidden.stem.wuxing.value in (dm_wx.value, parent_wx)
+        for branch in all_branches
+        for hidden in DIZHI_CANGGAN.get(branch, [])
+    )
+    if visible_support or hidden_support:
+        return None
+
+    # 四柱顺序中日干在 index 2；仅排除日干本身，不能漏算别柱同干比肩。
+    all_tg = [stem for index, stem in enumerate(all_stems) if index != 2]
 
     # 统计各五行天干数量
     wx_count: dict[str, int] = {}
@@ -149,63 +145,8 @@ def _detect_cong_ge(day_master: Tiangan, month_branch: Dizhi,
         wx_count[wx] = wx_count.get(wx, 0) + 1
 
     # 生扶者 = 同五行 + 印星五行
-    parent_wx = _parent_wuxing(dm_wx).value
     support_count = wx_count.get(dm_wx.value, 0) + wx_count.get(parent_wx, 0)
     total_count = sum(wx_count.values())
-
-    # ── 体用阵营检测（v0.8.0: P8）──
-    from ._constants import DIZHI_SANHE, DIZHI_SANHUI
-
-    # 检测地支三合/三会 → 阵营加成
-    camp_bonus: dict[str, int] = {"木": 0, "火": 0, "土": 0, "金": 0, "水": 0}
-    for trio_set, wx in DIZHI_SANHE.items():
-        trio = list(trio_set)
-        matches = sum(1 for dz in all_branches if dz in trio)
-        if matches >= 3:
-            camp_bonus[wx.value] = camp_bonus.get(wx.value, 0) + 3
-        elif matches == 2:
-            camp_bonus[wx.value] = camp_bonus.get(wx.value, 0) + 1
-
-    for trio_set, wx in DIZHI_SANHUI.items():
-        trio = list(trio_set)
-        matches = sum(1 for dz in all_branches if dz in trio)
-        if matches >= 3:
-            camp_bonus[wx.value] = camp_bonus.get(wx.value, 0) + 4  # 三会≥三合
-
-    # 合并天干统计 + 地支三合/三会加成
-    camp_power: dict[str, float] = {}
-    for wx_name, count in wx_count.items():
-        camp_power[wx_name] = count + camp_bonus.get(wx_name, 0)
-
-    # 找出最强阵营
-    if camp_power:
-        dominant_camp = max(camp_power, key=camp_power.get)
-        dominant_power = camp_power[dominant_camp]
-        dm_power = camp_power.get(dm_wx.value, 0)
-        dm_camp_power = dm_power + camp_power.get(parent_wx, 0)
-
-        # 非日主阵营碾压：日主所在阵营≤40%且另一阵营≥60%
-        total_power = sum(camp_power.values())
-        if total_power > 0 and dm_camp_power <= total_power * 0.4 and dominant_camp != dm_wx.value and dominant_power >= total_power * 0.5:
-            # 非日主五行成为全局主导 → 从势格
-            result_type = f"从势({dominant_camp}旺)"
-            fav_wx = _get_following_favorable(dominant_camp, dm_wx)
-            return {
-                "type": result_type,
-                "description": f"全局{dominant_camp}气势成局（三合/三会/聚众），"
-                               f"日主{dm_wx.value}无力抗衡→以从{dominant_camp}之势为用。",
-                "favorable": fav_wx["favorable"],
-                "harmful": fav_wx["harmful"],
-            }
-
-    # 从旺：生扶者≥75%
-    if strength == "强" and score >= 6.0 and support_count >= total_count * 0.75:
-        return {
-            "type": "从旺",
-            "description": CONG_GE_CHECKS["从旺"]["description"],
-            "favorable": CONG_GE_CHECKS["从旺"]["favorable"],
-            "harmful": CONG_GE_CHECKS["从旺"]["harmful"],
-        }
 
     # 从弱：财/官/食伤≥75%
     ke_xie_count = total_count - support_count
@@ -237,28 +178,6 @@ def _detect_cong_ge(day_master: Tiangan, month_branch: Dizhi,
     return None
 
 
-def _get_following_favorable(dominant_wx: str, dm_wx: Wuxing) -> dict:
-    """计算从势格的喜忌：顺应主导五行阵营。
-
-    原则：既然打不过，就加入。顺主导阵营之势为喜。
-    """
-    # 生主导五行者 = 喜（护持主导阵营）
-    # 克主导五行者 = 忌（威胁主导阵营）
-    _sheng_map = {"木": "水", "火": "木", "土": "火", "金": "土", "水": "金"}
-    _ke_map = {"木": "金", "火": "水", "土": "木", "金": "火", "水": "土"}
-
-    mom = _sheng_map.get(dominant_wx, "")
-    enemy = _ke_map.get(dominant_wx, "")
-
-    # 喜：主导五行 + 生主导者 + 食伤泄秀（主导五行的子）
-    sheng = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
-
-    return {
-        "favorable": [dominant_wx, mom, sheng.get(dominant_wx, "")],
-        "harmful": [enemy],
-    }
-
-
 def determine_qiangruo(
     day_master: Tiangan,
     month_branch: Dizhi,
@@ -280,28 +199,28 @@ def determine_qiangruo(
     score += ss
 
     # 2. 天干
-    for stem in all_stems:
-        if stem == day_master:
+    for index, stem in enumerate(all_stems):
+        # 仅跳过日干所在日柱，别柱同干仍是比肩，必须计入。
+        if index == 2 and stem == day_master:
             continue
         ss = get_ten_god(day_master, stem)
         if ss in (Shishen.比肩, Shishen.劫财) or ss in (Shishen.正印, Shishen.偏印):
             score += 1.0
         elif ss in (Shishen.正官, Shishen.偏官):
             score -= 1.0
+        elif ss in (Shishen.食神, Shishen.伤官):
+            score -= 0.7
+        elif ss in (Shishen.正财, Shishen.偏财):
+            score -= 0.5
 
-    # 3. 天干合化修正
-    he_adj = _check_tiangan_he_impact(all_stems)
-    he_total = sum(he_adj.values())
-    score += he_total * 0.5  # 合化影响权重0.5
-
-    # 4. 地支藏干（优化权重）
+    # 3. 地支藏干（优化权重）
     for branch in all_branches:
         for hs in DIZHI_CANGGAN.get(branch, []):
             cs = _canggan_score(hs.stem, day_master, hs.level)
             if abs(cs) > 0:
                 score += cs
 
-    # 5. 印多减子: 印星≥3时生扶作用打折（陆致极"母多减子"）
+    # 4. 印多减子: 印星≥3时生扶作用打折（陆致极"母多减子"）
     yin_count = 0
     for stem in all_stems:
         ss = get_ten_god(day_master, stem)
@@ -311,7 +230,7 @@ def determine_qiangruo(
         # 印太旺反成负担 — 计分中印星的贡献减半
         score -= yin_count * 0.5
 
-    # 6. 假生陷阱修正（v0.8.0: 水冷木冻/燥土脆金/湿木不生火）
+    # 5. 假生陷阱修正（v0.8.0: 水冷木冻/燥土脆金/湿木不生火）
     from .tiaohou import detect_false_generation
     false_gens = detect_false_generation(day_master, all_stems, all_branches)
     for fg in false_gens:
@@ -320,7 +239,7 @@ def determine_qiangruo(
         elif fg.severity == 1:
             score -= 1.0  # 弱假生：印星生扶打折
 
-    # 7. 十二长生修正（v0.8.0: 日干在月支/日支的长生状态参与强弱）
+    # 6. 十二长生修正（v0.8.0: 日干在月支/日支的长生状态参与强弱）
     cs_table = SHIER_CHANGSHENG.get(day_master, {})
     # 月支长生状态权重 1.0
     cs_month = cs_table.get(month_branch, "")
@@ -393,18 +312,16 @@ def recommend_yongshen(
         favorable = {Shishen.正印, Shishen.偏印, Shishen.比肩, Shishen.劫财}
         harmful = set()
 
-    # 调候修正：调候五行优先加入喜用
+    # 调候五行是独立参考维度，不覆盖格局、扶抑或强弱结论。
     tiaohou_wx = set(tiaohou.get("wuxing", []))
     fav_wx = _get_wuxing_set_for_shishens(favorable, day_master)
     harm_wx = _get_wuxing_set_for_shishens(harmful, day_master)
 
     if tiaohou_wx:
-        # 调候五行如果不在喜用中，添加进去（调候优先）
+        # 调候五行可作为补充观察项，但不从忌神中强行移除。
         for wx in tiaohou_wx:
             if wx not in fav_wx and wx not in harm_wx:
                 fav_wx.add(wx)
-        # 从忌神中移除调候五行
-        harm_wx = harm_wx - tiaohou_wx
 
     result = {
         "strength": strength,
