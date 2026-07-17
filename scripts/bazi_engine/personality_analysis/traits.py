@@ -1,4 +1,6 @@
 """粒度性格特质计算"""
+from collections import Counter
+
 from .constants import DIZHI_RELATION_PERSONALITY, SHISHEN_COMBINATION_TRAITS, SHISHEN_SUB_TRAITS
 
 
@@ -45,6 +47,19 @@ def _compute_shishen_combo_traits(weighted_scores) -> list[dict]:
             })
     return results
 
+
+def _interaction_branches(item: dict) -> list[str]:
+    """读取 Interaction.to_dict() 的地支，并兼容旧版 branches 字段。"""
+    raw_branches = item.get("participants") or item.get("branches", [])
+    if not isinstance(raw_branches, (list, tuple)):
+        raw_branches = [raw_branches] if raw_branches else []
+    return [
+        branch.value if hasattr(branch, "value") else str(branch)
+        for branch in raw_branches
+        if branch
+    ]
+
+
 def _compute_dizhi_traits(interactions: dict,
                           pillars_data: list[dict] | None = None) -> list[dict]:
     """从地支关系提取性格倾向"""
@@ -52,17 +67,17 @@ def _compute_dizhi_traits(interactions: dict,
     dizhi_list = interactions.get("dizhi", []) if interactions else []
 
     # 收集命局所有地支
-    all_branches = set()
+    all_branches: list[str] = []
     if pillars_data:
         for p in pillars_data:
             b = p.get("branch", "")
             if b:
-                all_branches.add(b)
+                all_branches.append(b)
 
     for item in dizhi_list:
         rel_type = item.get("type", "")
-        branches = item.get("branches", [])
-        branch_str = "".join(branches) if isinstance(branches, list) else str(branches)
+        branches = _interaction_branches(item)
+        branch_str = "".join(branches)
 
         # 六冲
         if rel_type == "六冲":
@@ -84,24 +99,22 @@ def _compute_dizhi_traits(interactions: dict,
                 })
 
         # 自刑
-        if rel_type == "自刑":
-            branches_list = item.get("branches", [])
-            if isinstance(branches_list, list) and branches_list:
-                b = branches_list[0]
-                key = f"{b}_自刑"
-                d = DIZHI_RELATION_PERSONALITY.get(key)
-                if d:
-                    results.append({
-                        "relation": f"{b}自刑",
-                        "trait": d["trait"],
-                        "description": d["description"],
-                        "source": d["source"],
-                        "involved_pillars": item.get("pillars", []),
-                    })
+        if rel_type == "自刑" and branches:
+            b = branches[0]
+            key = f"{b}_自刑"
+            d = DIZHI_RELATION_PERSONALITY.get(key)
+            if d:
+                results.append({
+                    "relation": f"{b}自刑",
+                    "trait": d["trait"],
+                    "description": d["description"],
+                    "source": d["source"],
+                    "involved_pillars": item.get("pillars", []),
+                })
 
         # 三刑
         if rel_type in ("三刑", "相刑"):
-            branches_sorted = sorted(item.get("branches", []))
+            branches_sorted = sorted(branches)
             key = "_".join(branches_sorted) + "_刑"
             d = DIZHI_RELATION_PERSONALITY.get(key)
             if d:
@@ -113,9 +126,12 @@ def _compute_dizhi_traits(interactions: dict,
                     "involved_pillars": item.get("pillars", []),
                 })
 
-    # 命局自刑统计（>1个自刑时触发）
-    total_self_punish = sum(1 for b in all_branches if b in ("辰", "午", "酉", "亥"))
-    if total_self_punish >= 2:
+    # 《三命通会·论三刑》所述“辰见辰、午见午、酉见酉、亥见亥”。
+    branch_counts = Counter(all_branches)
+    has_repeated_self_punish = any(
+        branch_counts[b] >= 2 for b in ("辰", "午", "酉", "亥")
+    )
+    if has_repeated_self_punish:
         d = DIZHI_RELATION_PERSONALITY.get("辰_午_酉_亥_自刑")
         if d:
             already = any(r["trait"] == d["trait"] for r in results)

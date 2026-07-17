@@ -384,7 +384,7 @@ let TERMS = {
 function _buildBingyaoCard(combos){
   let top = combos[0];
   let h = '<div class=bingyao-card>';
-  h += '<div class=bingyao-badge>全局矛盾</div>';
+  h += '<div class=bingyao-badge>规则候选</div>';
   h += '<div class=bingyao-title>' + esc(top.combo) + '</div>';
   h += '<div class=bingyao-directive>' + esc(top.directive) + '</div>';
   if (combos.length > 1){
@@ -398,21 +398,134 @@ function _buildBingyaoCard(combos){
   return h;
 }
 
-function _buildShishenRank(scores){
+function _buildShishenRank(scoreData){
   let entries = [];
-  for (let k in scores) entries.push({name: k, val: scores[k]});
+  if (Array.isArray(scoreData)){
+    for (let i = 0; i < scoreData.length; i++){
+      entries.push({name: scoreData[i].name, val: scoreData[i].score, level: scoreData[i].level, breakdown: scoreData[i].breakdown || {}});
+    }
+  } else {
+    for (let k in (scoreData || {})) entries.push({name: k, val: scoreData[k], breakdown: {}});
+  }
   entries.sort(function(a,b){return b.val - a.val;});
-  let top5 = entries.slice(0, 5);
-  let maxVal = top5[0] ? top5[0].val : 10;
+  entries = entries.filter(function(item){return item.val > 0;}).slice(0, 10);
+  let maxVal = entries[0] ? entries[0].val : 1;
   let h = '<div class=shishen-rank>';
-  h += '<div class=shishen-rank-title>十神强度</div>';
-  for (let i = 0; i < top5.length; i++){
-    let pct = Math.round(top5[i].val / maxVal * 100);
-    h += '<div class=shishen-bar><span class=shishen-name>' + top5[i].name + '</span>';
-    h += '<span class=shishen-val>' + top5[i].val.toFixed(1) + '</span>';
+  h += '<div class=shishen-rank-title>十神工程分 <span>排序仅本盘内比较</span></div>';
+  h += '<div class=evidence-scale-note>条形以本盘最高项为 100%；档位使用固定工程阈值，不代表人群等级。</div>';
+  let sourceLabels = {tougan:'透干',hidden:'藏干',month_bonus:'月令',same_pillar_bonus:'同柱',heju_bonus:'合局','透干':'透干','藏干':'藏干','月令加成':'月令','同柱加成':'同柱','合局加成':'合局'};
+  for (let i = 0; i < entries.length; i++){
+    let pct = Math.round(entries[i].val / maxVal * 100);
+    let details = [];
+    for (let source in entries[i].breakdown){
+      if (entries[i].breakdown[source]) details.push((sourceLabels[source] || source) + ' ' + Number(entries[i].breakdown[source]).toFixed(1));
+    }
+    h += '<div class=shishen-row><div class=shishen-bar><span class=shishen-name>' + esc(entries[i].name) + '</span>';
+    h += '<span class=shishen-level>' + esc(entries[i].level || '') + '</span>';
+    h += '<span class=shishen-val>' + Number(entries[i].val).toFixed(1) + '</span>';
     h += '<span class=shishen-fill style=width:' + pct + '%></span></div>';
+    if (details.length) h += '<div class=shishen-breakdown>' + esc(details.join(' · ')) + '</div>';
+    h += '</div>';
   }
   h += '</div>';
+  return h;
+}
+
+function _buildEvidenceDimensions(dimensions){
+  let order = ['社交','感情','内心','决策','事业','财富观'];
+  let h = '<div class=evidence-dimensions>';
+  for (let i = 0; i < order.length; i++){
+    let name = order[i];
+    let item = dimensions && dimensions[name];
+    if (!item) continue;
+    h += '<div class=evidence-dimension><div class=evidence-dimension-head><strong>' + name + '</strong>';
+    if (item.summary) h += '<span>' + esc(item.summary) + '</span>';
+    if (item.comparison) h += '<span>' + esc(item.comparison) + '</span>';
+    h += '</div><div class=evidence-signals>';
+    let signals = item.signals || [];
+    for (let j = 0; j < signals.length; j++){
+      let valueText = signals[j].kind === 'weighted_score'
+        ? (signals[j].level + ' · ' + Number(signals[j].value).toFixed(1))
+        : ('本盘相对值 ' + Number(signals[j].value).toFixed(1));
+      h += '<div class=evidence-signal><span>' + esc(signals[j].display_label || signals[j].label) + '</span><strong>' + esc(valueText) + '</strong></div>';
+    }
+    h += '</div>';
+    if (item.secondary) h += '<div class=evidence-secondary>次要方向：' + esc(item.secondary) + '</div>';
+    let pending = item.pending_review || [];
+    for (let k = 0; k < pending.length; k++){
+      h += '<div class=evidence-pending>' + esc(pending[k].label) + '：' + esc(pending[k].value) + '（待复核规则）</div>';
+    }
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+
+function _evidenceNumber(value){
+  let number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(1) : '';
+}
+
+function _buildEvidenceScale(scale){
+  if (!scale) return '';
+  let thresholds = scale.thresholds || {};
+  let medium = _evidenceNumber(thresholds.medium);
+  let high = _evidenceNumber(thresholds.high);
+  let params = scale.parameter_snapshot || {};
+  let rows = [];
+  if (medium && high) rows.push('档位：较弱 < ' + medium + '；中等 ' + medium + '–<' + high + '；较强 ≥ ' + high);
+  if (_evidenceNumber(params.tougan_weight)) rows.push('透干 +' + _evidenceNumber(params.tougan_weight));
+  let hidden = params.hidden_weights || {};
+  let hiddenParts = [];
+  for (let hiddenName of ['本气','中气','余气']){
+    if (_evidenceNumber(hidden[hiddenName])) hiddenParts.push(hiddenName + ' +' + _evidenceNumber(hidden[hiddenName]));
+  }
+  if (hiddenParts.length) rows.push('藏干：' + hiddenParts.join('；'));
+  if (_evidenceNumber(params.month_multiplier)) rows.push('月令同五行 ×' + _evidenceNumber(params.month_multiplier));
+  if (_evidenceNumber(params.same_pillar_bonus)) rows.push('同柱同十神 +' + _evidenceNumber(params.same_pillar_bonus));
+  let heju = params.heju_weights || {};
+  let hejuParts = [];
+  for (let hejuName of ['三会','三合','半合','地支六合']){
+    if (_evidenceNumber(heju[hejuName])) hejuParts.push(hejuName + ' +' + _evidenceNumber(heju[hejuName]));
+  }
+  if (hejuParts.length) rows.push('合局（每个匹配十神一次）：' + hejuParts.join('；'));
+  if (!rows.length) return '';
+  let h = '<details class=evidence-scale-details><summary>计分口径</summary><div class=evidence-scale-content>';
+  for (let row of rows) h += '<div>' + esc(row) + '</div>';
+  h += '<p>这些参数是工程启发式，不是古籍固定比例、概率、准确率或人群常模。</p></div></details>';
+  return h;
+}
+
+function _buildPersonalityEvidence(personality){
+  let evidence = personality.evidence_view || {};
+  let status = evidence.status || {};
+  let weighted = evidence.weighted_scores || [];
+  let legacyWeighted = personality.weighted_shishen && personality.weighted_shishen.scores;
+  let hasLegacyWeighted = !!(legacyWeighted && typeof legacyWeighted === 'object' && Object.keys(legacyWeighted).length);
+  let dimensions = evidence.dimensions || {};
+  let combos = personality.bingyao_combos || [];
+  let hasStatus = !!(status.strength || status.pattern || status.pattern_status);
+  let hasEvidence = hasStatus || weighted.length > 0 || hasLegacyWeighted || Object.keys(dimensions).length > 0 || combos.length > 0;
+  if (!hasEvidence) return '';
+
+  let h = '';
+  if (hasStatus){
+    h += '<div class=evidence-status>';
+    if (status.strength) h += '<span><small>身强弱</small>' + esc(status.strength) + '</span>';
+    if (status.pattern) h += '<span><small>格局</small>' + esc(status.pattern) + '</span>';
+    if (status.pattern_status) h += '<span><small>格局状态</small>' + esc(status.pattern_status) + '</span>';
+    h += '</div>';
+  }
+  h += _buildEvidenceScale(evidence.score_scale);
+  if (combos.length) h += _buildBingyaoCard(combos);
+  if (weighted.length) h += _buildShishenRank(weighted);
+  else if (hasLegacyWeighted) h += _buildShishenRank(legacyWeighted);
+  if (Object.keys(dimensions).length) h += _buildEvidenceDimensions(dimensions);
+  let boundaries = evidence.fusion_boundaries || [];
+  if (boundaries.length){
+    h += '<div class=evidence-boundaries><strong>证据边界</strong><ul>';
+    for (let bi = 0; bi < boundaries.length; bi++) h += '<li>' + esc(boundaries[bi]) + '</li>';
+    h += '</ul></div>';
+  }
   return h;
 }
 
@@ -421,6 +534,7 @@ function setPersonalityMode(mode){
   let raw = document.getElementById('personalityRaw');
   let btn = document.querySelector('.toggle-btn');
   if (!body || !raw) return;
+  if (mode !== 'raw' && body.dataset.fusionFailed === 'true') return;
   if (mode === 'raw'){
     raw.style.display = 'block';
     body.style.display = 'none';
@@ -433,18 +547,34 @@ function setPersonalityMode(mode){
     body.style.display = 'block';
     if (btn){
       btn.dataset.personalityMode = 'fusion';
-      btn.textContent = '\u67e5\u770b\u539f\u59cb\u6570\u636e';
+      btn.textContent = '\u67e5\u770b\u5206\u6790\u4f9d\u636e';
     }
   }
 }
 
 function showPersonalityRawFallback(message){
   let body = document.getElementById('personalityBody');
-  if (body && message) body.dataset.fusionError = message;
+  let text = document.querySelector('.personality-text');
+  if (text){
+    text.textContent = '';
+    text.innerHTML = '';
+  }
+  if (body){
+    if (message) body.dataset.fusionError = message;
+    body.dataset.fusionFailed = 'true';
+  }
   setPersonalityMode('raw');
+  let btn = document.querySelector('.toggle-btn');
+  if (btn){
+    btn.disabled = true;
+    btn.style.display = 'none';
+    btn.textContent = 'AI报告生成失败';
+  }
 }
 
 function togglePersonalityMode(){
+  let bodyForMode = document.getElementById('personalityBody');
+  if (bodyForMode && bodyForMode.dataset.fusionFailed === 'true') return;
   let rawForMode = document.getElementById('personalityRaw');
   let btnForMode = document.querySelector('.toggle-btn');
   let currentMode = btnForMode && btnForMode.dataset.personalityMode;
@@ -981,51 +1111,32 @@ function render(d){
     h += '</div>';
   }
 
-  // 性格与家境分析
+  // 性格分析
   h += '</div></details>';
   h += '</section>';
 
   let fusionReady = d.personality && d.personality._fusion_ready;
+  let personalityEvidence = d.personality ? _buildPersonalityEvidence(d.personality) : '';
   if (d.personality || d.family){
     h += '<section class=report-section id=section-personality>';
-    h += '<div class=report-section-head><div><span>性格关系</span><h2>行为模式与家庭背景</h2></div><p>默认阅读报告正文，需要核对时再展开规则依据。</p></div>';
+    h += '<div class=report-section-head><div><span>性格关系</span><h2>行为模式</h2></div><p>默认阅读报告正文，需要核对时再展开规则依据。</p></div>';
     h += _buildModulePrompts('性格', ['这段性格最需要注意什么？', '这会如何影响关系？', '这条判断依据是什么？']);
   }
   if (d.personality){
-    h += '<div class=section-title>' + (fusionReady ? '性格与家境' : '性格') + ' <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'性格\')">问AI</span></div>';
+    h += '<div class=section-title>性格 <span class=ask-ai-btn onclick="event.stopPropagation();openChat(\'性格\')">问AI</span></div>';
     h += '<div class=info-panel>';
-
-    // ── 病药高亮卡片 ──
-    if (!fusionReady && d.personality.bingyao_combos && d.personality.bingyao_combos.length){
-      h += _buildBingyaoCard(d.personality.bingyao_combos);
-    }
-
-    // ── 十神排行 ──
-    if (!fusionReady && d.personality.weighted_shishen && d.personality.weighted_shishen.scores){
-      h += _buildShishenRank(d.personality.weighted_shishen.scores);
-    }
 
     // ── 性格内容区 ──
     h += '<div class=personality-body id=personalityBody>';
     h += '<div class=personality-text>';
     if (fusionReady){
       h += '<span class=fusion-placeholder>⏳ AI 融合报告生成中...</span>';
+    } else if (personalityEvidence) {
+      h += '<div class=evidence-fallback-note>当前显示可核对的分析依据</div>';
     } else {
-      h += d.personality.profile;
+      h += '<div class=empty-state>暂无可核对的性格分析依据</div>';
     }
     h += '</div>';
-
-    // 六维度网格：仅非融合模式显示
-    if (!fusionReady){
-      h += '<div class=traits-grid>';
-      let traitLabels = {社交:'社交',感情:'感情',决策:'决策',内心:'内心',事业:'事业',财富观:'财富观'};
-      for (let tk in traitLabels){
-        if (d.personality.traits && d.personality.traits[tk]){
-          h += '<div class=trait-tile><span class=trait-label>' + tk + '</span><span class=trait-text>' + d.personality.traits[tk] + '</span></div>';
-        }
-      }
-      h += '</div>';
-    }
     h += '</div>';
 
     if (fusionReady){
@@ -1039,34 +1150,19 @@ function render(d){
       h += '<div class=fusion-feedback-detail hidden><span>哪部分偏差最大？</span>';
       h += '<div class=fusion-section-options>';
       h += '<button type=button onclick="submitFusionFeedback(\'core\')">核心画像</button>';
-      h += '<button type=button onclick="submitFusionFeedback(\'moments\')">三个瞬间</button>';
       h += '<button type=button onclick="submitFusionFeedback(\'analysis\')">重点分析</button>';
-      h += '<button type=button onclick="submitFusionFeedback(\'misunderstood\')">容易被误解</button>';
+      h += '<button type=button onclick="submitFusionFeedback(\'structure\')">分类与结构</button>';
       h += '<button type=button class=fusion-feedback-skip onclick="submitFusionFeedback(\'\')">跳过</button>';
       h += '</div></div><div class=fusion-feedback-status role=status></div></div>';
     }
 
     // ── 融合/原始切换 ──
-    if (fusionReady){
-      h += '<div class=personality-toggle><button class=toggle-btn data-personality-mode=fusion onclick="togglePersonalityMode()" title="查看规则引擎原始数据">查看原始数据</button></div>';
+    if (fusionReady && personalityEvidence){
+      h += '<div class=personality-toggle><button class=toggle-btn data-personality-mode=fusion onclick="togglePersonalityMode()" title="查看本次分析采用的规则依据">查看分析依据</button></div>';
       h += '<div class=personality-raw id=personalityRaw style="display:none">';
-      // 病药
-      if (d.personality.bingyao_combos && d.personality.bingyao_combos.length){
-        h += _buildBingyaoCard(d.personality.bingyao_combos);
-      }
-      // 十神排行
-      if (d.personality.weighted_shishen && d.personality.weighted_shishen.scores){
-        h += _buildShishenRank(d.personality.weighted_shishen.scores);
-      }
-      // profile + 六维度
-      h += '<div class=personality-profile-raw>' + (d.personality.profile || '') + '</div>';
-      h += '<div class=traits-grid>';
-      for (let tk2 in {社交:'社交',感情:'感情',决策:'决策',内心:'内心',事业:'事业',财富观:'财富观'}){
-        if (d.personality.traits && d.personality.traits[tk2]){
-          h += '<div class=trait-tile><span class=trait-label>' + tk2 + '</span><span class=trait-text>' + d.personality.traits[tk2] + '</span></div>';
-        }
-      }
-      h += '</div></div>';
+      h += personalityEvidence + '</div>';
+    } else if (personalityEvidence) {
+      h += '<div class=personality-raw id=personalityRaw>' + personalityEvidence + '</div>';
     }
 
     h += '</div>';

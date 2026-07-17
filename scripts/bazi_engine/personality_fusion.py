@@ -23,6 +23,12 @@ from ._deepseek_config import (
     DEEPSEEK_MODEL,
 )
 from ._http import shared_client
+from .personality_analysis.evidence import (
+    build_fusion_signals_from_evidence,
+    build_fusion_trait_signals,
+    normalize_strength_label,
+    weighted_score_level,
+)
 
 # ═══════════════════════════════════════════════════════════════
 # 系统提示词 — 从 fusion_system.txt 加载，文件缺失时回退到内置副本
@@ -37,7 +43,7 @@ _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看
 
 # 禁止
 - 八字术语（比劫、官杀、印星、食伤、财星、藏干、格局、身强身弱、调候、用神忌神等）
-- 开场白、收尾语、行动清单。直接从“核心画像”开始写，写完“容易被误解的一面”就结束
+- 开场白、收尾语、行动清单。直接从“核心画像”开始写，写完“重点分析”就结束
 - "你是一个...的人""骨子里就是..."这类句式——直接说事，别总结
 - 给概念加引号（"耗电""卡住""压力处理器"）
 - 每句话都追求金句效果——正常说话不需要句句精彩
@@ -52,7 +58,7 @@ _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看
 
 # 表达人格：知禾式表达
 语气温和、耐心、清楚，像一位稳重的陪伴型分析者。先理解人的处境，再给判断；指出问题时不刺人，不贴死标签，不制造羞耻感。
-复杂内容要拆开讲，用日常语言解释，不要堆概念。提醒要稳妥、有分寸，给用户选择空间；不要输出独立建议清单。
+复杂内容要拆开讲，用日常语言解释，不要堆概念。提醒要稳妥、有分寸，给用户选择空间。
 保持诚实，不为了温柔而回避矛盾；可以指出风险和代价，但要把话说得有分寸。不要过度安抚、不要鸡汤、不要像客服一样寒暄。
 
 **双面原则：没有绝对的好或坏。关键特质要写出优势和代价；弱信号或中性信号不必强行双面。不给任何特质贴上纯粹正面或纯粹负面的标签。**
@@ -60,47 +66,39 @@ _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看
 
 # 判断边界
 - 强信号可以明确写；弱信号只写倾向，不做定论。
-- 结构化数据优先，RAG/参考规则只能辅助解释，不能覆盖当前数据。
+- 结构化数据优先；组合候选只能交叉核对，不能单独生成结论。
 - 遇到矛盾信号，先解释它们分别在哪些场景成立，再给综合判断。
-- 家境、感情、健康相关内容必须谨慎表达，不做绝对断言。
+- 感情和健康相关内容必须谨慎表达，不做绝对断言；禁止输出心理或医学诊断。
 
 # 输出结构
 
 ## 核心画像
-50-80字。先给出全盘最有辨识度的一组核心拉扯，再用一个可验证的现实表现解释为什么它重要。不要使用“你是一个……的人”这类空泛定义。
-
-## 最像你的三个瞬间
-严格输出3条项目符号，每条25-40字。只写强信号支持、本人能在日常生活中验证的具体瞬间；三条分别体现不同侧面，不得换句话重复同一结论。
+50-80字。先给出全盘最有辨识度的一组核心拉扯。不要使用“你是一个……的人”这类空泛定义，也不要在这里重复后文的场景。
 
 ## 重点分析
-只选择3个最有辨识度的主题，不强制覆盖社交、感情、内心、决策、事业、财富观和家境。每个主题使用“### 具体标题”，标题要概括真实矛盾或表现，不能只写“社交”“内心”这类维度名。
-每个主题70-100字、2-3句，围绕一个主要机制，写清现实场景、带来的优势以及可能代价。信号全部处于中位、与其他主题重复或缺少依据的维度直接省略。
+只写2-3个证据最充分的主题，不强制覆盖所有维度。每个主题必须使用“### 【领域】具体标题”：领域只能是社交、感情、内心、决策、事业、财富观；跨维度时使用“### 【社交 × 决策】具体标题”，最多两个领域。领域标签用于导航，后半句必须概括真实矛盾或表现，不能只有“社交”“内心”这类维度名。
+每个主题70-100字、2-3句，围绕一个主要机制，写清现实场景、带来的优势以及可能代价。能解释“容易被误解”的落差时，直接写进对应主题，不另起板块。信号全部处于中等、与其他主题重复或缺少依据的维度直接省略；证据不足时只写2个主题，不凑第三个。
 
-## 容易被误解的一面
-60-90字。写一种外在表现与真实动机之间的落差，说明它在什么场景下成立；不得为了制造反差而夸大。
-
-全文控制在550-800个汉字左右。重点优先于完整，宁可少写一个普通维度，也不要用泛泛而谈的内容凑齐板块。不要输出开场白、总结、收尾语或建议清单。
+全文控制在400-650个汉字左右。重点优先于完整，宁可少写一个普通维度，也不要用泛泛而谈的内容凑齐板块。不要输出开场白、总结、收尾语或建议清单。
 
 # 数据使用
-- [全局主要矛盾]是全盘最高指令，核心画像和重点主题要跟它一致
+- [组合候选]只表示工程规则命中，不是最高指令；必须有六维度中的不同字段相互印证才可使用。
 - [当前人生阶段]只用于调整场景感：中学生偏学业，大学生偏专业/实习，职场人偏职业。不要因此输出"立刻能做的事"或行动清单。
-- [六维度信号] 是结构化定性标签（偏低/中位/偏高），不是描述文字。你需要自己解读这些信号之间的关系和矛盾，优先选择偏离明显且能相互印证的信号写成重点主题。注意矛盾组合（如表达欲偏高+内敛度偏高=需要安全感才释放的表达者）
-- [粒度性格特质] 是引擎从十神藏干和地支关系提取的具体行为倾向。每条特质有"所属维度"标签，优先把该维度标注的特质融入对应章节，**但不限于此——标注特质是起点，不是边界。你还需要根据十神组合、地支驱动、六维度信号等数据，推导出标注列表中没有覆盖到的性格表现**。四柱藏干特质是底层性格驱动力（来自地支藏干），十神加权特质是外在行为倾向。**和六维度信号的关系：六维度信号给数值框架（强度高低），粒度特质给具体描述（怎么表现）。优先结合六维度信号和粒度特质；如果某维度粒度特质不足，不要硬编，用六维度信号简要说明即可。** 粒度特质数量不同是正常的（如感情只有几条，内心有很多），数量少不等于该维度不重要——用六维度信号补充数值强度
+- [六维度信号] 已按字段语义处理。强度字段使用较弱/中等/较强；事业方向只表示本盘内相对排序，不能把“方向接近”写成能力偏低。
 - 表面矛盾要融合，但不能据此虚构具体职业、赛道、收入方式或人生经历。只解释数据支持的行为机制。
-- 古代概念做现代翻译：参考[古今差异提示]
+- 严格遵守[证据边界]，传统结构名称不能直接等同于现代心理特征。
 - 禁止古代职业建议、古代婚恋观、古代健康判词
-- **禁止在报告中输出任何原始分数**：定性标签只能融入自然语言，不要机械列成"表达欲偏高、内敛度偏高"这种清单。
+- **禁止在报告中输出任何原始分数**：定性标签只能融入自然语言，不要机械列成"表达欲较强、内敛度较强"这种清单。
 - **禁止输出底层术语**：如果数据或参考里出现"七杀/偏印/伤官/食伤/夫妻宫/日支/华盖/财破印/杀印相生/自刑"等词，必须翻译成现代行为语言再写。
 
 # 多信号叠合（重要）
-**不允许只看一个信号写结论。优先级是辨识度高于覆盖度：只展开3个证据最充分的主题，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
+**不允许只看一个信号写结论。优先级是辨识度高于覆盖度：只展开2-3个证据最充分的主题，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
 具体方法：
-1. **维度内叠合**：同一维度的多个信号一起看。如社交维度同时有"表达欲偏高"和"内敛度偏高"→写出两种倾向如何共存，什么场景下哪一种占主导。
-2. **跨维度叠合**：不同维度之间相互影响。如"社交表达欲低"+"决策果断"→团队中可能独断不想解释；"内心情绪敏感"+"感情表达欲低"→心里有事但不说的类型。
+1. **维度内叠合**：同一维度的多个信号一起看。如社交维度同时有"表达欲较强"和"内敛度较强"→写出两种倾向如何共存，什么场景下哪一种占主导。
+2. **跨维度叠合**：不同维度之间相互影响，但不得从两个分值直接编造具体经历。
 3. **底层驱动解读**：每个维度的高/低信号不是孤立的，背后有底层行为驱动在共同作用。比如"决策维度的冒险倾向高"可能不是单纯冲动，而是机会敏感、风险承受和执行力叠加的结果。在分析中把这种驱动关系点出来。
-4. **粒度特质印证**：粒度特质出现的场景就是该信号在现实生活中的表现方式。如果六维度信号显示"内敛度偏高"+粒度特质有"不善表达情感"，那这两个肯定是一个意思——在描述中要合并说，不要当两件事分开说。
-5. **当代场景落地**：每个重点主题都要让读者能在脑海中对应到一个具体的日常场景——不是"你很内向"，而是"在聚会上你通常先观察，但遇到真正感兴趣的话题会聊得很深"。场景用于解释信号，不得假装知道用户实际发生过什么。
-- **如果一个维度的全部信号都处于中位，不写；不要用一句空话凑覆盖度。**
+4. **当代场景落地**：每个重点主题都要让读者能在脑海中对应到一个具体的日常场景——不是"你很内向"，而是"在聚会上你通常先观察，但遇到真正感兴趣的话题会聊得很深"。场景用于解释信号，不得假装知道用户实际发生过什么。
+- **如果一个维度的全部信号都处于中等，不写；不要用一句空话凑覆盖度。**
 - **不要输出"立刻能做的事"、"建议"、"行动步骤"这类独立板块。**"""
 
 def _load_system_prompt() -> str:
@@ -114,7 +112,7 @@ def _load_system_prompt() -> str:
     return _FALLBACK_SYSTEM_PROMPT
 
 FUSION_SYSTEM_PROMPT = _load_system_prompt()
-FUSION_PROMPT_VERSION = "2026-07-16-youth-v2"
+FUSION_PROMPT_VERSION = "2026-07-17-evidence-v3"
 
 # 最终报告质量闸门：把模型偶发泄漏的术语和格式残留转成用户可读表达。
 _REPORT_TERM_REPLACEMENTS: list[tuple[str, str]] = [
@@ -238,7 +236,13 @@ def fusion_report_quality_issues(text: str) -> list[str]:
     return issues
 
 
-_REPORT_REQUIRED_SECTIONS = ("核心画像", "最像你的三个瞬间", "重点分析", "容易被误解的一面")
+_REPORT_REQUIRED_SECTIONS = ("核心画像", "重点分析")
+_REPORT_REMOVED_SECTIONS = ("最像你的三个瞬间", "容易被误解的一面")
+_FOCUS_TOPIC_LABEL = (
+    r"【(社交|感情|内心|决策|事业|财富观)"
+    r"(?:\s*[×xX]\s*(社交|感情|内心|决策|事业|财富观))?】"
+)
+_FOCUS_TOPIC_PATTERN = re.compile(rf"{_FOCUS_TOPIC_LABEL}\s*\S.+")
 
 
 def fusion_report_structure_issues(text: str) -> list[str]:
@@ -250,29 +254,26 @@ def fusion_report_structure_issues(text: str) -> list[str]:
         if not re.search(rf"^#{{1,3}}\s*{re.escape(title)}\s*$", normalized, re.MULTILINE):
             issues.append(f"缺少板块:{title}")
 
-    moments_match = re.search(
-        r"^#{1,3}\s*最像你的三个瞬间\s*$([\s\S]*?)(?=^#{1,3}\s*重点分析\s*$)",
-        normalized,
-        re.MULTILINE,
-    )
-    if moments_match:
-        moment_count = len(re.findall(r"^\s*[-*]\s+\S", moments_match.group(1), re.MULTILINE))
-        if moment_count != 3:
-            issues.append(f"生活瞬间数量:{moment_count}")
-
     topics_match = re.search(
-        r"^#{1,3}\s*重点分析\s*$([\s\S]*?)(?=^#{1,3}\s*容易被误解的一面\s*$)",
+        r"^#{1,3}\s*重点分析\s*$([\s\S]*)$",
         normalized,
         re.MULTILINE,
     )
     if topics_match:
-        topic_count = len(re.findall(r"^#{2,4}\s*\S", topics_match.group(1), re.MULTILINE))
-        if topic_count != 3:
+        topic_titles = re.findall(r"^###\s*(.+?)\s*$", topics_match.group(1), re.MULTILINE)
+        topic_count = len(topic_titles)
+        if not 2 <= topic_count <= 3:
             issues.append(f"重点主题数量:{topic_count}")
+        if topic_titles and any(not _FOCUS_TOPIC_PATTERN.fullmatch(title) for title in topic_titles):
+            issues.append("重点主题标签不合格")
 
-    if len(normalized) < 400:
+    for title in _REPORT_REMOVED_SECTIONS:
+        if re.search(rf"^#{1,3}\s*{re.escape(title)}\s*$", normalized, re.MULTILINE):
+            issues.append(f"多余板块:{title}")
+
+    if len(normalized) < 280:
         issues.append(f"篇幅过短:{len(normalized)}")
-    elif len(normalized) > 1100:
+    elif len(normalized) > 850:
         issues.append(f"篇幅过长:{len(normalized)}")
 
     if normalized and normalized[-1] not in "。！？!?":
@@ -289,7 +290,9 @@ def _repair_fusion_report(text: str, issues: list[str]) -> str | None:
             "content": (
                 "下面的报告已经完成事实分析，只修订结构和表达，不添加任何新事实、职业、经历或建议。\n"
                 f"需要修复的问题：{'；'.join(issues)}\n"
-                "必须保留四个板块、三个生活瞬间和三个重点主题；总长度控制在550-800个汉字左右。"
+                "必须保留核心画像和重点分析两个板块；重点分析保留2-3个主题，"
+                "每个主题必须使用“### 【领域】具体标题”，领域只能取社交、感情、内心、决策、事业、财富观，"
+                "跨维度最多两个。总长度控制在400-650个汉字左右。"
                 "直接输出修订后的完整报告，不解释修改过程。\n\n"
                 f"【待修订报告】\n{text}"
             ),
@@ -395,16 +398,6 @@ def _clean_ancient_refs(text: str) -> str:
     return text.strip()
 
 
-def _score_to_band(val: float) -> str:
-    """将原始数值(0-10)转为定性标签。"""
-    if val >= 7:
-        return "偏高"
-    elif val >= 4:
-        return "中位"
-    else:
-        return "偏低"
-
-
 def _strip_score_text(text: str) -> str:
     """移除给 LLM 的文本中的原始分数片段。"""
     import re
@@ -415,61 +408,21 @@ def _strip_score_text(text: str) -> str:
 
 
 def _sanitize_package(package: dict) -> dict:
-    """将 LLM 数据包中的原始数值转换为定性标签。
+    """Remove raw scores from the already field-aware LLM package.
 
-    防止原始分数泄漏到 prompt 中导致 LLM 复读数字。
-    内部规则数据不受影响。
+    Field classification happens before this function. This final pass only
+    protects against score leakage from compatibility payloads.
     """
-    import re
-
-    # ── 0. 日主画像：去掉身强弱等文本中的原始分数 ──
     dm_profile = package.get("日主画像", {})
     if isinstance(dm_profile, dict):
         for key, val in list(dm_profile.items()):
             if isinstance(val, str):
                 dm_profile[key] = _strip_score_text(val)
 
-    # ── 1. 六维度信号：去掉综合分数，数值→定性标签 ──
-    signals = package.get("六维度信号", {})
-    for _dim_name, dim_data in list(signals.items()):
-        if not isinstance(dim_data, dict):
-            continue
-        # 去掉综合分数（内部聚合值，LLM 不需要）
-        dim_data.pop("综合分数", None)
-        # 数值 → 定性标签
-        for key, val in list(dim_data.items()):
-            if isinstance(val, bool):
-                continue
-            if isinstance(val, (int, float)) and key not in ("身强弱修正",):
-                dim_data[key] = _score_to_band(val)
-        # 重新格式化 _需覆盖信号: "表达欲=8.0(偏高)" → "表达欲偏高"
-        hint = dim_data.get("_需覆盖信号", "")
-        if hint and isinstance(hint, str):
-            parts = [p.strip() for p in hint.split("|")]
-            parts = [p for p in parts if p and not p.startswith("综合分数=")]
-            hint = " | ".join(parts)
-            dim_data["_需覆盖信号"] = re.sub(
-                r'(\w+)=[\d.]+\((偏高|偏低)\)', r'\1\2', hint
-            )
-
-    # ── 2. 十神加权特质：强度 → 强度定性 ──
-    granular = package.get("粒度性格特质", {})
-    weighted_traits = granular.get("十神加权特质", [])
-    for item in weighted_traits:
-        if "强度" in item:
-            raw = item.pop("强度")
-            item["强度定性"] = _score_to_band(raw)
-
-    # ── 3. 十神强度排行：始终去掉原始强度，始终提供相对强度定性标签 ──
     ranking = package.get("十神强度排行", [])
     for item in ranking:
-        s = item.pop("强度", 0)
-        if s >= 5:
-            item["相对强度"] = "偏高"
-        elif s >= 2:
-            item["相对强度"] = "正常"
-        else:
-            item["相对强度"] = "偏低"
+        if "强度" in item:
+            item["工程强度档"] = weighted_score_level(item.pop("强度"))
 
     return package
 
@@ -478,6 +431,8 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
                               life_stage: str = "", age_info: dict | None = None) -> dict:
     """从 PersonalityResult + FamilyResult 构建 LLM 融合数据包。"""
     package: dict = {}
+    evidence_view = pr_dict.get("evidence_view", {}) or {}
+    evidence_status = evidence_view.get("status", {}) or {}
 
     # ── 命主基本信息 ──
     if life_stage:
@@ -485,150 +440,54 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
     if age_info:
         package["日主信息"] = age_info
 
-    # ── 古今差异说明 ──
-    package["古今差异提示"] = (
-        "以下引擎数据基于古代规则生成。做现代翻译：'爱读书'在现代=信息吸收力强/擅长考证学历/需要理论支撑后行动；"
-        "'适合公务员'在现代=在大公司/体制/专业机构里发挥更好；'善于经营'在现代=数字资产/知识付费/技术变现等多元路径；"
-        "'才艺'在现代=内容创作/技术创新/表达输出；'朋友多'在现代=社交网络/协作能力。"
-        "过滤古籍引用和古代职业建议（考功名、走仕途等）。"
+    package["证据边界"] = (
+        "以下内容是传统规则启发的工程信号，不是概率、准确率或临床测量。"
+        "只描述多个结构化信号共同支持、且用户能够现实核对的行为倾向；"
+        "不得推导心理诊断、职业、收入、健康、家庭经历或确定事件。"
     )
 
     # ── 格局验证（成格/破格/带忌/不成格）──
-    pattern_val = pr_dict.get("pattern_validation", {})
-    if pattern_val:
-        package["格局状态"] = {
-            "判定": pattern_val.get("status", "不成格"),
-            "说明": pattern_val.get("note", ""),
-        }
-        if pattern_val.get("status") == "破格":
-            package["格局状态"]["提示"] = "当前格局已破，不要用此格局的特性来解读命主。请忽略引擎标签中格局相关描述，基于十神分布和病药组合来分析。"
-        elif pattern_val.get("status") == "带忌":
-            package["格局状态"]["提示"] = "格局成中有败，可以部分参考格局特性，但需标注矛盾。"
-        elif pattern_val.get("status") == "成格":
-            package["格局状态"]["提示"] = "格局成立，可以放心参考格局特性。"
+    pattern_val = pr_dict.get("pattern_validation", {}) or {}
+    pattern_status = pattern_val.get("status") or evidence_status.get("pattern_status", "")
+    pattern_name = evidence_status.get("pattern", "")
+    if pattern_status or pattern_name:
+        package["格局状态"] = {"证据等级": "传统结构候选"}
+        if pattern_name:
+            package["格局状态"]["名称"] = pattern_name
+        if pattern_status:
+            package["格局状态"]["判定"] = pattern_status
+        if pattern_status == "破格":
+            package["格局状态"]["使用边界"] = "不使用格局特性下结论"
+        elif pattern_status == "带忌":
+            package["格局状态"]["使用边界"] = "只能与其他信号交叉核对"
+        elif pattern_status == "成格":
+            package["格局状态"]["使用边界"] = "仍不能单独推导现代人格"
         else:
-            package["格局状态"]["提示"] = "格局信号偏弱，不建议强调格局特性，以实际十神分布为准。"
+            package["格局状态"]["使用边界"] = "不强调格局特性"
 
-    # ── 全局最高指令（病药组合）──
+    # 病药检测只提供候选名称。未经验证的心理因果和行动指令不进入 LLM。
     bingyao = pr_dict.get("bingyao_combos", [])
     if bingyao:
-        top = bingyao[0]
-        package["全局最高指令"] = f"{top['combo']}：{top['directive']}"
-        if len(bingyao) > 1:
-            package["次要病药"] = [
-                f"{c['combo']}：{c['directive'][:150]}{'...' if len(c['directive']) > 150 else ''}"
-                for c in bingyao[1:]
-            ]
+        package["组合候选"] = [
+            {"名称": item.get("combo", ""), "证据等级": "工程规则候选"}
+            for item in bingyao[:3]
+            if item.get("combo")
+        ]
 
-    # ── 日主核心（结构化数据，LLM自己写描述）──
+    # 仅保留结构字段，移除未经验证的性格、道德和职业描述。
     dm_core = pr_dict.get("day_master_core", {})
     if isinstance(dm_core, dict):
-        package["日主画像"] = dm_core
-    elif isinstance(dm_core, str) and dm_core:
-        package["日主画像"] = {"原始描述": _clean_ancient_refs(dm_core[:300])}
-    strength_label = pr_dict.get("strength_label", "")
-    if strength_label and isinstance(package.get("日主画像"), dict):
-        package["日主画像"]["身强弱"] = _clean_ancient_refs(strength_label[:100])
+        package["日主画像"] = {
+            key: dm_core[key]
+            for key in ("五行", "阴阳")
+            if dm_core.get(key)
+        }
+    strength_label = pr_dict.get("strength_label") or evidence_status.get("strength", "")
+    if strength_label:
+        package.setdefault("日主画像", {})
+        package["日主画像"]["身强弱"] = normalize_strength_label(strength_label)
 
-    # ── 关键组合（只传组合名+涉及十神，不传引擎结论）──
-    special_combos_raw = []
-    for combo in pr_dict.get("special_combos", [])[:8]:
-        # 提取组合名（→之前的部分），去掉古籍引用和结论
-        name_part = combo.split("→")[0].strip() if "→" in combo else combo[:80]
-        # 去古籍引用
-        cleaned = _clean_ancient_refs(name_part)
-        if cleaned and not cleaned.startswith("──"):
-            special_combos_raw.append(cleaned)
-    package["关键组合"] = special_combos_raw
-
-    # ── v0.15.0: 粒度性格特质（按六维度分组，LLM 无法跳过）──
-    sub_traits = pr_dict.get("sub_traits", [])
-    combo_traits = pr_dict.get("combo_traits", [])
-    dizhi_traits = pr_dict.get("dizhi_traits", [])
-
-    # 特质→维度映射（一个特质可属于多个维度）
-    _TRAIT_DIMENSION_MAP: dict[str, list[str]] = {
-        # 社交维度
-        "分享表达欲": ["社交", "感情"], "才华外露": ["社交", "感情"],
-        "毒舌犀利": ["社交"], "朋友多": ["社交"], "社交能量": ["社交"],
-        "温和表达": ["社交"], "社交手腕": ["社交", "财富观"],
-        "不喜冲突": ["社交"], "讲义气": ["社交", "感情"], "护短": ["社交", "感情"],
-        "独处需求": ["社交", "内心"], "依赖性强": ["社交", "内心", "感情"],
-        "不善表达情感": ["社交", "内心", "感情"], "好面子": ["社交", "内心"],
-        "乐观豁达": ["社交", "内心"], "懒得争执": ["社交", "内心"],
-        # 内心维度
-        "深度思考": ["内心"], "钻牛角尖": ["内心"], "冷门兴趣": ["内心"],
-        "直觉洞察": ["内心"], "情绪敏感": ["内心", "感情"],
-        "多疑敏感": ["内心", "社交", "感情"], "完美主义": ["内心", "决策"],
-        "审美挑剔": ["内心"], "自我意识强": ["内心", "决策"],
-        "固执己见": ["内心", "决策"], "保守求稳": ["内心", "决策", "感情"],
-        "心理压力": ["内心"], "心宽体胖": ["内心"],
-        "爱读书思考": ["内心"], "仁慈包容": ["内心", "社交"],
-        "贵人运": ["内心", "事业"], "重名誉": ["内心", "事业"],
-        "博而不精": ["内心"], "安于现状": ["内心", "财富观"],
-        "争强好胜": ["内心", "决策"],
-        # 决策维度
-        "果断勇猛": ["决策"], "急躁冲动": ["决策"],
-        "冲动行事": ["决策", "感情"], "冒险精神": ["决策", "财富观"],
-        "灵活变通": ["决策"], "危机嗅觉": ["决策"],
-        "竞争意识": ["决策", "事业"], "反叛性": ["决策", "事业"],
-        "不服权威": ["决策", "事业"], "报复心": ["决策", "社交"],
-        "独立自主": ["决策", "事业"],
-        # 事业维度
-        "商业头脑": ["事业", "财富观"], "稳定追求": ["事业", "财富观"],
-        "责任感": ["事业"], "处事周全": ["事业"], "守规矩": ["事业"],
-        # 感情维度
-        "情感丰富": ["感情"], "家庭观念": ["感情", "财富观"],
-        "慷慨大方": ["财富观", "感情"],
-        # 财富观维度
-        "务实节俭": ["财富观"],
-        "精打细算": ["财富观"], "花钱大手大脚": ["财富观"],
-        "享受生活": ["财富观", "内心"],
-    }
-
-    def _assign_dimensions(trait_name: str) -> list[str]:
-        return _TRAIT_DIMENSION_MAP.get(trait_name, ["内心"])  # 默认归内心
-
-    if sub_traits or combo_traits or dizhi_traits:
-        granular = {}
-
-        # 四柱藏干特质（底层性格驱动力，优先级最高）
-        hidden_all = [st for st in sub_traits if st.get("source_type")]
-        if hidden_all:
-            granular["四柱藏干特质"] = [
-                {"特质": st["trait_name"], "描述": st["description"],
-                 "来源": st.get("source_type", ""),
-                 "所属维度": _assign_dimensions(st["trait_name"])}
-                for st in hidden_all
-            ]
-
-        # 十神加权子特质（全局外在行为倾向）
-        weighted_subs = [st for st in sub_traits if not st.get("source_type")]
-        if weighted_subs:
-            granular["十神加权特质"] = [
-                {"特质": st["trait_name"], "描述": st["description"],
-                 "十神": st.get("shishen", ""), "强度": st.get("score", 0),
-                 "所属维度": _assign_dimensions(st["trait_name"])}
-                for st in weighted_subs[:15]
-            ]
-
-        # 十神组合特质
-        if combo_traits:
-            granular["十神组合特质"] = [
-                {"组合": ct.get("combo", ""), "特质": ct["trait"],
-                 "描述": ct["description"]}
-                for ct in combo_traits
-            ]
-
-        # 地支→性格
-        if dizhi_traits:
-            granular["地支驱动特质"] = [
-                {"关系": dt.get("relation", ""), "特质": dt["trait"],
-                 "描述": dt["description"]}
-                for dt in dizhi_traits
-            ]
-
-        package["粒度性格特质"] = granular
+    # 子特质名称含现代人格、道德和职业断言；原文与验证未补齐前不进入融合输入。
 
     # ── 加权十神数据 ──
     weighted = pr_dict.get("weighted_shishen", {})
@@ -639,32 +498,18 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
         package["十神强度排行"] = [
             {"十神": name, "强度": round(score, 1)} for name, score in sorted_scores[:8]
         ]
-        # 注意：数值→定性标签的转换由 _sanitize_package() 统一处理
-        # 月令五行/合局化神已去除（引擎内部字段，LLM 不需要）
+    elif evidence_view.get("weighted_scores"):
+        package["十神强度排行"] = [
+            {"十神": item.get("name", ""), "工程强度档": item.get("level", "")}
+            for item in evidence_view["weighted_scores"][:8]
+            if item.get("name")
+        ]
 
-    # ── 六维度结构化信号（LLM从零写描述，自由解释数值）──
     trait_signals = pr_dict.get("trait_signals", {})
     if trait_signals:
-        # 给每个维度标注"需覆盖的信号"（偏离中位≥2的都要提到）
-        _enriched = {}
-        for dim in ["社交", "感情", "内心", "决策", "事业", "财富观"]:
-            raw = trait_signals.get(dim, {})
-            if not raw:
-                _enriched[dim] = raw
-                continue
-            _hints = []
-            for k, v in raw.items():
-                if k == "综合分数" or isinstance(v, bool):
-                    continue
-                if isinstance(v, (int, float)) and (v >= 7 or v <= 3):
-                    _hints.append(f"{k}={v}" + ("(偏高)" if v >= 7 else "(偏低)"))
-            for k, v in raw.items():
-                if (isinstance(v, list) and v) or (isinstance(v, str) and v and v not in ("平稳", "中和", "强", "弱")):
-                    _hints.append(f"{k}={v}")
-            _enriched[dim] = dict(raw)
-            if _hints:
-                _enriched[dim]["_需覆盖信号"] = " | ".join(_hints)
-        package["六维度信号"] = _enriched
+        package["六维度信号"] = build_fusion_trait_signals(trait_signals)
+    elif evidence_view.get("dimensions"):
+        package["六维度信号"] = build_fusion_signals_from_evidence(evidence_view["dimensions"])
     else:
         # 回退：旧版 traits 文本（向后兼容）
         area_traits = pr_dict.get("traits", {})
@@ -677,15 +522,8 @@ def build_fusion_data_package(pr_dict: dict, family_dict: dict | None = None,
             "财富观": _clean_ancient_refs(area_traits.get("财富观", "")),
         }
 
-    # ── 家境信息（如有）──
-    if family_dict:
-        fam_info = {}
-        for key in ("level_label", "family_type", "surface", "reality", "childhood"):
-            val = family_dict.get(key, "")
-            if val:
-                fam_info[key] = val
-        if fam_info:
-            package["家境背景"] = fam_info
+    # 家境规则仍在溯源，不进入性格融合；保留参数只为兼容调用契约。
+    del family_dict
 
     # ── 统一数据清洗：数值→定性标签 ──
     package = _sanitize_package(package)
@@ -708,15 +546,17 @@ def build_fusion_user_prompt(data_package: dict) -> str:
         f"{json.dumps(data_package, ensure_ascii=False, indent=2)}"
     )
 
-    # 2. RAG 参考片段（中间）
-    try:
-        from .rag import format_snippets, retrieve_for_generation
-        rag_snippets = retrieve_for_generation("personality", data_package, top_k=4)
-        if rag_snippets:
-            parts.append("")
-            parts.append(format_snippets(rag_snippets, max_chars=1200))
-    except Exception:
-        pass
+    # Personality references currently mix classical summaries and single-case
+    # notes. Keep retrieval opt-in until evidence grades are available.
+    if os.getenv("BAZI_PERSONALITY_RAG", "0") == "1":
+        try:
+            from .rag import format_snippets, retrieve_for_generation
+            rag_snippets = retrieve_for_generation("personality", data_package, top_k=2)
+            if rag_snippets:
+                parts.append("")
+                parts.append(format_snippets(rag_snippets, max_chars=800))
+        except Exception:
+            pass
 
     # 3. 最终输出约束（结尾）
     parts.append("")
@@ -724,9 +564,11 @@ def build_fusion_user_prompt(data_package: dict) -> str:
         "【输出要求】\n"
         "- 严格按照系统提示的格式和约束输出。\n"
         "- 禁止在报告中出现任何原始分数或原始八字术语。\n"
-        "- 先写核心画像和三个可验证的生活瞬间，再只展开3个最有辨识度的主题。\n"
-        "- 辨识度高于覆盖度；合并同类信号，不逐条罗列标签，中位或证据不足的维度直接省略。\n"
-        "- 全文控制在550-800个汉字左右，不使用网络热词、贬损比喻代替分析。\n"
+        "- 先写核心画像，再只展开2-3个最有辨识度的主题。\n"
+        "- 每个主题必须写成“### 【领域】具体标题”；领域只能取社交、感情、内心、决策、事业、财富观，跨维度最多两个。\n"
+        "- 辨识度高于覆盖度；合并同类信号，不逐条罗列标签，中等或证据不足的维度直接省略。\n"
+        "- 组合候选和粒度候选不能单独生成结论，至少需要两个不同字段相互印证。\n"
+        "- 全文控制在400-650个汉字左右，不使用网络热词、贬损比喻代替分析。\n"
         "- 不输出“立刻能做的事”“建议”“行动步骤”等独立板块。"
     )
 

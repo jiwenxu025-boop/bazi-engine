@@ -810,6 +810,12 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
         )
         chart.family_result = fr.to_dict()
 
+        from .personality_analysis.evidence import build_personality_evidence_view
+        chart.personality_result["evidence_view"] = build_personality_evidence_view(
+            chart.personality_result,
+            pattern=chart.pattern,
+        )
+
         # ── LLM 融合引擎 (v0.11.0) ──
         if os.getenv("BAZI_FUSION_ENGINE", "0") == "1":
             chart.personality_result["_fusion_ready"] = True

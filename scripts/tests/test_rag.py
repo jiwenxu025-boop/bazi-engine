@@ -84,20 +84,22 @@ def test_chat_relevant():
     assert any(r["source"] != "calibration_store.json" for r in results)
 
 
-def test_personality_prompt_contains_rag():
-    """build_fusion_user_prompt 构造出的 prompt 包含 personality-rules 参考"""
+def test_personality_prompt_keeps_ungraded_rag_opt_in(monkeypatch):
+    """未经证据分级的 personality RAG 默认不进入生成 prompt。"""
     from bazi_engine.personality_fusion import build_fusion_user_prompt
     dp = {"日主": "壬水阳", "格局": "偏印格", "喜用十神": ["伤官"], "忌十神": ["偏印"],
           "六维度信号": {"社交": "", "感情": "", "内心": "", "决策": "", "事业": "", "财富观": ""},
           "病药组合": [], "特殊组合": [], "压力画像": {}, "家境背景": {}}
     prompt = build_fusion_user_prompt(dp)
     assert "【结构化数据】" in prompt, "应包含数据区"
-    assert "参考规则/校准" in prompt, "应包含 RAG 参考块"
-    assert "personality-rules" in prompt, "应命中 personality-rules 知识源"
     assert "【输出要求】" in prompt, "应包含结尾输出约束"
-    # 顺序：数据 → RAG → 输出要求
-    assert prompt.find("【结构化数据】") < prompt.find("参考规则/校准"), "数据应在 RAG 前"
-    assert prompt.find("参考规则/校准") < prompt.find("【输出要求】"), "RAG 应在输出要求前"
+    assert "参考规则/校准" not in prompt
+
+    monkeypatch.setenv("BAZI_PERSONALITY_RAG", "1")
+    prompt_with_rag = build_fusion_user_prompt(dp)
+    assert "参考规则/校准" in prompt_with_rag
+    assert prompt_with_rag.find("【结构化数据】") < prompt_with_rag.find("参考规则/校准")
+    assert prompt_with_rag.find("参考规则/校准") < prompt_with_rag.find("【输出要求】")
 
 
 def test_fusion_package_sanitizes_raw_scores_and_prompt_order():
@@ -113,7 +115,7 @@ def test_fusion_package_sanitizes_raw_scores_and_prompt_order():
             "scores": {"偏印": 8.0, "比肩": 6.0, "食神": 3.0, "正官": 1.5}
         },
         "sub_traits": [
-            {"trait_name": "深度思考", "description": "喜欢想事情", "score": 7.5},
+            {"trait_name": "杀伐决断", "description": "喜欢想事情", "score": 7.5},
             {
                 "trait_name": "不善表达情感",
                 "description": "情绪不常外露",
@@ -151,21 +153,20 @@ def test_fusion_package_sanitizes_raw_scores_and_prompt_order():
     assert "综合分数" not in pkg_text
     assert "7.2分" not in pkg_text
     assert dp["日主画像"]["身强弱"] == "偏强"
-    assert dp["六维度信号"]["社交"]["表达欲"] == "偏低"
-    assert dp["六维度信号"]["社交"]["内敛度"] == "偏高"
-    assert dp["六维度信号"]["感情"]["桃花坐日支"] is False
-    assert "表达欲偏低" in dp["六维度信号"]["社交"]["_需覆盖信号"]
+    assert dp["六维度信号"]["社交"]["强度信号"]["主动表达"] == "中等"
+    assert dp["六维度信号"]["社交"]["强度信号"]["观察与保留"] == "较强"
+    assert "桃花坐日支" not in pkg_text
+    assert "_需覆盖信号" not in pkg_text
 
     for item in dp["十神强度排行"]:
         assert "强度" not in item
-        assert "相对强度" in item
+        assert "工程强度档" in item
 
-    for item in dp["粒度性格特质"]["十神加权特质"]:
-        assert "强度" not in item
-        assert "强度定性" in item
+    assert "粒度性格特质" not in dp
+    assert "杀伐决断" not in pkg_text
 
-    assert prompt.find("【结构化数据】") < prompt.find("参考规则/校准")
-    assert prompt.find("参考规则/校准") < prompt.find("【输出要求】")
+    assert "参考规则/校准" not in prompt
+    assert prompt.find("【结构化数据】") < prompt.find("【输出要求】")
 
 
 def test_fusion_report_quality_gate_modernizes_terms():
@@ -210,24 +211,27 @@ def test_fusion_prompt_contains_zhihe_style_contract():
 
 
 def test_fusion_prompt_prioritizes_distinctive_progressive_structure():
-    """融合报告应先建立命中感，再展开少量高辨识度主题。"""
+    """融合报告应使用可扫读的领域标签展开少量高辨识度主题。"""
     from bazi_engine.personality_fusion import FUSION_SYSTEM_PROMPT, build_fusion_user_prompt
 
-    for heading in ("## 核心画像", "## 最像你的三个瞬间", "## 重点分析", "## 容易被误解的一面"):
+    for heading in ("## 核心画像", "## 重点分析"):
         assert heading in FUSION_SYSTEM_PROMPT
 
-    assert "严格输出3条项目符号" in FUSION_SYSTEM_PROMPT
-    assert "只选择3个最有辨识度的主题" in FUSION_SYSTEM_PROMPT
-    assert "全文控制在550-800个汉字左右" in FUSION_SYSTEM_PROMPT
+    assert "最像你的三个瞬间" not in FUSION_SYSTEM_PROMPT
+    assert "## 容易被误解的一面" not in FUSION_SYSTEM_PROMPT
+    assert "只写2-3个证据最充分的主题" in FUSION_SYSTEM_PROMPT
+    assert "### 【领域】具体标题" in FUSION_SYSTEM_PROMPT
+    assert "全文控制在400-650个汉字左右" in FUSION_SYSTEM_PROMPT
+    assert "[组合候选]" in FUSION_SYSTEM_PROMPT
+    assert "不是最高指令" in FUSION_SYSTEM_PROMPT
     assert "年轻化不等于堆网络热词" in FUSION_SYSTEM_PROMPT
-    assert "## 社交" not in FUSION_SYSTEM_PROMPT
     assert "每个维度必须覆盖" not in FUSION_SYSTEM_PROMPT
 
     prompt = build_fusion_user_prompt({"六维度信号": {"社交": "内敛"}})
-    assert "三个可验证的生活瞬间" in prompt
-    assert "只展开3个最有辨识度的主题" in prompt
-    assert "中位或证据不足的维度直接省略" in prompt
-    assert "550-800个汉字" in prompt
+    assert "只展开2-3个最有辨识度的主题" in prompt
+    assert "### 【领域】具体标题" in prompt
+    assert "中等或证据不足的维度直接省略" in prompt
+    assert "400-650个汉字" in prompt
 
 
 def test_fusion_report_quality_gate_repairs_percentages_and_harsh_phrasing():
@@ -251,25 +255,23 @@ def test_fusion_report_quality_gate_repairs_percentages_and_harsh_phrasing():
 
 
 def test_fusion_report_structure_issues_detects_only_gross_failures():
-    """结构验收应拦截明显失败，同时接受合理的篇幅波动。"""
+    """结构验收应拦截无标签主题，同时接受两到三个强主题。"""
     from bazi_engine.personality_fusion import fusion_report_structure_issues
 
     valid = (
         "# 核心画像\n" + "核心拉扯带来稳定但稍慢的节奏。" * 4
-        + "\n# 最像你的三个瞬间\n- 场景一足够具体。\n- 场景二足够具体。\n- 场景三足够具体。"
-        + "\n# 重点分析\n### 主题一\n" + "分析一。" * 18
-        + "\n### 主题二\n" + "分析二。" * 18
-        + "\n### 主题三\n" + "分析三。" * 18
-        + "\n# 容易被误解的一面\n" + "外在表现和真实动机存在落差。" * 5
+        + "\n# 重点分析\n### 【社交】熟悉以后表达更多\n" + "分析一。" * 21
+        + "\n### 【感情 × 内心】在意但不急着说出口\n" + "分析二。" * 21
     )
 
-    assert 400 <= len(valid) <= 1100
+    assert 280 <= len(valid) <= 850
     assert fusion_report_structure_issues(valid) == []
 
-    invalid = valid.replace("- 场景三足够具体。\n", "").replace("### 主题三\n", "")
-    issues = fusion_report_structure_issues(invalid)
-    assert "生活瞬间数量:2" in issues
-    assert "重点主题数量:2" in issues
+    missing_label = valid.replace("### 【感情 × 内心】在意但不急着说出口", "### 有情绪但不直说")
+    assert "重点主题标签不合格" in fusion_report_structure_issues(missing_label)
+
+    only_one_topic = valid.replace("\n### 【感情 × 内心】在意但不急着说出口\n" + "分析二。" * 21, "")
+    assert "重点主题数量:1" in fusion_report_structure_issues(only_one_topic)
 
 
 def test_finalize_fusion_report_repairs_at_most_once(monkeypatch):
@@ -278,11 +280,8 @@ def test_finalize_fusion_report_repairs_at_most_once(monkeypatch):
 
     repaired = (
         "# 核心画像\n" + "核心拉扯带来稳定但稍慢的节奏。" * 4
-        + "\n# 最像你的三个瞬间\n- 场景一足够具体。\n- 场景二足够具体。\n- 场景三足够具体。"
-        + "\n# 重点分析\n### 主题一\n" + "分析一。" * 18
-        + "\n### 主题二\n" + "分析二。" * 18
-        + "\n### 主题三\n" + "分析三。" * 18
-        + "\n# 容易被误解的一面\n" + "外在表现和真实动机存在落差。" * 5
+        + "\n# 重点分析\n### 【社交】熟悉以后表达更多\n" + "分析一。" * 21
+        + "\n### 【感情 × 内心】在意但不急着说出口\n" + "分析二。" * 21
     )
     calls = []
 
@@ -332,10 +331,10 @@ def test_fusion_report_quality_gate_removes_action_section():
     """即使模型输出建议板块，最终报告也会删除"""
     from bazi_engine.personality_fusion import sanitize_fusion_report
 
-    raw = "全局诊断：这里是分析。\n\n## 社交\n这里是社交分析。\n\n## 立刻能做的事\n1. 马上做某事。"
+    raw = "核心画像：这里是分析。\n\n## 重点分析\n### 【社交】熟悉以后表达更多\n这里是社交分析。\n\n## 立刻能做的事\n1. 马上做某事。"
     cleaned = sanitize_fusion_report(raw)
-    assert "全局诊断" in cleaned
-    assert "## 社交" in cleaned
+    assert "核心画像" in cleaned
+    assert "### 【社交】" in cleaned
     assert "立刻能做的事" not in cleaned
     assert "马上做某事" not in cleaned
 
@@ -429,6 +428,30 @@ def test_vector_personality_relevant():
     assert len(results) > 0
     sources = {r["source"] for r in results}
     assert "personality-rules.md" in sources
+
+
+def test_personality_query_uses_new_neutral_combination_contract():
+    package = {
+        "组合候选": [{"名称": "印重身滞", "证据等级": "工程规则候选"}],
+        "六维度信号": {"决策": {"强度信号": {"信息分析": "较强"}}},
+    }
+
+    assert "组合候选" in rag._build_personality_query_text(package)
+    terms = rag._build_personality_query_terms(package)
+    assert "印重身滞" in terms
+    assert "马上行动" not in terms
+
+
+def test_personality_query_terms_read_current_status_and_day_master_fields():
+    terms = rag._build_personality_query_terms({
+        "日主信息": {"日干": "壬", "五行": "水"},
+        "日主画像": {"身强弱": "偏强"},
+        "格局状态": {"名称": "偏印格", "判定": "成格"},
+    })
+
+    assert "偏印格" in terms
+    assert "成格" in terms
+    assert any("壬" in term for term in terms)
 
 
 def test_vector_personality_fallback():

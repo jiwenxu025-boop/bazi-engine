@@ -648,6 +648,12 @@ def test_compute_personality_family_stage_sets_analysis_and_returns_context(monk
     assert set(interactions_dict) == {"tiangan_wuhe", "dizhi"}
     assert chart.personality_result["strength_label"] == "强（5.5分）"
     assert chart.personality_result["pattern_validation"]["status"] == "成格"
+    assert "忌神面" in chart.personality_result["pattern_influence"]
+    assert all(item["relation"] != "多自刑" for item in chart.personality_result["dizhi_traits"])
+    assert "桃花坐日支" not in chart.personality_result["trait_signals"]["感情"]
+    scale = chart.personality_result["evidence_view"]["score_scale"]
+    assert scale["comparison_scope"] == "absolute_engine_heuristic"
+    assert scale["ranking_scope"] == "within_chart_only"
     assert chart.family_result["level"] == "普通"
 
 

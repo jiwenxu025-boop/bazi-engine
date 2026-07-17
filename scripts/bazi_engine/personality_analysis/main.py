@@ -7,7 +7,6 @@ from .special_combos import (
     _check_special_combos,
     _has_branch_in_pillars,
     _huagai_branch,
-    _taohua_branch,
 )
 from .stress import analyze_stress_profile
 from .traits import (
@@ -20,6 +19,41 @@ from .weighting import (
     _find_dominant_shishen,
     get_weighted_shishen_report,
 )
+
+
+def _compute_decision_score(
+    qi_sha_score: float,
+    shang_guan_score: float,
+    shi_shen_score: float,
+    yin_score: float,
+) -> float:
+    """Continuous base score for the decision dimension."""
+    return qi_sha_score * 0.7 + shang_guan_score + shi_shen_score * 0.3 - yin_score * 0.6
+
+
+_PATTERN_TEN_GOD_ALIASES = {
+    "七杀格": "偏官",
+    "偏官格": "偏官",
+    "建禄格": "比肩",
+    "羊刃格": "劫财",
+}
+
+
+def _pattern_is_favorable(pattern_key: str, harmful_shishen: list[str]) -> bool:
+    """Compare pattern names with the ten-god vocabulary used by yongshen."""
+    if not harmful_shishen:
+        return True
+    pattern_ten_god = _PATTERN_TEN_GOD_ALIASES.get(
+        pattern_key,
+        pattern_key[:-1] if pattern_key.endswith("格") else pattern_key,
+    )
+    normalized_harmful = {"偏官" if item == "七杀" else item for item in harmful_shishen}
+    return pattern_ten_god not in normalized_harmful
+
+
+def _canonical_pattern_name(pattern: str) -> str:
+    """Use the display vocabulary present in PATTERN_PERSONALITY."""
+    return pattern.replace("偏官格", "七杀格")
 
 
 def analyze_personality(
@@ -93,10 +127,11 @@ def analyze_personality(
         )
 
     # ── Step 4: 格局定基调（双面：喜用/忌神）──
+    personality_pattern = _canonical_pattern_name(pattern)
     for key, sides in PATTERN_PERSONALITY.items():
-        if key in pattern:
+        if key in personality_pattern:
             # 判断格局是喜用还是忌神
-            pattern_is_fav = key not in harmful_shishen if harmful_shishen else True
+            pattern_is_fav = _pattern_is_favorable(key, harmful_shishen)
             side = "喜用" if pattern_is_fav else "忌神"
             desc = sides.get(side, sides.get("喜用", ""))
             label = "喜用面" if pattern_is_fav else "忌神面（需注意）"
@@ -158,16 +193,11 @@ def analyze_personality(
         if "日柱" in inter.get("pillars", []):
             if inter["type"] == "六冲":
                 day_branch_chong = True
-            elif inter["type"] in ("六合", "三合", "半合"):
+            elif inter["type"] in ("地支六合", "三合", "半合"):
                 day_branch_he = True
 
     has_huagai = bool(_huagai_branch(day_branch_str)) and \
                  _has_branch_in_pillars(_huagai_branch(day_branch_str), pillars_data)
-    taohua = _taohua_branch(day_branch_str)
-    has_taohua_rizhi = taohua is not None and any(
-        p.get("branch") == taohua and p.get("pillar_type") == "日柱"
-        for p in pillars_data
-    )
     cai_po_yin_flag = any("财破印" in c for c in result.special_combos)
     # 检查是否存在官杀混杂标签（病药检测已判断）
     any(c["combo"] == "官杀混杂" for c in result.bingyao_combos)
@@ -205,7 +235,7 @@ def analyze_personality(
 
     # -- 格局维度调制器 --
     _pattern_modifiers = {}
-    if "建格" in pattern or "羊刃" in pattern:
+    if "建禄" in pattern or "羊刃" in pattern:
         _pattern_modifiers["决策"] = {"果断_格局": +1.0}
         _pattern_modifiers["事业"] = {"创业_格局": +1.5}
     if "正官" in pattern:
@@ -270,7 +300,6 @@ def analyze_personality(
         "同辈竞争_比劫": round(bijie_s, 1),
         "独立反叛_伤官": round(shang_guan_s, 1),
         "夫妻宫状态": fq_state,
-        "桃花坐日支": has_taohua_rizhi,
         "日支藏干": day_hidden[:3],
         "身强弱": "强" if is_strong else ("弱" if is_weak else "中和"),
         "性别": gender,
@@ -297,8 +326,6 @@ def analyze_personality(
         _romance_parts.append("比劫旺，感情中注意同辈竞争或第三者介入")
     if shang_guan_s >= 5:
         _romance_parts.append("伤官旺，对传统关系模式有抵触，需要更多自由空间" if gender == "女" else "伤官旺，容易对伴侣挑剔，需注意沟通方式")
-    if has_taohua_rizhi:
-        _romance_parts.append("桃花坐日支，异性缘好，需学会分辨心动和合适")
     if "官杀混杂" in _bingyao_combo_names:
         _romance_parts.append("官杀混杂——在感情中容易陷入选择困难，或在多个标准之间摇摆不定")
     if "财多身弱" in _bingyao_combo_names and (gender or "") == "女":
@@ -310,7 +337,7 @@ def analyze_personality(
     # ── 决策：七杀(果断) + 印星(分析) + 食伤(直觉) ──
     decide_mod = _bingyao_modifiers.get("决策", {})
     pattern_decide = _pattern_modifiers.get("决策", {})
-    decide_risk = qi_sha_s * 0.7 + (shishang_s if shang_guan_s > shi_shen_s else shi_shen_s * 0.3) - yin_s * 0.6
+    decide_risk = _compute_decision_score(qi_sha_s, shang_guan_s, shi_shen_s, yin_s)
     decide_risk += decide_mod.get("果断_病药", 0.0) + pattern_decide.get("果断_格局", 0.0)
     if is_strong:
         decide_risk += 0.5
@@ -393,7 +420,7 @@ def analyze_personality(
         "格局调制": dict(pa_career) if pa_career else None,
     }
     if career_gap > 2.0:
-        result.traits["事业"] = f"方向明确：{primary[0]}型，不适合纯{secondary[0]}路线"
+        result.traits["事业"] = f"当前规则中{primary[0]}方向更突出，{secondary[0]}方向相对次要"
     else:
         result.traits["事业"] = f"{primary[0]}+{secondary[0]} 混合型，适合交叉赛道而非纯单一方向"
 
@@ -523,12 +550,6 @@ def _apply_reality_check(result: PersonalityResult,
             "表现出的状态：容易累、容易纠结、想得多做得少、需要外界推一把。"
             "这不是懒或性格缺陷，是能量层面的客观限制。补身（增强实力、积累学历/技能）后会有质的飞跃。"
         )
-        # 调整 strength_label
-        result.strength_label += (
-            "。现实中容易表现为：专注力不够持久、对压力敏感、做事需要外力推动。"
-            "能量积累（学历/技能/身体）是性格发挥的前提，在这之前不要苛责自己。"
-        )
-
     # ── 规则 3: 伤官见官 —— 不服管、不走寻常路 ──
     if shang_jian_guan:
         if "正印" in pattern:
@@ -548,7 +569,7 @@ def _apply_reality_check(result: PersonalityResult,
     if bijie_count >= 3:
         if is_weak:
             corrections.append(
-                "比劫多（朋友/同辈多）——社交圈对她的影响很大，容易因为朋友的事分心或破财。"
+                "比劫多（朋友/同辈多）——社交圈对命主的影响较大，容易因为朋友的事分心或破财。"
                 "帮朋友前先掂量自己的能力和精力"
             )
         else:
@@ -581,9 +602,9 @@ def _apply_reality_check(result: PersonalityResult,
     # ── 规则 8: 格局与行为的偏差 ──
     if "正印" in pattern and is_weak and has_shang:
         corrections.append(
-            "正印格+伤官——传统认知的'乖乖女'标签不适合她。"
-            "她有独立的精神世界和创造力，只是不轻易对外展示。"
-            "找到能发挥她创造力的出口，比规规矩矩走寻常路更适合。"
+            "正印格+伤官——不能用顺从、守成的单一标签概括命主。"
+            "本人可能同时保留独立思考和表达需求，只是不一定直接对外展示。"
+            "这组信号需要结合现实行为核对，不能直接推导职业路线。"
         )
 
     # 将修正注入 result

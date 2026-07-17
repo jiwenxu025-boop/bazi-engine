@@ -40,6 +40,94 @@ def test_api_import_does_not_create_feedback_directory():
     assert not feedback_dir.exists()
 
 
+def test_practical_response_keeps_evidence_view_and_withholds_unreviewed_personality_internals():
+    from bazi_engine.api import _strip_technical
+
+    data = {
+        "personality": {
+            "_fusion_ready": False,
+            "evidence_view": {"score_scale": {"comparison_scope": "absolute_engine_heuristic"}},
+            "bingyao_combos": [{"combo": "印重身滞", "directive": "规则候选说明"}],
+            "day_master_core": {"负面": "未经验证"},
+            "dominant_ten_god": "未经验证",
+            "pattern_influence": "未经验证",
+            "pattern_validation": {"note": "未经验证"},
+            "profile": "未经验证",
+            "traits": {"内心": "未经验证"},
+            "stress_profile": {"warning": "深度焦虑"},
+            "special_combos": ["克夫倾向"],
+            "sub_traits": [{"description": "未经验证"}],
+            "combo_traits": [{"description": "未经验证"}],
+            "dizhi_traits": [{"description": "敏感多思"}],
+            "trait_signals": {"决策": {"战略思维": 0}},
+            "weighted_shishen": {"scores": {"偏印": 8.0}},
+        },
+    }
+
+    _strip_technical(data)
+
+    personality = data["personality"]
+    assert personality["evidence_view"]["score_scale"]["comparison_scope"] == "absolute_engine_heuristic"
+    assert personality["bingyao_combos"][0]["directive"] == "规则候选说明"
+    for key in (
+        "stress_profile",
+        "special_combos",
+        "sub_traits",
+        "combo_traits",
+        "dizhi_traits",
+        "trait_signals",
+        "weighted_shishen",
+        "day_master_core",
+        "dominant_ten_god",
+        "pattern_influence",
+            "pattern_validation",
+            "strength_label",
+            "profile",
+        "traits",
+    ):
+        assert key not in personality
+
+
+def test_public_chart_endpoint_forces_practical_copy_without_mutating_chart(monkeypatch):
+    import bazi_engine.api as api_module
+    from bazi_engine.api import app
+
+    class FakeChart:
+        def __init__(self):
+            self.personality_result = {
+                "_fusion_ready": False,
+                "evidence_view": {"weighted_scores": [{"name": "偏印", "score": 8.0}]},
+                "strength_label": "极弱（0.8分）。未经复核的行为断言",
+                "profile": "未经复核的人格断言",
+                "traits": {"事业": "未经复核的职业断言"},
+                "stress_profile": {"warning": "未经复核的压力断言"},
+                "weighted_shishen": {"scores": {"偏印": 8.0}},
+            }
+
+        def to_dict(self):
+            return {"personality": self.personality_result}
+
+    chart = FakeChart()
+    monkeypatch.setattr(api_module, "_IS_PUBLIC", True)
+    monkeypatch.setattr(api_module, "build_chart", lambda **_kwargs: chart)
+
+    response = TestClient(app).get(
+        "/api/chart",
+        params={"gender": "男", "year": 2000, "month": 1, "day": 1, "hour": 12, "practical": False},
+    )
+
+    assert response.status_code == 200
+    public_personality = response.json()["personality"]
+    assert public_personality["evidence_view"]["weighted_scores"][0]["name"] == "偏印"
+    assert "profile" not in public_personality
+    assert "traits" not in public_personality
+    assert "stress_profile" not in public_personality
+    assert "weighted_shishen" not in public_personality
+    assert "strength_label" not in public_personality
+    assert chart.personality_result["profile"] == "未经复核的人格断言"
+    assert chart.personality_result["weighted_shishen"]["scores"]["偏印"] == 8.0
+
+
 def test_api_module_imports_app():
     from bazi_engine.api import app
 
@@ -142,6 +230,58 @@ def test_chart_stream_post_returns_rules_and_done_events(monkeypatch):
     assert response.status_code == 200
     assert '"phase": "rules_done"' in body or '"phase":"rules_done"' in body
     assert "data: [DONE]" in body
+
+
+def test_public_chart_stream_cleans_browser_payload_but_keeps_full_fusion_source(monkeypatch, tmp_path):
+    import bazi_engine.api as api_module
+    import bazi_engine.personality_fusion as fusion_module
+    from bazi_engine.api import app
+
+    captured: dict = {}
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
+    monkeypatch.setenv("BAZI_AI_ENABLED", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "1")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(api_module, "_IS_PUBLIC", True)
+    monkeypatch.setattr(api_module, "_GENERATION_DIR", tmp_path)
+
+    def fake_generate(data_package, on_chunk=None, result_metadata=None):
+        captured["package"] = data_package
+        if on_chunk:
+            on_chunk("按领域生成")
+        if result_metadata is not None:
+            result_metadata.update({"prompt_version": "test-v3", "model": "test-model"})
+        return "## 核心画像\n测试\n\n## 重点分析\n### 【决策】测试\n测试内容"
+
+    monkeypatch.setattr(fusion_module, "generate_fusion_report", fake_generate)
+    with TestClient(app).stream(
+        "POST",
+        "/api/chart/stream",
+        json={
+            "name": "test",
+            "gender": "男",
+            "year": 2007,
+            "month": 8,
+            "day": 26,
+            "hour": 20,
+            "liunian_from": 2023,
+            "liunian_to": 2024,
+            "practical": False,
+        },
+    ) as response:
+        body = "".join(response.iter_text())
+
+    events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: {")]
+    rules = next(event["chart"] for event in events if event.get("phase") == "rules_done")
+    public_personality = rules["personality"]
+    assert response.status_code == 200
+    assert "profile" not in public_personality
+    assert "traits" not in public_personality
+    assert "weighted_shishen" not in public_personality
+    assert public_personality["evidence_view"]["weighted_scores"]
+    assert captured["package"]["格局状态"]
+    assert captured["package"]["十神强度排行"]
+    assert captured["package"]["六维度信号"]
 
 
 def test_public_batch_is_disabled(monkeypatch):
@@ -367,7 +507,7 @@ def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch
         "/api/personality/fusion/feedback",
         json={
             "rating": "partial",
-            "inaccurate_section": "analysis",
+            "inaccurate_section": "structure",
             "report_text": "这是一份用于测试的融合报告。",
             "birth": {"year": 2001, "month": 5, "day": 16},
             "generation": {
@@ -387,7 +527,7 @@ def test_fusion_feedback_saves_metadata_without_report_or_birth_data(monkeypatch
     saved_text = feedback_files[0].read_text(encoding="utf-8")
     record = json.loads(saved_text)
     assert record["rating"] == "partial"
-    assert record["inaccurate_section"] == "analysis"
+    assert record["inaccurate_section"] == "structure"
     assert record["prompt_version"] == "test-v1"
     assert record["report_length"] == len("这是一份用于测试的融合报告。")
     assert len(record["report_hash"]) == 64

@@ -424,7 +424,7 @@ def test_gender_luck_section_escapes_dynamic_text_and_hides_without_data():
     assert render_gender_luck_section({"gender": "男"}) == ""
 
 
-def test_personality_fusion_error_switches_to_raw_and_toggle_can_return():
+def test_personality_fusion_error_discards_partial_report_and_locks_raw_mode():
     script = textwrap.dedent(
         f"""
         const fs = require('fs');
@@ -452,10 +452,12 @@ def test_personality_fusion_error_switches_to_raw_and_toggle_can_return():
           submitBtn: new Element('submitBtn'),
           personalityBody: new Element('personalityBody'),
           personalityRaw: new Element('personalityRaw'),
-          toggleBtn: new Element('toggleBtn'),
+           toggleBtn: new Element('toggleBtn'),
+          personalityText: new Element('personalityText'),
         }};
         elements.personalityRaw.style.display = 'none';
         elements.personalityBody.style.display = 'block';
+        elements.personalityText.innerHTML = '<p>partial unsafe token</p>';
 
         const sandbox = {{
           console,
@@ -474,7 +476,7 @@ def test_personality_fusion_error_switches_to_raw_and_toggle_can_return():
             getElementById(id) {{ return elements[id] || new Element(id); }},
             querySelector(selector) {{
               if (selector === '.toggle-btn') return elements.toggleBtn;
-              if (selector === '.personality-text') return new Element('personalityText');
+              if (selector === '.personality-text') return elements.personalityText;
               return null;
             }},
             querySelectorAll() {{ return []; }},
@@ -496,17 +498,97 @@ def test_personality_fusion_error_switches_to_raw_and_toggle_can_return():
         if (elements.toggleBtn.dataset.personalityMode !== 'raw') {{
           throw new Error('toggle mode was not marked raw after fusion failure');
         }}
+        if (elements.personalityText.innerHTML !== '' || elements.personalityText.textContent !== '') {{
+          throw new Error('partial fusion content was not discarded');
+        }}
+        if (!elements.toggleBtn.disabled || elements.toggleBtn.style.display !== 'none') {{
+          throw new Error('failed fusion toggle was not disabled');
+        }}
 
         sandbox.togglePersonalityMode();
-        if (elements.personalityRaw.style.display !== 'none') {{
-          throw new Error('raw panel was not hidden after manual toggle');
+        if (elements.personalityRaw.style.display !== 'block') {{
+          throw new Error('raw panel was hidden after failed fusion toggle');
         }}
-        if (elements.personalityBody.style.display !== 'block') {{
-          throw new Error('fusion panel was not restored after manual toggle');
+        if (elements.personalityBody.style.display !== 'none') {{
+          throw new Error('failed fusion panel was restored');
         }}
-        if (elements.toggleBtn.dataset.personalityMode !== 'fusion') {{
-          throw new Error('toggle mode was not marked fusion after manual toggle');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_personality_evidence_renderer_handles_empty_scores_labels_and_escaping():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        class Element {{
+          constructor() {{
+            this.style = {{}};
+            this.dataset = {{}};
+            this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}}, contains() {{ return false; }} }};
+            this.textContent = '';
+            this.value = '';
+          }}
+          addEventListener() {{}}
         }}
+
+        const generic = new Element();
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{
+            matchMedia() {{ return {{ matches: false }}; }},
+            location: {{ origin: 'http://example.test' }},
+            addEventListener() {{}},
+          }},
+          document: {{
+            documentElement: generic,
+            addEventListener() {{}},
+            getElementById() {{ return generic; }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const empty = sandbox._buildPersonalityEvidence({{
+          evidence_view: {{}},
+          weighted_shishen: {{scores: {{}}}},
+        }});
+        if (empty !== '') throw new Error('empty legacy scores rendered a false evidence panel');
+
+        const rendered = sandbox._buildPersonalityEvidence({{
+          evidence_view: {{
+            status: {{strength: '偏强（5.5分）'}},
+            score_scale: {{
+              thresholds: {{medium: 2, high: 5}},
+              parameter_snapshot: {{tougan_weight: 3}},
+            }},
+            dimensions: {{
+              事业: {{signals: [{{
+                label: '技术_创意',
+                display_label: '<危险标签>',
+                kind: 'relative_score',
+                value: 8,
+              }}]}},
+            }},
+          }},
+        }});
+        if (!rendered.includes('计分口径')) throw new Error('score scale was not rendered');
+        if (!rendered.includes('本盘相对值 8.0')) throw new Error('relative score scope was missing');
+        if (!rendered.includes('&lt;危险标签&gt;')) throw new Error('display label was not escaped');
+        if (rendered.includes('<危险标签>')) throw new Error('raw display label reached HTML');
         """
     )
 
@@ -1443,9 +1525,8 @@ def test_fusion_feedback_ui_submission_contract():
         assert "data-rating=partial" in source
         assert "data-rating=low" in source
         assert "核心画像" in source
-        assert "三个瞬间" in source
         assert "重点分析" in source
-        assert "容易被误解" in source
+        assert "分类与结构" in source
 
     for source in (app_source,):
         assert "function selectFusionRating" in source
@@ -1457,3 +1538,45 @@ def test_fusion_feedback_ui_submission_contract():
     assert ".fusion-rating-options" in css
     assert "grid-template-columns:repeat(3,minmax(0,1fr))" in css
     assert ".fusion-feedback-thanks" in css
+
+
+def test_fusion_heading_styles_keep_section_and_topic_levels_distinct():
+    css = (Path(__file__).resolve().parents[2] / "frontend" / "style.css").read_text(encoding="utf-8")
+
+    section_heading = css_rule_body(css, ".personality-text h1,.personality-text h2")
+    topic_heading = css_rule_body(css, ".personality-text h3")
+
+    assert "font-size:16px" in section_heading
+    assert "font-size:14px" in topic_heading
+    assert "border-left:3pxsolidvar(--accent)" in topic_heading
+
+
+def test_personality_evidence_panel_explains_scores_and_field_semantics():
+    app_source = APP_JS.read_text(encoding="utf-8")
+    css = (Path(__file__).resolve().parents[2] / "frontend" / "style.css").read_text(encoding="utf-8")
+    compact_css = "".join(css.split())
+
+    assert "查看分析依据" in app_source
+    assert "查看本次分析采用的规则依据" in app_source
+    assert "排序仅本盘内比较" in app_source
+    assert "固定工程阈值" in app_source
+    assert "不是古籍固定比例、概率、准确率或人群常模" in app_source
+    assert "合局（每个匹配十神一次）" in app_source
+    assert "personality.evidence_view" in app_source
+    assert "_buildEvidenceDimensions" in app_source
+    assert "_buildEvidenceScale" in app_source
+    assert "_buildPersonalityEvidence" in app_source
+    assert "signals[j].display_label || signals[j].label" in app_source
+    assert "本盘相对值" in app_source
+    assert "Object.keys(legacyWeighted).length" in app_source
+    assert "行为模式与家庭背景" not in app_source
+    assert "性格与家境" not in app_source
+    assert "暂无可核对的性格分析依据" in app_source
+    assert "待复核规则" in app_source
+    assert "entries.filter(function(item){returnitem.val>0;}).slice(0,10)" in "".join(app_source.split())
+
+    assert ".evidence-signals" in css
+    assert ".evidence-scale-details" in css
+    assert ".evidence-boundaries" in css
+    assert "@media(max-width:480px)" in compact_css
+    assert ".evidence-scale-content{grid-template-columns:1fr;padding-left:12px}" in compact_css

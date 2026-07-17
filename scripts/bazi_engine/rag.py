@@ -114,8 +114,7 @@ def _ngram_cosine_from_freq(freq_a: dict[str, int], freq_b: dict[str, int]) -> f
 def _build_personality_query_text(data_package: dict) -> str:
     """从性格融合数据包构造向量查询文本。"""
     parts: list[str] = ["性格分析"]
-    for key in ["日主画像", "格局状态", "全局最高指令", "关键组合",
-                "粒度性格特质", "十神强度排行", "六维度信号", "家境背景"]:
+    for key in ["日主信息", "日主画像", "格局状态", "组合候选", "十神强度排行", "六维度信号"]:
         val = data_package.get(key)
         if val is None:
             continue
@@ -359,11 +358,21 @@ def _build_dayun_query_terms(natal: dict, modulations: list[dict]) -> set[str]:
 def _build_personality_query_terms(data_package: dict) -> set[str]:
     """从性格融合数据包提取查询词"""
     terms: set[str] = set()
-    dm = data_package.get("日主", "")
-    if dm:
-        terms.update(_extract_ngrams(dm, 2, 4))
-    if data_package.get("格局"):
-        terms.add(data_package["格局"])
+    dm_parts = [
+        data_package.get("日主信息"),
+        data_package.get("日主画像"),
+        data_package.get("日主"),
+    ]
+    for dm in (part for part in dm_parts if part):
+        dm_text = json.dumps(dm, ensure_ascii=False) if isinstance(dm, (dict, list)) else str(dm)
+        terms.update(_extract_ngrams(dm_text, 2, 4))
+    pattern = data_package.get("格局状态") or data_package.get("格局")
+    if isinstance(pattern, dict):
+        for key in ("名称", "判定"):
+            if pattern.get(key):
+                terms.add(str(pattern[key]))
+    elif pattern:
+        terms.add(str(pattern))
     for s in data_package.get("喜用十神", []) + data_package.get("忌十神", []):
         terms.add(str(s))
     # 六维度信号
@@ -371,21 +380,12 @@ def _build_personality_query_terms(data_package: dict) -> set[str]:
     for k, v in dims.items():
         terms.add(k)
         terms.update(_extract_ngrams(str(v)[:50], 2, 4))
-    # 病药组合
-    for combo in data_package.get("病药组合", []):
-        terms.add(combo.get("combo", ""))
-        terms.update(_extract_ngrams(combo.get("directive", "")[:50], 2, 4))
-    # 特殊组合
-    for sc in data_package.get("特殊组合", []):
-        terms.update(_extract_ngrams(str(sc)[:50], 2, 4))
-    # 压力画像
-    stress = data_package.get("压力画像", {})
-    for v in stress.values():
-        terms.update(_extract_ngrams(str(v)[:50], 2, 4))
-    # 家庭
-    family = data_package.get("家境背景", {})
-    for v in family.values():
-        terms.update(_extract_ngrams(str(v)[:50], 2, 4))
+    # 只提取已经降级为中性名称的组合候选，不读取旧指令或心理描述。
+    for combo in data_package.get("组合候选", []):
+        name = combo.get("名称", "")
+        if name:
+            terms.add(name)
+            terms.update(_extract_ngrams(name, 2, 4))
     return _expand_synonyms({t for t in terms if t and len(t) >= 2})
 
 

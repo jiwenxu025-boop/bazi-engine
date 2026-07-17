@@ -22,6 +22,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
+from copy import deepcopy
 from datetime import datetime as dt
 from datetime import timedelta
 from pathlib import Path
@@ -183,6 +184,15 @@ def health():
     return {"status": "ok", "version": __version__, "public": _IS_PUBLIC, "ai_enabled": _AI_ENABLED}
 
 
+def _prepare_chart_response(data: dict, practical: bool) -> dict:
+    """Return a presentation copy without mutating the chart's fusion inputs."""
+    if not (practical or _IS_PUBLIC):
+        return data
+    result = deepcopy(data)
+    _strip_technical(result)
+    return result
+
+
 @app.get("/api/chart")
 def chart_api(
     name: str = Query("", description="姓名（可选）"),
@@ -232,11 +242,7 @@ def chart_api(
         family_context=family_context,
         hour_confirmed=hour_confirmed,
     )
-    result = chart.to_dict()
-
-    # 实用模式：剥离技术推导，只保留白话解读
-    if practical:
-        _strip_technical(result)
+    result = _prepare_chart_response(chart.to_dict(), practical)
 
     return JSONResponse(content=result)
 
@@ -279,9 +285,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
                 on_llm_token=on_llm_tok,
             )
             chart_obj_ref.append(c)
-            result = c.to_dict()
-            if practical:
-                _strip_technical(result)
+            result = _prepare_chart_response(c.to_dict(), practical)
             loop.call_soon_threadsafe(queue.put_nowait, ("chart", result))
         except Exception as error:
             logger.exception("chart stream build failed type=%s", type(error).__name__)
@@ -350,9 +354,19 @@ async def stream_chart(    name, gender, year, month, day, hour,
                             "五行": dm.get("wuxing", ""),
                             "阴阳": dm.get("yinyang", ""),
                         }
+                    personality_source = (
+                        chart.personality_result
+                        if chart and getattr(chart, "personality_result", None)
+                        else chart_data.get("personality", {})
+                    )
+                    family_source = (
+                        chart.family_result
+                        if chart and getattr(chart, "family_result", None)
+                        else chart_data.get("family")
+                    )
                     pkg = build_fusion_data_package(
-                        chart_data.get("personality", {}),
-                        chart_data.get("family"),
+                        personality_source,
+                        family_source,
                         chart_data.get("life_stage", ""),
                         age_info=age_info,
                     )
@@ -602,7 +616,7 @@ async def chart_stream_post(payload: ChartStreamRequest):
 
 
 def _strip_technical(data: dict):
-    """去除经典引用，不暴露技术推导。保留其他所有内容。"""
+    """Keep only reviewed presentation fields and remove technical internals."""
 
     def _clean_text(text):
         # 去除古典引用标注，如"《渊海子平》：「...」"、《滴天髓》等
@@ -628,6 +642,28 @@ def _strip_technical(data: dict):
     # 性格中去掉古典原文引用
     p = data.get("personality")
     if p:
+        # Public practical responses expose the reviewed evidence DTO instead
+        # of unvalidated internal psychological and combination narratives.
+        for internal_key in (
+            "stress_profile",
+            "special_combos",
+            "sub_traits",
+            "combo_traits",
+            "dizhi_traits",
+            "trait_signals",
+            "weighted_shishen",
+        ):
+            p.pop(internal_key, None)
+        for superseded_key in (
+            "day_master_core",
+            "dominant_ten_god",
+            "pattern_influence",
+            "pattern_validation",
+            "strength_label",
+            "profile",
+            "traits",
+        ):
+            p.pop(superseded_key, None)
         for k in list(p.keys()):
             if isinstance(p[k], str):
                 p[k] = _clean_text(p[k])
@@ -1219,7 +1255,7 @@ async def fusion_feedback_api(request: Request):
         return JSONResponse({"saved": False, "error": "无效 generation"}, status_code=400)
     generation_id = str(body.get("generation_id") or generation.get("generation_id") or "")
     valid_ratings = {"very", "partial", "low"}
-    valid_sections = {"", "core", "moments", "analysis", "misunderstood"}
+    valid_sections = {"", "core", "moments", "analysis", "misunderstood", "structure"}
     if rating not in valid_ratings:
         return JSONResponse({"saved": False, "error": "无效 rating"}, status_code=400)
     if section not in valid_sections:
