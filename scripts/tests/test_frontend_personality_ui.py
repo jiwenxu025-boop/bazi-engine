@@ -755,8 +755,8 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
 
 def test_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'href="style.css?v=20260716-security1"' in html
-    assert 'src="app.js?v=20260718-evidence1"' in html
+    assert 'href="style.css?v=20260718-ai-review1"' in html
+    assert 'src="app.js?v=20260718-ai-review1"' in html
 
 
 def test_chart_params_use_default_flow_range_without_empty_optional_numbers():
