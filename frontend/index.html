@@ -6,7 +6,7 @@
 <title>八字解读</title>
 <script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
 <link rel="icon" href="favicon.svg?v=20260716" type="image/svg+xml">
-<link rel="stylesheet" href="style.css?v=20260718-time-resolution1">
+<link rel="stylesheet" href="style.css?v=20260718-cn-locations1">
 <link rel=stylesheet href=chat.css>
 </head>
 <body>
@@ -46,9 +46,9 @@
     <label><span>分</span><input id="minute" type="number" placeholder="00" min="0" max="59" value="0"></label>
   </div>
   <div class="birth-location-row">
-    <label for="citySearch"><span>出生城市（默认未知）</span></label>
+    <label for="citySearch"><span>出生城市/区县（默认未知）</span></label>
     <div class="city-picker">
-      <input id="citySearch" type="search" placeholder="搜索内置城市，如成都" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cityOptions">
+      <input id="citySearch" type="search" placeholder="搜索城市或区县，如成都、朝阳区" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cityOptions">
       <button type="button" class="city-clear" id="cityClear" title="清除城市" aria-label="清除城市">&times;</button>
       <div class="city-options" id="cityOptions" role="listbox" hidden></div>
     </div>
@@ -101,7 +101,7 @@
   <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">顶部</button>
 </div>
 
-<script src="app.js?v=20260718-time-resolution1"></script>
+<script src="app.js?v=20260718-cn-locations1"></script>
 
 <!-- ═══ Chat Toggle ═══ -->
 <button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问">💬<span class=badge id=chatBadge></span></button>

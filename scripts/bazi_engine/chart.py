@@ -418,8 +418,11 @@ def _init_chart_shell(
     chart.xiaoyun_pillars = []
     chart.xiaoyun_periods = []
 
-    if chart.time_resolution.effective_time_mode == "civil_input" and not chart.time_resolution.city:
-        chart.warnings.append("出生地未知，按输入时间排盘，未进行真太阳时校正")
+    if chart.time_resolution.effective_time_mode == "civil_input":
+        if chart.time_resolution.city:
+            chart.warnings.append("所选出生地在当前数据版本中暂无坐标，按输入时间排盘，未进行真太阳时校正")
+        else:
+            chart.warnings.append("出生地未知，按输入时间排盘，未进行真太阳时校正")
     if chart.time_resolution.pillar_date_adjusted:
         chart.warnings.append("真太阳时校正跨日，日柱和时柱已按校正后的日期计算")
     if chart.time_resolution.time_accuracy != "minute":

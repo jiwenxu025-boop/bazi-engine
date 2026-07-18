@@ -120,7 +120,7 @@ function hideCityOptions(){
 
 function selectCity(city){
   LocationState.city = city;
-  document.getElementById('citySearch').value = city.name;
+  document.getElementById('citySearch').value = city.label || city.name;
   hideCityOptions();
   queueTimePreview();
 }
@@ -144,7 +144,7 @@ function renderCityOptions(items){
   for (let i = 0; i < items.length; i++){
     let city = items[i];
     html += '<button type="button" class="city-option" role="option" aria-selected="false" data-city-id="' + esc(city.id) + '">';
-    html += '<span>' + esc(city.name) + '</span><small>' + esc(city.province || '') + '</small></button>';
+    html += '<span>' + esc(city.name) + '</span><small>' + esc(city.label || city.province || '') + '</small></button>';
   }
   options.innerHTML = html;
   options.hidden = false;
@@ -181,7 +181,7 @@ function searchCities(){
 
 function scheduleCitySearch(){
   let search = document.getElementById('citySearch');
-  if (LocationState.city && search.value !== LocationState.city.name) LocationState.city = null;
+  if (LocationState.city && search.value !== (LocationState.city.label || LocationState.city.name)) LocationState.city = null;
   window.clearTimeout(LocationState.citySearchTimer);
   LocationState.citySearchTimer = window.setTimeout(searchCities, 160);
   queueTimePreview();
@@ -198,7 +198,11 @@ function timeFieldsAreComplete(){
 
 function formatTimeBasisPreview(preview){
   if (preview.effective_time_mode !== 'true_solar'){
-    setTimeBasisNote('出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。');
+    if (preview.city){
+      setTimeBasisNote(preview.city.label + '：当前数据版本暂无坐标，按输入时间排盘；可在高级设置填写经度。');
+    } else {
+      setTimeBasisNote('出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。');
+    }
     return;
   }
   let correction = Number(preview.solar_correction_minutes || 0);

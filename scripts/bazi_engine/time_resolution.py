@@ -115,7 +115,11 @@ def resolve_birth_time(
         timezone_offset = city.timezone_offset_minutes if city else CHINA_STANDARD_TIME_OFFSET_MINUTES
 
     effective_longitude = longitude if longitude is not None else (city.longitude if city else None)
-    longitude_source = "manual" if longitude is not None else ("city_registry" if city else "unknown")
+    longitude_source = (
+        "manual"
+        if longitude is not None
+        else ("city_registry" if city and city.longitude is not None else "unknown")
+    )
     if requested_time_mode == "auto":
         effective_time_mode = "true_solar" if effective_longitude is not None else "civil_input"
     else:

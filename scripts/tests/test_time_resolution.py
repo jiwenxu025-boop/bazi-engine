@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from bazi_engine._chart_context import extract_base_context
 from bazi_engine.api import app
 from bazi_engine.chart import build_chart
+from bazi_engine.locations import CITY_REGISTRY, REGISTRY_METADATA, get_city, search_cities
 from bazi_engine.pillars import compute_day_pillar
 from bazi_engine.time_resolution import resolve_birth_time
 
@@ -29,7 +30,7 @@ def test_selected_city_uses_true_solar_time_and_keeps_audit_fields():
     assert resolved.city and resolved.city.name == "成都"
     assert resolved.longitude_source == "city_registry"
     assert resolved.pillar_dt != resolved.input_civil_dt
-    assert resolved.to_report_input()["city"]["id"] == "chengdu"
+    assert resolved.to_report_input()["city"]["id"] == "5101"
 
 
 def test_true_solar_cross_day_changes_only_day_hour_pillar_timeline(monkeypatch):
@@ -68,7 +69,7 @@ def test_llm_context_receives_time_basis_without_changing_birth_age_date():
     context = extract_base_context(chart.to_dict())
 
     assert context["time_basis"]["effective_time_mode"] == "true_solar"
-    assert context["time_basis"]["city"] == "北京市 北京"
+    assert context["time_basis"]["city"] == "北京市"
     assert context["time_basis"]["pillar_time"] != chart.birth_dt.strftime("%Y-%m-%d %H:%M")
 
 
@@ -85,7 +86,80 @@ def test_location_search_and_time_preview_are_offline_api_contracts():
     })
 
     assert locations.status_code == 200
-    assert locations.json()["items"][0]["id"] == "chengdu"
+    assert locations.json()["coverage"] == {
+        "records": 3564,
+        "with_coordinates": 3186,
+        "without_coordinates": 378,
+        "source_release": "2025.251231.260403",
+    }
+    assert locations.json()["items"][0]["id"] == "5101"
     assert preview.status_code == 200
     assert preview.json()["effective_time_mode"] == "true_solar"
-    assert preview.json()["city"]["id"] == "chengdu"
+    assert preview.json()["city"]["id"] == "5101"
+
+
+def test_registry_covers_nationwide_city_and_county_level_divisions():
+    assert REGISTRY_METADATA["registry_version"] == "cn-divisions-2025.251231.260403"
+    assert len(CITY_REGISTRY) == 3564
+    assert sum(city.level == 1 for city in CITY_REGISTRY) == 392
+    assert sum(city.level == 2 for city in CITY_REGISTRY) == 3172
+    assert len({city.id for city in CITY_REGISTRY}) == len(CITY_REGISTRY)
+    assert sum(city.has_coordinates for city in CITY_REGISTRY) == 3186
+    assert {city.province for city in CITY_REGISTRY if not city.has_coordinates} == {"台湾省"}
+
+
+def test_location_search_handles_remote_direct_admin_and_ambiguous_places():
+    assert search_cities("漠河")[0].id == "232701"
+    assert search_cities("三沙")[0].id == "4603"
+    assert search_cities("济源")[0].id == "419001"
+    assert {city.id for city in search_cities("阿勒泰")} >= {"6543", "654301"}
+    assert [city.id for city in search_cities("朝阳区")[:2]] == ["110105", "220104"]
+    assert [city.label for city in search_cities("朝阳区")[:2]] == [
+        "北京市 朝阳区",
+        "吉林省 长春市 朝阳区",
+    ]
+
+
+def test_location_search_supports_pinyin_admin_code_and_legacy_city_ids():
+    assert search_cities("chengdu")[0].id == "5101"
+    assert search_cities("5101")[0].label == "四川省 成都市"
+    assert get_city("chengdu") and get_city("chengdu").id == "5101"
+    assert get_city("beijing") and get_city("beijing").id == "1101"
+
+
+def test_location_without_coordinates_falls_back_to_input_time():
+    resolved = resolve_birth_time(
+        year=2007, month=8, day=26, hour=20, minute=0, city_id="7101",
+    )
+    chart = build_chart(
+        "missing-coordinate", "男", 2007, 8, 26, 20, minute=0,
+        city_id="7101", liunian_range=(2026, 2026), hour_confirmed=True,
+    )
+
+    assert resolved.city and resolved.city.label == "台湾省 台北市"
+    assert resolved.effective_time_mode == "civil_input"
+    assert resolved.pillar_dt == resolved.input_civil_dt
+    assert resolved.longitude is None
+    assert resolved.longitude_source == "unknown"
+    assert any("暂无坐标" in warning for warning in chart.warnings)
+
+    client = TestClient(app)
+    payload = {
+        "year": 2007,
+        "month": 8,
+        "day": 26,
+        "hour": 20,
+        "minute": 0,
+        "city_id": "7101",
+    }
+    preview = client.post("/api/time/preview", json=payload)
+    forced = client.post(
+        "/api/time/preview",
+        json={**payload, "requested_time_mode": "true_solar"},
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["effective_time_mode"] == "civil_input"
+    assert preview.json()["city"]["has_coordinates"] is False
+    assert forced.status_code == 422
+    assert "填写手动经度" in forced.json()["detail"]

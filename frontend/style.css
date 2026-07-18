@@ -165,7 +165,11 @@ body{
   border-radius:4px;cursor:pointer;
 }
 .city-option:hover,.city-option[aria-selected="true"]{background:var(--tag-bg)}
-.city-option small{font-size:11px;color:var(--text-tertiary);margin-left:8px}
+.city-option span{flex:0 0 auto}
+.city-option small{
+  min-width:0;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;color:var(--text-tertiary);
+}
 .advanced-time-grid{align-items:flex-end}
 .advanced-time-grid label{min-width:0}
 .advanced-options{

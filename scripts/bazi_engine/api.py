@@ -39,7 +39,7 @@ from ._runtime import close_blocking_executor, submit_blocking
 from ._streaming import StreamEventQueue
 from ._version import __version__
 from .chart import build_chart
-from .locations import REGISTRY_VERSION, get_city, search_cities
+from .locations import REGISTRY_METADATA, REGISTRY_VERSION, get_city, search_cities
 from .time_resolution import resolve_birth_time
 
 logger = logging.getLogger(__name__)
@@ -101,9 +101,10 @@ class ChartStreamRequest(BaseModel):
                 raise ValueError("liunian_from 不能晚于 liunian_to")
             if self.liunian_to - self.liunian_from > _MAX_LIUNIAN_SPAN:
                 raise ValueError(f"流年范围最多 {_MAX_LIUNIAN_SPAN} 年")
-        if self.city_id and get_city(self.city_id) is None:
+        city = get_city(self.city_id)
+        if self.city_id and city is None:
             raise ValueError("所选城市不在当前离线城市清单中")
-        if self.requested_time_mode == "true_solar" and not (self.city_id or self.longitude is not None):
+        if self.requested_time_mode == "true_solar" and self.longitude is None and not (city and city.has_coordinates):
             raise ValueError("真太阳时需要选择内置城市或填写手动经度")
         return self
 
@@ -696,6 +697,12 @@ def locations_api(q: str = Query("", max_length=100), limit: int = Query(12, ge=
     """Search the bundled city registry.  No live geocoding is performed."""
     return {
         "registry_version": REGISTRY_VERSION,
+        "coverage": {
+            "records": REGISTRY_METADATA["record_count"],
+            "with_coordinates": REGISTRY_METADATA["coordinate_count"],
+            "without_coordinates": REGISTRY_METADATA["missing_coordinate_count"],
+            "source_release": REGISTRY_METADATA["source_release"],
+        },
         "items": [city.to_dict() for city in search_cities(q, limit=limit)],
     }
 
