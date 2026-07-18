@@ -609,6 +609,46 @@ def test_personality_evidence_renderer_handles_empty_scores_labels_and_escaping(
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_annual_ai_review_matrix_summary_and_visibility():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const source = fs.readFileSync({str(APP_JS)!r}, 'utf8');
+        const start = source.indexOf('function _annualAiReviewMeta');
+        const end = source.indexOf('function setDayunInterpretations');
+        const sandbox = {{ esc(value) {{ return String(value); }} }};
+        vm.createContext(sandbox);
+        vm.runInContext(source.slice(start, end), sandbox);
+
+        const reviews = [
+          {{category: '婚嫁', review_status: '无明显信号', direction: '中性'}},
+          {{category: '桃花', review_status: '有信号', direction: '正面', prediction: '关系机会增加'}},
+          {{category: '事业', review_status: '无明显信号', direction: '中性'}},
+          {{category: '财运', review_status: '无明显信号', direction: '中性'}},
+          {{category: '健康', review_status: '未完成', direction: '中性'}},
+          {{category: '搬迁', review_status: '无明显信号', direction: '中性'}},
+        ];
+        const meta = sandbox._annualAiReviewMeta(reviews);
+        if (meta.categoryCount !== 6 || meta.completedCount !== 5) throw new Error('matrix counts are wrong');
+        if (meta.signalCategories.join(',') !== '桃花') throw new Error('signal categories are wrong');
+
+        const summary = sandbox._renderAnnualAiSummary(meta);
+        if (!summary.includes('AI审阅 5/6类') || !summary.includes('有提示：桃花')) throw new Error('visible summary is incomplete');
+        const header = sandbox._renderAnnualAiHeaderTag(meta);
+        if (!header.includes('AI 桃花↑')) throw new Error('AI header category is missing');
+        const details = sandbox._renderAnnualAiReviews(reviews);
+        if (!details.includes('无明显信号') || !details.includes('未完成')) throw new Error('matrix states are not rendered');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    source = APP_JS.read_text(encoding="utf-8")
+    assert source.count("if (!significant.length && !aiMeta.signalReviews.length) continue;") == 2
+
+
 def test_report_overview_summarizes_chart_for_reading_first_result_page():
     script = textwrap.dedent(
         f"""

@@ -94,6 +94,7 @@ class EventSignal:
     personality_note: str = ""  # 性格联动备注
     magnitude: str = ""         # 财务信号强度 "弱"/"中"/"较强"，不表示金额或损失规模
     source: str = "rule"        # v0.16.0: 信号来源 "rule"|"llm"
+    review_status: str = ""     # AI审阅状态："有信号"|"无明显信号"|"未完成"
 
     def to_dict(self) -> dict:
         d = {
@@ -109,6 +110,8 @@ class EventSignal:
         }
         if self.magnitude:
             d["magnitude"] = self.magnitude
+        if self.review_status:
+            d["review_status"] = self.review_status
         return d
 
 @dataclass

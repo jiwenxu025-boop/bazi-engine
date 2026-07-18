@@ -41,3 +41,39 @@ def test_report_traceability_keeps_ai_review_sources_separate(monkeypatch):
 
     assert traceability["annual_signal_sources"] == ["rule"]
     assert traceability["annual_ai_review_sources"] == ["llm"]
+
+
+def test_no_signal_ai_review_serializes_status_without_rule_event(monkeypatch):
+    import bazi_engine.llm_review as llm_review
+
+    scan = AnnualScan(2026, Tiangan("甲"), Dizhi("子"))
+    review = LLMReviewResult(
+        year=2026,
+        category="桃花",
+        direction="中性",
+        strength=0,
+        prediction="未发现明显信号",
+        reasoning="",
+        confidence=0,
+        review_status="无明显信号",
+    )
+    monkeypatch.setattr(llm_review, "call_llm_review", lambda _context: [review])
+
+    _execute_llm_reviews_parallel([scan], [(0, {})])
+
+    data = scan.to_dict()
+    assert data["events"] == []
+    assert data["ai_reviews"] == [
+        {
+            "category": "桃花",
+            "direction": "中性",
+            "strength": 0,
+            "prediction": "未发现明显信号",
+            "triggers": [],
+            "notes": [],
+            "calibration_refs": [],
+            "personality_note": "",
+            "source": "llm",
+            "review_status": "无明显信号",
+        }
+    ]

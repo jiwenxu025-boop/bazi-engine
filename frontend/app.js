@@ -161,15 +161,91 @@ function _isDuplicateAiReview(existingReviews, candidate){
   return false;
 }
 
+function _annualAiReviewMeta(reviews){
+  let source = Array.isArray(reviews) ? reviews : [];
+  let categoryStates = {};
+  let signalReviews = [];
+  let signalCategories = [];
+  let signalDirections = {};
+  let hasExplicitStatuses = false;
+  let statusRank = {'未完成': 0, '无明显信号': 1, '有信号': 2};
+  for (let i = 0; i < source.length; i++){
+    let review = source[i] || {};
+    let category = review.category || '';
+    if (!category) continue;
+    let status = review.review_status || '有信号';
+    if (review.review_status) hasExplicitStatuses = true;
+    let oldStatus = categoryStates[category];
+    if (!oldStatus || (statusRank[status] || 0) > (statusRank[oldStatus] || 0)){
+      categoryStates[category] = status;
+    }
+    if (status === '有信号'){
+      signalReviews.push(review);
+      if (signalCategories.indexOf(category) === -1) signalCategories.push(category);
+      if (!signalDirections[category]) signalDirections[category] = review.direction || '中性';
+    }
+  }
+  let categories = Object.keys(categoryStates);
+  let completedCount = categories.filter(function(category){
+    return categoryStates[category] !== '未完成';
+  }).length;
+  return {
+    reviews: source,
+    categoryStates: categoryStates,
+    categoryCount: categories.length,
+    completedCount: completedCount,
+    incompleteCount: categories.length - completedCount,
+    signalReviews: signalReviews,
+    signalCategories: signalCategories,
+    signalDirections: signalDirections,
+    hasExplicitStatuses: hasExplicitStatuses,
+  };
+}
+
+function _renderAnnualAiHeaderTag(meta){
+  if (!meta || !meta.signalCategories.length) return '';
+  let labels = meta.signalCategories.slice(0, 2).map(function(category){
+    let direction = meta.signalDirections[category];
+    let symbol = direction === '正面' ? '↑' : direction === '负面' ? '↓' : '·';
+    return category + symbol;
+  });
+  if (meta.signalCategories.length > 2) labels.push('+' + (meta.signalCategories.length - 2));
+  return '<span class="header-tag ai-header-tag">AI ' + esc(labels.join('、')) + '</span>';
+}
+
+function _renderAnnualAiSummary(meta){
+  if (!meta || !meta.reviews.length) return '';
+  let text = '';
+  if (meta.hasExplicitStatuses){
+    text = 'AI审阅 ' + meta.completedCount + '/' + meta.categoryCount + '类';
+    if (meta.incompleteCount) text += ' · ' + meta.incompleteCount + '类未完成';
+  } else {
+    text = 'AI辅助提示';
+  }
+  if (meta.signalCategories.length){
+    text += ' · 有提示：' + meta.signalCategories.join('、');
+  } else if (meta.hasExplicitStatuses && !meta.incompleteCount){
+    text += ' · 无额外提示';
+  }
+  return '<div class=ai-review-inline>' + esc(text) + '</div>';
+}
+
 function _renderAnnualAiReviews(reviews){
   if (!Array.isArray(reviews) || !reviews.length) return '';
-  let h = '<details class=ai-review><summary>AI 辅助审阅（不计入规则信号）</summary>';
+  let meta = _annualAiReviewMeta(reviews);
+  let detailLabel = meta.hasExplicitStatuses
+    ? 'AI 辅助审阅（' + meta.completedCount + '/' + meta.categoryCount + '类，不计入规则信号）'
+    : 'AI 辅助审阅（不计入规则信号）';
+  let h = '<details class=ai-review><summary>' + esc(detailLabel) + '</summary>';
   for (let i = 0; i < reviews.length; i++){
     let review = reviews[i] || {};
-    h += '<div class=ai-review-item>';
+    let status = review.review_status || '有信号';
+    let statusClass = status === '有信号' ? 'signal' : status === '未完成' ? 'incomplete' : 'clear';
+    h += '<div class="ai-review-item ai-review-' + statusClass + '">';
     if (review.category) h += '<span class=tag>' + esc(review.category) + '</span>';
-    if (review.direction) h += '<span class=ai-review-direction>' + esc(review.direction) + '</span>';
-    if (review.prediction) h += '<div class=ai-review-text>' + esc(review.prediction) + '</div>';
+    h += '<span class="ai-review-status ' + statusClass + '">' + esc(status) + '</span>';
+    if (status === '有信号' && review.direction) h += '<span class=ai-review-direction>' + esc(review.direction) + '</span>';
+    if (status === '有信号' && review.prediction) h += '<div class=ai-review-text>' + esc(review.prediction) + '</div>';
     let notes = Array.isArray(review.notes) ? review.notes : [];
     for (let n = 0; n < notes.length; n++) h += '<div class=ai-review-note>' + esc(notes[n]) + '</div>';
     h += '</div>';
@@ -182,7 +258,7 @@ function _annualSignalKey(signal){
   let notes = Array.isArray(signal.notes) ? signal.notes.join('\u001f') : '';
   return [
     signal.category || '', signal.direction || '', signal.strength || 0,
-    signal.prediction || '', triggers, notes,
+    signal.prediction || '', signal.review_status || '', triggers, notes,
   ].join('\u0001');
 }
 
@@ -1274,7 +1350,8 @@ function render(d){
       let scan = d.annual_scans[s];
       let significant = scan.events.filter(function(e){return e.strength >= 2});
       let aiReviews = scan.ai_reviews || [];
-      if (!significant.length && !aiReviews.length) continue;
+      let aiMeta = _annualAiReviewMeta(aiReviews);
+      if (!significant.length && !aiMeta.signalReviews.length) continue;
       hasAny = true;
 
       let summary = _summarizeAnnualScan(scan, d);
@@ -1286,6 +1363,7 @@ function render(d){
         let dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
         tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
       }
+      tagBadges.push(_renderAnnualAiHeaderTag(aiMeta));
 
       h += '<div class=event-card>';
       h += '<div class=event-header>';
@@ -1295,7 +1373,9 @@ function render(d){
       h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
       h += '<span class=chevron>▶</span>';
       h += '</div>';
-      h += '<div class=event-summary-line>' + esc(summary.slice(0, 3).join('、')) + '</div>';
+      let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '规则层暂无显著信号';
+      h += '<div class=event-summary-line>' + esc(ruleSummary) + '</div>';
+      h += _renderAnnualAiSummary(aiMeta);
       // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
       h += '<div class=event-body>';
       for (let e = 0; e < significant.length; e++){
@@ -1485,7 +1565,8 @@ function refreshFlowSection(d){
     let scan = d.annual_scans[s];
     let significant = scan.events.filter(function(e){return e.strength >= 2});
     let aiReviews = scan.ai_reviews || [];
-    if (!significant.length && !aiReviews.length) continue;
+    let aiMeta = _annualAiReviewMeta(aiReviews);
+    if (!significant.length && !aiMeta.signalReviews.length) continue;
     hasAny = true;
     let summary = _summarizeAnnualScan(scan, d);
     let tagBadges = [];
@@ -1494,6 +1575,7 @@ function refreshFlowSection(d){
       let dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
       tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
     }
+    tagBadges.push(_renderAnnualAiHeaderTag(aiMeta));
     h += '<div class=event-card>';
     h += '<div class=event-header>';
     h += '<span class=event-year>' + scan.year + '</span>';
@@ -1502,7 +1584,9 @@ function refreshFlowSection(d){
     h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
     h += '<span class=chevron>▶</span>';
     h += '</div>';
-    h += '<div class=event-summary-line>' + esc(summary.slice(0, 3).join('、')) + '</div>';
+    let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '规则层暂无显著信号';
+    h += '<div class=event-summary-line>' + esc(ruleSummary) + '</div>';
+    h += _renderAnnualAiSummary(aiMeta);
     h += '<div class=event-body>';
     for (let e = 0; e < significant.length; e++){
       let ev2 = significant[e];

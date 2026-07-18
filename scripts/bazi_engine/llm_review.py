@@ -42,14 +42,18 @@ class LLMReviewResult:
     triggers: list[str] = field(default_factory=list)
     confidence: float = 0.6  # LLM 置信度 (0-1)
     source: str = "llm"
+    review_status: str = "有信号"  # "有信号"|"无明显信号"|"未完成"
 
 
 # ═══════════════════════════════════════════════════════════════
 # 边界判定：哪些年份需要 LLM 介入
 # ═══════════════════════════════════════════════════════════════
 
-# LLM 介入的目标类别（与校准数据对齐）
-_REVIEW_CATEGORIES = {"婚嫁", "事业", "财运", "健康", "搬迁", "桃花"}
+# LLM 介入的目标类别（固定顺序用于逐类审阅矩阵）
+_REVIEW_CATEGORIES = ("婚嫁", "桃花", "事业", "财运", "健康", "搬迁")
+_REVIEW_CATEGORY_SET = set(_REVIEW_CATEGORIES)
+_VALID_REVIEW_CATEGORIES = _REVIEW_CATEGORY_SET | {"人际", "状态"}
+_VALID_REVIEW_DIRECTIONS = {"正面", "负面", "中性"}
 
 
 def should_invoke_llm(events: list, year: int, age: int,
@@ -316,6 +320,9 @@ def build_review_prompt(ctx: dict) -> str:
 
 规则引擎已经跑过但可能遗漏"多弱信号叠加"型的事件。根据流年特征做综合推理：
 
+必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，不得跳项。先在 category_matrix
+中对六类分别标记 1（有信号）或 0（无明显信号），再仅为标记 1 的类别输出事件详情。
+
 1. 婚嫁检测: 流年十神=配偶星 + 夫妻宫引动 + 红鸾/天喜 + 大运与夫妻宫互动 → 叠加即可能
 2. 桃花检测: 桃花入命 + 红鸾 + 配偶星透干 + 流年合日主
 3. 事业检测: 官/印星 + 驿马 + 大运官印相生 → 晋升/跳槽
@@ -341,6 +348,7 @@ def build_review_prompt(ctx: dict) -> str:
 ## 输出JSON
 
 {{
+  "category_matrix": {{"婚嫁": 0, "桃花": 1, "事业": 0, "财运": 0, "健康": 0, "搬迁": 0}},
   "events": [
     {{
       "category": "婚嫁/事业/财运/健康/搬迁/桃花",
@@ -353,7 +361,8 @@ def build_review_prompt(ctx: dict) -> str:
   ]
 }}
 
-约束: strength≤2★, 无事件返回{{"events":[]}}, 严格根据数据推理不编造, 陈述事实不渲染不吓人"""
+约束: category_matrix 必须包含六类且每类只能为0或1；strength≤2★；无事件时 events 返回空数组；
+严格根据数据推理不编造，陈述事实不渲染不吓人"""
 
     return prompt
 
@@ -444,8 +453,6 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
 
 def _parse_review_response(content: str, year: int) -> list[LLMReviewResult]:
     """解析 LLM 的 JSON 响应"""
-    results: list[LLMReviewResult] = []
-
     # 提取 JSON 块
     json_match = re.search(r'\{[\s\S]*"events"[\s\S]*\}', content)
     if not json_match:
@@ -459,46 +466,105 @@ def _parse_review_response(content: str, year: int) -> list[LLMReviewResult]:
     except json.JSONDecodeError:
         return []
 
+    return _parse_category_review_payload(data, year)
+
+
+def _coerce_matrix_value(value) -> bool | None:
+    """将模型可能使用的布尔、数字或中文状态统一为三态。"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "有", "有信号", "明显"}:
+            return True
+        if normalized in {"0", "false", "no", "无", "无信号", "无明显信号"}:
+            return False
+    return None
+
+
+def _parse_positive_review_event(evt: dict, year: int) -> LLMReviewResult | None:
+    if not isinstance(evt, dict):
+        return None
+    category = evt.get("category", "")
+    if category not in _VALID_REVIEW_CATEGORIES:
+        return None
+
+    direction = evt.get("direction", "中性")
+    if direction not in _VALID_REVIEW_DIRECTIONS:
+        direction = "中性"
+
+    strength = evt.get("strength", 1)
+    if not isinstance(strength, (int, float)):
+        strength = 1
+    strength = max(1, min(2, int(strength)))
+
+    confidence = evt.get("confidence", 0.6)
+    if not isinstance(confidence, (int, float)):
+        confidence = 0.6
+    confidence = max(0.0, min(1.0, float(confidence)))
+    if confidence < 0.5:
+        return None
+
+    reasoning = str(evt.get("reasoning", ""))[:120]
+    return LLMReviewResult(
+        year=year,
+        category=category,
+        direction=direction,
+        strength=strength,
+        prediction=str(evt.get("prediction", ""))[:60],
+        reasoning=reasoning,
+        triggers=[f"[LLM推理] {reasoning[:60]}"] if reasoning else [],
+        confidence=confidence,
+        source="llm",
+        review_status="有信号",
+    )
+
+
+def _status_only_review(year: int, category: str, status: str) -> LLMReviewResult:
+    prediction = "未发现明显信号" if status == "无明显信号" else "AI未完成该类别审阅"
+    return LLMReviewResult(
+        year=year,
+        category=category,
+        direction="中性",
+        strength=0,
+        prediction=prediction,
+        reasoning="",
+        triggers=[],
+        confidence=0.0,
+        source="llm",
+        review_status=status,
+    )
+
+
+def _parse_category_review_payload(data: dict, year: int) -> list[LLMReviewResult]:
+    """解析逐类矩阵；旧版仅含 events 的响应仍按原语义兼容。"""
     events = data.get("events", [])
     if not isinstance(events, list):
-        return []
+        events = []
+    parsed_events = [
+        parsed
+        for event in events
+        if (parsed := _parse_positive_review_event(event, year)) is not None
+    ]
 
-    valid_categories = {"婚嫁", "事业", "财运", "健康", "搬迁", "桃花", "人际", "状态"}
-    valid_directions = {"正面", "负面", "中性"}
+    matrix = data.get("category_matrix")
+    if not isinstance(matrix, dict):
+        return parsed_events
 
-    for evt in events:
-        cat = evt.get("category", "")
-        if cat not in valid_categories:
+    by_category: dict[str, list[LLMReviewResult]] = {}
+    for event in parsed_events:
+        by_category.setdefault(event.category, []).append(event)
+
+    results: list[LLMReviewResult] = []
+    for category in _REVIEW_CATEGORIES:
+        if by_category.get(category):
+            results.extend(by_category[category])
             continue
-
-        direction = evt.get("direction", "中性")
-        if direction not in valid_directions:
-            direction = "中性"
-
-        strength = evt.get("strength", 1)
-        if not isinstance(strength, (int, float)):
-            strength = 1
-        strength = max(1, min(2, int(strength)))  # 限制 1-2★
-
-        confidence = evt.get("confidence", 0.6)
-        if not isinstance(confidence, (int, float)):
-            confidence = 0.6
-        confidence = max(0.0, min(1.0, float(confidence)))
-
-        if confidence < 0.5:
-            continue
-
-        results.append(LLMReviewResult(
-            year=year,
-            category=cat,
-            direction=direction,
-            strength=strength,
-            prediction=evt.get("prediction", "")[:60],
-            reasoning=evt.get("reasoning", "")[:120],
-            triggers=[f"[LLM推理] {evt.get('reasoning', '')[:60]}"],
-            confidence=confidence,
-            source="llm",
-        ))
+        matrix_value = _coerce_matrix_value(matrix.get(category))
+        status = "无明显信号" if matrix_value is False else "未完成"
+        results.append(_status_only_review(year, category, status))
 
     return results
 
@@ -856,6 +922,8 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
 
 ## 任务
 为每个年份做综合推理。规则引擎已跑但可能遗漏"多弱信号叠加"型事件。
+每个年份都必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，并在
+category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的类别详情。
 
 ### 当代翻译要求（重要）
 对每个信号的 prediction 和 reasoning，必须翻译成命主能看懂的当代现实场景，不能停留在八字术语上。用非命理语言说出具体可能发生的事情。
@@ -873,13 +941,16 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
 
 ### 输出JSON格式
 {{"years": [
-  {{"year": {ctxs[0]['liunian']['year']}, "events": [
+  {{"year": {ctxs[0]['liunian']['year']},
+    "category_matrix": {{"婚嫁": 0, "桃花": 1, "事业": 0, "财运": 0, "健康": 0, "搬迁": 0}},
+    "events": [
     {{"category": "...", "direction": "...", "strength": 1或2, "prediction": "...", "reasoning": "...", "confidence": 0.5-1.0}}
   ]}},
   ...
 ]}}
 
-约束: strength≤2★, 无事件返回空events数组, 严格根据数据推理不编造"""
+约束: 每年 category_matrix 必须包含六类且每类只能为0或1；strength≤2★；
+无事件时返回空 events 数组；严格根据数据推理不编造"""
 
     messages = [
         {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
@@ -959,9 +1030,6 @@ def _parse_batch_response(content: str, ctxs: list[dict]) -> list[list[LLMReview
     except _json.JSONDecodeError:
         return results_per_year
 
-    valid_categories = {"婚嫁", "事业", "财运", "健康", "搬迁", "桃花", "人际", "状态"}
-    valid_directions = {"正面", "负面", "中性"}
-
     for yr_data in years_data:
         yr = yr_data.get("year")
         # 按 year 匹配 ctx
@@ -974,35 +1042,7 @@ def _parse_batch_response(content: str, ctxs: list[dict]) -> list[list[LLMReview
         if yr_idx is None or yr_idx >= len(results_per_year):
             continue
 
-        for evt in yr_data.get("events", []):
-            cat = evt.get("category", "")
-            if cat not in valid_categories:
-                continue
-            direction = evt.get("direction", "中性")
-            if direction not in valid_directions:
-                direction = "中性"
-            strength = evt.get("strength", 1)
-            if not isinstance(strength, (int, float)):
-                strength = 1
-            strength = max(1, min(2, int(strength)))
-            confidence = evt.get("confidence", 0.6)
-            if not isinstance(confidence, (int, float)):
-                confidence = 0.6
-            confidence = max(0.0, min(1.0, float(confidence)))
-            if confidence < 0.5:
-                continue
-
-            results_per_year[yr_idx].append(LLMReviewResult(
-                year=yr,
-                category=cat,
-                direction=direction,
-                strength=strength,
-                prediction=evt.get("prediction", "")[:60],
-                reasoning=evt.get("reasoning", "")[:120],
-                triggers=[f"[LLM推理] {evt.get('reasoning', '')[:60]}"],
-                confidence=confidence,
-                source="llm",
-            ))
+        results_per_year[yr_idx] = _parse_category_review_payload(yr_data, yr)
 
     return results_per_year
 
