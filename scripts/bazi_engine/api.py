@@ -28,7 +28,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +39,8 @@ from ._runtime import close_blocking_executor, submit_blocking
 from ._streaming import StreamEventQueue
 from ._version import __version__
 from .chart import build_chart
+from .locations import REGISTRY_VERSION, get_city, search_cities
+from .time_resolution import resolve_birth_time
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,11 @@ class ChartStreamRequest(BaseModel):
     day: int = Field(ge=1, le=31)
     hour: int = Field(ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
+    city_id: str | None = Field(default=None, max_length=64)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    timezone_offset_minutes: int | None = Field(default=None, ge=-720, le=840)
+    requested_time_mode: Literal["auto", "true_solar", "civil_input"] = "auto"
+    time_accuracy: Literal["minute", "hour", "unknown"] = "minute"
     liunian_from: int | None = Field(default=None, ge=1900, le=2100)
     liunian_to: int | None = Field(default=None, ge=1900, le=2100)
     favorable: list[str] | None = None
@@ -94,11 +101,28 @@ class ChartStreamRequest(BaseModel):
                 raise ValueError("liunian_from 不能晚于 liunian_to")
             if self.liunian_to - self.liunian_from > _MAX_LIUNIAN_SPAN:
                 raise ValueError(f"流年范围最多 {_MAX_LIUNIAN_SPAN} 年")
+        if self.city_id and get_city(self.city_id) is None:
+            raise ValueError("所选城市不在当前离线城市清单中")
+        if self.requested_time_mode == "true_solar" and not (self.city_id or self.longitude is not None):
+            raise ValueError("真太阳时需要选择内置城市或填写手动经度")
         return self
 
 
 class BatchChartRequest(ChartStreamRequest):
     calibrate: bool = False
+
+
+class TimePreviewRequest(BaseModel):
+    year: int = Field(ge=1900, le=2100)
+    month: int = Field(ge=1, le=12)
+    day: int = Field(ge=1, le=31)
+    hour: int = Field(ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
+    city_id: str | None = Field(default=None, max_length=64)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    timezone_offset_minutes: int | None = Field(default=None, ge=-720, le=840)
+    requested_time_mode: Literal["auto", "true_solar", "civil_input"] = "auto"
+    time_accuracy: Literal["minute", "hour", "unknown"] = "minute"
 
 
 class DatePickRequest(BaseModel):
@@ -232,6 +256,11 @@ def chart_api(
     day: int = Query(..., ge=1, le=31),
     hour: int = Query(..., ge=0, le=23),
     minute: int = Query(0, ge=0, le=59),
+    city_id: str | None = Query(None, max_length=64),
+    longitude: float | None = Query(None, ge=-180, le=180),
+    timezone_offset_minutes: int | None = Query(None, ge=-720, le=840),
+    requested_time_mode: Literal["auto", "true_solar", "civil_input"] = Query("auto"),
+    time_accuracy: Literal["minute", "hour", "unknown"] = Query("minute"),
     liunian_from: int | None = Query(None),
     liunian_to: int | None = Query(None),
     favorable: list[str] | None = _FAVORABLE_QUERY,
@@ -259,6 +288,11 @@ def chart_api(
         calibrate=use_calibrate,
         life_stage_override=life_stage if life_stage != "auto" else "",
         hour_confirmed=hour_confirmed,
+        city_id=city_id,
+        longitude=longitude,
+        timezone_offset_minutes=timezone_offset_minutes,
+        requested_time_mode=requested_time_mode,
+        time_accuracy=time_accuracy,
     )
     result = _prepare_chart_response(chart.to_dict(), practical)
 
@@ -266,6 +300,7 @@ def chart_api(
 
 
 async def stream_chart(    name, gender, year, month, day, hour, minute,
+    city_id, longitude, timezone_offset_minutes, requested_time_mode, time_accuracy,
     ln_range, fav_set, life_stage, hour_confirmed, practical,
 ):
     queue: asyncio.Queue = asyncio.Queue()
@@ -299,6 +334,11 @@ async def stream_chart(    name, gender, year, month, day, hour, minute,
                 calibrate=False,
                 life_stage_override=life_stage if life_stage != "auto" else "",
                 hour_confirmed=hour_confirmed,
+                city_id=city_id,
+                longitude=longitude,
+                timezone_offset_minutes=timezone_offset_minutes,
+                requested_time_mode=requested_time_mode,
+                time_accuracy=time_accuracy,
                 on_llm_result=on_llm,
                 on_llm_token=on_llm_tok,
             )
@@ -568,6 +608,11 @@ async def chart_stream(
     day: int = Query(..., ge=1, le=31),
     hour: int = Query(..., ge=0, le=23),
     minute: int = Query(0, ge=0, le=59),
+    city_id: str | None = Query(None, max_length=64),
+    longitude: float | None = Query(None, ge=-180, le=180),
+    timezone_offset_minutes: int | None = Query(None, ge=-720, le=840),
+    requested_time_mode: Literal["auto", "true_solar", "civil_input"] = Query("auto"),
+    time_accuracy: Literal["minute", "hour", "unknown"] = Query("minute"),
     liunian_from: int | None = Query(None),
     liunian_to: int | None = Query(None),
     favorable: list[str] | None = _FAVORABLE_QUERY,
@@ -599,6 +644,11 @@ async def chart_stream(
         day=day,
         hour=hour,
         minute=minute,
+        city_id=city_id,
+        longitude=longitude,
+        timezone_offset_minutes=timezone_offset_minutes,
+        requested_time_mode=requested_time_mode,
+        time_accuracy=time_accuracy,
         liunian_from=liunian_from,
         liunian_to=liunian_to,
         favorable=favorable,
@@ -622,6 +672,11 @@ def _chart_stream_response(payload: ChartStreamRequest):
         payload.day,
         payload.hour,
         payload.minute,
+        payload.city_id,
+        payload.longitude,
+        payload.timezone_offset_minutes,
+        payload.requested_time_mode,
+        payload.time_accuracy,
         ln_range,
         fav_set,
         payload.life_stage,
@@ -634,6 +689,36 @@ def _chart_stream_response(payload: ChartStreamRequest):
 async def chart_stream_post(payload: ChartStreamRequest):
     """主页面使用的隐私优先流式排盘入口。"""
     return _chart_stream_response(payload)
+
+
+@app.get("/api/locations")
+def locations_api(q: str = Query("", max_length=100), limit: int = Query(12, ge=1, le=20)):
+    """Search the bundled city registry.  No live geocoding is performed."""
+    return {
+        "registry_version": REGISTRY_VERSION,
+        "items": [city.to_dict() for city in search_cities(q, limit=limit)],
+    }
+
+
+@app.post("/api/time/preview")
+def time_preview(payload: TimePreviewRequest):
+    """Resolve the displayed time basis without creating or persisting a report."""
+    try:
+        resolution = resolve_birth_time(
+            year=payload.year,
+            month=payload.month,
+            day=payload.day,
+            hour=payload.hour,
+            minute=payload.minute,
+            city_id=payload.city_id,
+            longitude=payload.longitude,
+            timezone_offset_minutes=payload.timezone_offset_minutes,
+            requested_time_mode=payload.requested_time_mode,
+            time_accuracy=payload.time_accuracy,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return resolution.to_preview()
 
 
 def _strip_technical(data: dict):

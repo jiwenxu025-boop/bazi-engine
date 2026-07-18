@@ -25,9 +25,17 @@ from .interactions import (
 )
 from .liunian import AnnualScan, scan_years
 from .pattern import determine_pattern
-from .pillars import compute_day_pillar, compute_hour_pillar, compute_month_pillar, compute_year_pillar
+from .pillars import (
+    compute_day_pillar,
+    compute_hour_pillar,
+    compute_month_pillar,
+    compute_year_pillar,
+    pillar_time_warnings,
+    resolve_day_pillar_datetime,
+)
 from .spirits import SpiritAgent, compute_spirit_score, find_all_spirits
 from .ten_gods import get_ten_god
+from .time_resolution import BirthTimeResolution, resolve_birth_time
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +69,10 @@ class BaziChart:
     gender: str                # "男" | "女"
     birth_dt: datetime
     day_pillar_source: str     # "formula" | "override"
+    birth_instant_utc: datetime
+    birth_instant_cst: datetime
+    pillar_dt: datetime
+    time_resolution: BirthTimeResolution
 
     # 四柱
     year: PillarData = field(init=False)
@@ -230,14 +242,16 @@ class BaziChart:
             "health_profile": self.health_profile,
             "body_use": self.body_use_result,
             "report_meta": {
-                "schema_version": "1.0",
+                "schema_version": "1.1",
                 "engine": "bazi-engine",
                 "input": {
-                    "birth_time": self.birth_dt.strftime("%Y-%m-%d %H:%M"),
-                    "time_precision": "minute",
+                    **self.time_resolution.to_report_input(),
+                    # Kept for clients that consumed the pre-resolution contract.
+                    "time_precision": self.time_resolution.time_accuracy,
                     "hour_confirmed": self.hour_confirmed,
                 },
                 "traceability": {
+                    "time_resolution_version": "2.0",
                     "day_pillar_source": self.day_pillar_source,
                     "annual_signal_sources": signal_sources or ["rule"],
                     "annual_ai_review_sources": ai_review_sources,
@@ -377,11 +391,18 @@ def _init_chart_shell(
     family_context: dict | None,
     hour_confirmed: bool,
     minute: int = 0,
+    time_resolution: BirthTimeResolution | None = None,
 ) -> BaziChart:
     chart = BaziChart.__new__(BaziChart)
     chart.name = name
     chart.gender = gender
     chart.birth_dt = datetime(year, month, day, hour, minute)
+    chart.time_resolution = time_resolution or resolve_birth_time(
+        year=year, month=month, day=day, hour=hour, minute=minute,
+    )
+    chart.birth_instant_utc = chart.time_resolution.birth_instant_utc
+    chart.birth_instant_cst = chart.time_resolution.birth_instant_cst
+    chart.pillar_dt = chart.time_resolution.pillar_dt
     chart.day_pillar_source = "override" if day_pillar_override else "formula"
     chart.favorable_tags = favorable or set()
     chart.warnings = []
@@ -396,6 +417,13 @@ def _init_chart_shell(
     chart.jiaoyun_detail = {}
     chart.xiaoyun_pillars = []
     chart.xiaoyun_periods = []
+
+    if chart.time_resolution.effective_time_mode == "civil_input" and not chart.time_resolution.city:
+        chart.warnings.append("出生地未知，按输入时间排盘，未进行真太阳时校正")
+    if chart.time_resolution.pillar_date_adjusted:
+        chart.warnings.append("真太阳时校正跨日，日柱和时柱已按校正后的日期计算")
+    if chart.time_resolution.time_accuracy != "minute":
+        chart.warnings.append("出生记录未精确到分钟，临近时辰或真太阳时边界时请核对原始记录")
 
     if not hour_confirmed:
         chart.warnings.append(
@@ -414,34 +442,43 @@ def _compute_four_pillars(
     hour: int,
     day_pillar_override: tuple[str, str] | None,
     minute: int = 0,
+    time_resolution: BirthTimeResolution | None = None,
 ) -> tuple[Tiangan, Tiangan, Dizhi, Dizhi]:
-    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour, minute)
+    actual_dt = time_resolution.birth_instant_cst if time_resolution else datetime(year, month, day, hour, minute)
+    pillar_dt = time_resolution.pillar_dt if time_resolution else datetime(year, month, day, hour, minute)
+
+    y_tg, y_dz, y_w = compute_year_pillar(
+        actual_dt.year, actual_dt.month, actual_dt.day, actual_dt.hour, actual_dt.minute,
+    )
     chart.warnings.extend(y_w)
     chart.year = PillarData("年柱", y_tg, y_dz)
 
     m_tg, m_dz, m_w = compute_month_pillar(
-        y_tg, month, day, hour, gregorian_year=year, birth_minute=minute,
+        y_tg,
+        actual_dt.month,
+        actual_dt.day,
+        actual_dt.hour,
+        gregorian_year=actual_dt.year,
+        birth_minute=actual_dt.minute,
     )
     chart.warnings.extend(m_w)
     chart.month = PillarData("月柱", m_tg, m_dz)
 
+    day_pillar_dt = resolve_day_pillar_datetime(pillar_dt)
+    chart.warnings.extend(pillar_time_warnings(pillar_dt))
     if day_pillar_override:
         d_tg = Tiangan(day_pillar_override[0])
         d_dz = Dizhi(day_pillar_override[1])
     else:
-        d_tg, d_dz, d_w = compute_day_pillar(year, month, day)
+        d_tg, d_dz, d_w = compute_day_pillar(day_pillar_dt.year, day_pillar_dt.month, day_pillar_dt.day)
         chart.warnings.extend(d_w)
     chart.day = PillarData("日柱", d_tg, d_dz)
     chart.day_master = d_tg
 
-    h_tg, h_dz, h_w, zi_flag = compute_hour_pillar(d_tg, hour)
+    h_tg, h_dz, h_w, zi_flag = compute_hour_pillar(d_tg, pillar_dt.hour)
     chart.warnings.extend(h_w)
     chart.hour = PillarData("时柱", h_tg, h_dz)
     chart.hour_zi_flag = zi_flag
-    minutes_since_boundary = (hour * 60 + minute - 60) % 120
-    if min(minutes_since_boundary, 120 - minutes_since_boundary) <= 30:
-        chart.warnings.append("出生时间接近时辰交界，时柱可能因出生记录误差而变化，建议核对分钟")
-
     return y_tg, m_tg, m_dz, h_dz
 
 
@@ -592,10 +629,10 @@ def _compute_dayun_stage(chart: BaziChart, gender: str) -> int:
         chart.month.stem, chart.month.branch, chart.dayun_direction_str
     )
     start_age, _remainder, age_w = compute_start_age(
-        chart.birth_dt, chart.dayun_direction_str
+        chart.birth_instant_cst, chart.dayun_direction_str
     )
     chart.warnings.extend(age_w)
-    jiaoyun, jy_w = compute_jiaoyun_detail(chart.birth_dt, chart.dayun_direction_str)
+    jiaoyun, jy_w = compute_jiaoyun_detail(chart.birth_instant_cst, chart.dayun_direction_str)
     chart.jiaoyun_detail = jiaoyun
     chart.start_age_exact = jiaoyun["start_age_exact"]
     chart.warnings.extend(jy_w)
@@ -911,6 +948,11 @@ def build_chart(
     family_context: dict | None = None,
     hour_confirmed: bool = True,
     minute: int = 0,
+    city_id: str | None = None,
+    longitude: float | None = None,
+    timezone_offset_minutes: int | None = None,
+    requested_time_mode: str = "auto",
+    time_accuracy: str = "minute",
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, signals)
     on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
 ) -> BaziChart:
@@ -928,6 +970,18 @@ def build_chart(
     Returns:
         BaziChart: 完整命盘
     """
+    time_resolution = resolve_birth_time(
+        year=year,
+        month=month,
+        day=day,
+        hour=hour,
+        minute=minute,
+        city_id=city_id,
+        longitude=longitude,
+        timezone_offset_minutes=timezone_offset_minutes,
+        requested_time_mode=requested_time_mode,
+        time_accuracy=time_accuracy,
+    )
     chart = _init_chart_shell(
         name=name,
         gender=gender,
@@ -941,6 +995,7 @@ def build_chart(
         family_context=family_context,
         hour_confirmed=hour_confirmed,
         minute=minute,
+        time_resolution=time_resolution,
     )
 
     # 校准数据库自动加载
@@ -958,7 +1013,7 @@ def build_chart(
 
     # ── 1-4. 四柱 ──
     y_tg, m_tg, m_dz, h_dz = _compute_four_pillars(
-        chart, year, month, day, hour, day_pillar_override, minute
+        chart, year, month, day, hour, day_pillar_override, minute, time_resolution
     )
 
     # ── 5. 藏干 + 纳音 ──

@@ -136,6 +136,22 @@ def compute_hour_pillar(day_stem: Tiangan, hour: int) -> tuple[Tiangan, Dizhi, l
     return hour_tg, hour_dz, warnings, zi_flag
 
 
+def resolve_day_pillar_datetime(pillar_dt: datetime) -> datetime:
+    """Apply the engine-wide 23:00 night-zi day boundary once."""
+    return pillar_dt + timedelta(days=1) if pillar_dt.hour >= 23 else pillar_dt
+
+
+def pillar_time_warnings(pillar_dt: datetime) -> list[str]:
+    """Return warnings tied to the final time used for day/hour pillars."""
+    warnings: list[str] = []
+    if pillar_dt.hour >= 23:
+        warnings.append(WARNING_NIGHT_ZI)
+    minutes_since_boundary = (pillar_dt.hour * 60 + pillar_dt.minute - 60) % 120
+    if min(minutes_since_boundary, 120 - minutes_since_boundary) <= 30:
+        warnings.append(WARNING_SHICHEN_BOUNDARY)
+    return warnings
+
+
 def build_four_pillars(
     year: int, month: int, day: int, hour: int,
     day_pillar_override: tuple[str, str] | None = None,
@@ -159,12 +175,8 @@ def build_four_pillars(
 
     # 日柱
     civil_birth = datetime(year, month, day, hour, minute)
-    day_pillar_date = civil_birth + timedelta(days=1) if hour >= 23 else civil_birth
-    if hour >= 23:
-        all_warnings.append(WARNING_NIGHT_ZI)
-    minutes_since_boundary = (hour * 60 + minute - 60) % 120
-    if min(minutes_since_boundary, 120 - minutes_since_boundary) <= 30:
-        all_warnings.append(WARNING_SHICHEN_BOUNDARY)
+    day_pillar_date = resolve_day_pillar_datetime(civil_birth)
+    all_warnings.extend(pillar_time_warnings(civil_birth))
     if day_pillar_override:
         d_tg = Tiangan(day_pillar_override[0])
         d_dz = Dizhi(day_pillar_override[1])

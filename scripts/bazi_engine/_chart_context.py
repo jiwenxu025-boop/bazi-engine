@@ -262,6 +262,19 @@ def extract_base_context(chart_data: dict) -> dict[str, Any]:
         for dp in dayun.get("periods", [])[:8]
     ]
 
+    # The LLM receives the calculation basis, never a guessed geographic
+    # precision.  It can therefore explain a changed day/hour pillar without
+    # treating an unknown birthplace as a true-solar result.
+    time_input = (chart_data.get("report_meta") or {}).get("input") or {}
+    ctx["time_basis"] = {
+        "effective_time_mode": time_input.get("effective_time_mode", "civil_input"),
+        "pillar_time": time_input.get("pillar_time", chart_data.get("birth", "")),
+        "city": (time_input.get("city") or {}).get("label", "未知"),
+        "time_accuracy": time_input.get("time_accuracy", time_input.get("time_precision", "unknown")),
+        "solar_correction_minutes": time_input.get("solar_correction_minutes", 0),
+        "day_pillar_uses_next_date": time_input.get("day_pillar_uses_next_date", False),
+    }
+
     current_context = chart_data.get("current_context") or build_current_context(chart_data)
     ctx["current_date"] = current_context.get("current_date")
     ctx["current_solar_age"] = current_context.get("solar_age")
@@ -281,12 +294,12 @@ def extract_base_context(chart_data: dict) -> dict[str, Any]:
     ctx["spirit_names"] = [s.get("name", "") for s in spirits[:10] if s.get("name")]
 
     # ── 性格 ──
-    personality = chart_data.get("personality", {})
+    personality = chart_data.get("personality") or {}
     ctx["personality_profile"] = personality.get("profile", "")
     ctx["personality_traits"] = personality.get("traits", {})
 
     # ── 家境 ──
-    family = chart_data.get("family", {})
+    family = chart_data.get("family") or {}
     if family.get("profile"):
         ctx["family"] = {
             "level": family.get("level_label", ""),

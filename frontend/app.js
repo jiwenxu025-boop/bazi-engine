@@ -55,6 +55,7 @@ document.getElementById('themeToggle').addEventListener('click', toggleTheme);
    Form: Enter to submit
    ========================================== */
 document.getElementById('formCard').addEventListener('keydown', function(e){
+  if (e.target && e.target.id === 'citySearch') return;
   if (e.key === 'Enter') {
     e.preventDefault();
     go();
@@ -77,6 +78,177 @@ function updateHourHint(){
 
 document.getElementById('hourConfirmed').addEventListener('change', updateHourHint);
 updateHourHint();
+
+/* ==========================================
+   Birth place and time basis
+   ========================================== */
+let LocationState = {
+  city: null,
+  citySearchTimer: null,
+  previewTimer: null,
+  requestId: 0,
+  previewRequestId: 0,
+};
+
+function getApiBase(){
+  return document.getElementById('apiUrl').value.replace(/\/$/, '');
+}
+
+function getLocationPayload(){
+  let longitude = document.getElementById('longitude').value.trim();
+  let timezoneOffset = document.getElementById('timezoneOffset').value.trim();
+  return {
+    city_id: LocationState.city ? LocationState.city.id : null,
+    longitude: longitude === '' ? null : Number(longitude),
+    timezone_offset_minutes: timezoneOffset === '' ? null : Number(timezoneOffset),
+    requested_time_mode: 'auto',
+    time_accuracy: document.getElementById('timeAccuracy').value,
+  };
+}
+
+function setTimeBasisNote(text){
+  let note = document.getElementById('timeBasisNote');
+  if (note) note.textContent = text;
+}
+
+function hideCityOptions(){
+  let options = document.getElementById('cityOptions');
+  let search = document.getElementById('citySearch');
+  options.hidden = true;
+  search.setAttribute('aria-expanded', 'false');
+}
+
+function selectCity(city){
+  LocationState.city = city;
+  document.getElementById('citySearch').value = city.name;
+  hideCityOptions();
+  queueTimePreview();
+}
+
+function clearCity(){
+  LocationState.city = null;
+  document.getElementById('citySearch').value = '';
+  hideCityOptions();
+  queueTimePreview();
+}
+
+function renderCityOptions(items){
+  let options = document.getElementById('cityOptions');
+  let search = document.getElementById('citySearch');
+  if (!items.length){
+    options.hidden = true;
+    search.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < items.length; i++){
+    let city = items[i];
+    html += '<button type="button" class="city-option" role="option" aria-selected="false" data-city-id="' + esc(city.id) + '">';
+    html += '<span>' + esc(city.name) + '</span><small>' + esc(city.province || '') + '</small></button>';
+  }
+  options.innerHTML = html;
+  options.hidden = false;
+  search.setAttribute('aria-expanded', 'true');
+  let buttons = options.querySelectorAll('.city-option');
+  for (let i = 0; i < buttons.length; i++){
+    buttons[i].addEventListener('click', function(){
+      for (let j = 0; j < items.length; j++){
+        if (items[j].id === this.dataset.cityId){
+          selectCity(items[j]);
+          return;
+        }
+      }
+    });
+  }
+}
+
+function searchCities(){
+  let search = document.getElementById('citySearch');
+  let query = search.value.trim();
+  if (!query){
+    hideCityOptions();
+    return;
+  }
+  let requestId = ++LocationState.requestId;
+  fetch(getApiBase() + '/api/locations?q=' + encodeURIComponent(query))
+    .then(function(response){ return response.ok ? response.json() : {items: []}; })
+    .then(function(data){
+      if (requestId !== LocationState.requestId) return;
+      renderCityOptions(Array.isArray(data.items) ? data.items : []);
+    })
+    .catch(function(){ hideCityOptions(); });
+}
+
+function scheduleCitySearch(){
+  let search = document.getElementById('citySearch');
+  if (LocationState.city && search.value !== LocationState.city.name) LocationState.city = null;
+  window.clearTimeout(LocationState.citySearchTimer);
+  LocationState.citySearchTimer = window.setTimeout(searchCities, 160);
+  queueTimePreview();
+}
+
+function timeFieldsAreComplete(){
+  let fields = ['year', 'month', 'day', 'hour', 'minute'];
+  for (let i = 0; i < fields.length; i++){
+    let value = document.getElementById(fields[i]).value;
+    if (value === '') return false;
+  }
+  return true;
+}
+
+function formatTimeBasisPreview(preview){
+  if (preview.effective_time_mode !== 'true_solar'){
+    setTimeBasisNote('出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。');
+    return;
+  }
+  let correction = Number(preview.solar_correction_minutes || 0);
+  let signed = (correction >= 0 ? '+' : '') + correction.toFixed(1);
+  let city = preview.city ? preview.city.label : '手动经度';
+  let rollover = preview.day_pillar_uses_next_date ? '；23 点后按次日子时取日柱' : '';
+  setTimeBasisNote(city + '：真太阳时 ' + preview.pillar_time + '（校正 ' + signed + ' 分钟）' + rollover + '。');
+}
+
+function requestTimePreview(){
+  if (!timeFieldsAreComplete()) return;
+  let previewRequestId = ++LocationState.previewRequestId;
+  let payload = getLocationPayload();
+  payload.year = Number(document.getElementById('year').value);
+  payload.month = Number(document.getElementById('month').value);
+  payload.day = Number(document.getElementById('day').value);
+  payload.hour = Number(document.getElementById('hour').value);
+  payload.minute = Number(document.getElementById('minute').value);
+  fetch(getApiBase() + '/api/time/preview', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+  }).then(function(response){
+    return response.ok ? response.json() : null;
+  }).then(function(preview){
+    if (preview && previewRequestId === LocationState.previewRequestId) formatTimeBasisPreview(preview);
+  }).catch(function(){
+    if (previewRequestId === LocationState.previewRequestId) {
+      setTimeBasisNote('出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。');
+    }
+  });
+}
+
+function queueTimePreview(){
+  window.clearTimeout(LocationState.previewTimer);
+  LocationState.previewTimer = window.setTimeout(requestTimePreview, 180);
+}
+
+document.getElementById('citySearch').addEventListener('input', scheduleCitySearch);
+document.getElementById('citySearch').addEventListener('keydown', function(event){
+  if (event.key !== 'Enter') return;
+  let options = document.querySelectorAll('#cityOptions .city-option');
+  if (!options.length) return;
+  event.preventDefault();
+  options[0].click();
+});
+document.getElementById('citySearch').addEventListener('blur', function(){ window.setTimeout(hideCityOptions, 120); });
+document.getElementById('cityClear').addEventListener('click', clearCity);
+['year', 'month', 'day', 'hour', 'minute', 'longitude', 'timezoneOffset', 'timeAccuracy'].forEach(function(id){
+  document.getElementById(id).addEventListener('input', queueTimePreview);
+  document.getElementById(id).addEventListener('change', queueTimePreview);
+});
 
 /* ==========================================
    Shared app state
@@ -309,6 +481,14 @@ function _buildChartParams(){
     hour_confirmed: document.getElementById('hourConfirmed').checked,
     practical: true,  // 公网只显示白话解读，不暴露技术推导
   });
+  let location = getLocationPayload();
+  if (location.city_id) params.set('city_id', location.city_id);
+  if (location.longitude !== null && Number.isFinite(location.longitude)) params.set('longitude', String(location.longitude));
+  if (location.timezone_offset_minutes !== null && Number.isFinite(location.timezone_offset_minutes)) {
+    params.set('timezone_offset_minutes', String(location.timezone_offset_minutes));
+  }
+  params.set('requested_time_mode', location.requested_time_mode);
+  params.set('time_accuracy', location.time_accuracy);
   if (lnFrom) params.set('liunian_from', lnFrom);
   if (lnTo) params.set('liunian_to', lnTo);
   let lsOverride = sessionStorage.getItem('bazi-life-stage');
@@ -352,7 +532,7 @@ async function go(){
   document.getElementById('copyBtn').style.display = 'none';
   document.getElementById('reportActions').classList.remove('active');
 
-  let api = document.getElementById('apiUrl').value.replace(/\/$/, '');
+  let api = getApiBase();
   let payload = _buildChartRequest();
   let controller = beginStreamRequest('chart');
 
@@ -1437,7 +1617,18 @@ function render(d){
     let daySource = traceability.day_pillar_source === 'override' ? '用户提供的日柱覆盖' : '公式计算';
     h += '<details class="evidence-details" style="margin-bottom:16px"><summary>报告依据与边界</summary>';
     h += '<div class="evidence-scale-content">';
-    h += '<div>出生时间：' + esc(input.birth_time || d.birth || '') + '（分钟精度）</div>';
+    let accuracyLabels = {minute: '精确到分钟', hour: '仅确认时辰', unknown: '时间不确定'};
+    let accuracy = accuracyLabels[input.time_accuracy || input.time_precision] || '未说明';
+    let isTrueSolar = input.effective_time_mode === 'true_solar';
+    let cityLabel = input.city && input.city.label ? input.city.label : '未知';
+    h += '<div>出生时间：' + esc(input.birth_time || d.birth || '') + '（' + esc(accuracy) + '）</div>';
+    if (isTrueSolar){
+      let correction = Number(input.solar_correction_minutes || 0);
+      let signed = (correction >= 0 ? '+' : '') + correction.toFixed(1);
+      h += '<div>排盘时间：' + esc(input.pillar_time || '') + '（' + esc(cityLabel) + '真太阳时，校正 ' + esc(signed) + ' 分钟）</div>';
+    } else {
+      h += '<div>排盘时间：按输入时间；出生地：' + esc(cityLabel) + '（默认 UTC+8）</div>';
+    }
     h += '<div>日柱来源：' + esc(daySource) + '；流年信号：' + esc(signalSources) + '</div>';
     h += '<div>' + esc(uncertainty.scope || '传统文化参考，不构成对具体事件的确定性判断') + '</div>';
     h += '</div></details>';

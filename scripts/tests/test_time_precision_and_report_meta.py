@@ -62,11 +62,16 @@ def test_chart_report_meta_records_time_input_sources_and_uncertainty(monkeypatc
 
     meta = chart.to_dict()["report_meta"]
 
-    assert meta["input"] == {
-        "birth_time": "2007-08-26 23:00",
-        "time_precision": "minute",
-        "hour_confirmed": True,
-    }
+    assert meta["input"]["birth_time"] == "2007-08-26 23:00"
+    assert meta["input"]["time_precision"] == "minute"
+    assert meta["input"]["time_accuracy"] == "minute"
+    assert meta["input"]["hour_confirmed"] is True
+    assert meta["input"]["effective_time_mode"] == "civil_input"
+    assert meta["input"]["city"] is None
+    assert meta["input"]["birth_instant_utc"] == "2007-08-26 15:00"
+    assert meta["input"]["pillar_time"] == "2007-08-26 23:00"
+    assert meta["input"]["day_pillar_uses_next_date"] is True
+    assert meta["traceability"]["time_resolution_version"] == "2.0"
     assert meta["traceability"]["day_pillar_source"] == "formula"
     assert meta["traceability"]["annual_signal_sources"] == ["rule"]
     assert meta["uncertainty"]["boundary_sensitive"] is True

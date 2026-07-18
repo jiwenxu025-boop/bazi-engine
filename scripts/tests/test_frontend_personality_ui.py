@@ -755,8 +755,22 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
 
 def test_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'href="style.css?v=20260718-birth-layout1"' in html
-    assert 'src="app.js?v=20260718-ai-review1"' in html
+    assert 'href="style.css?v=20260718-time-resolution1"' in html
+    assert 'src="app.js?v=20260718-time-resolution1"' in html
+
+
+def test_frontend_exposes_city_search_and_true_solar_time_contract():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="citySearch"' in html
+    assert 'id="cityOptions"' in html
+    assert 'id="longitude"' in html
+    assert 'id="timezoneOffset"' in html
+    assert 'id="timeAccuracy"' in html
+    assert "/api/locations" in app
+    assert "/api/time/preview" in app
+    assert "requested_time_mode" in app
 
 
 def test_birth_datetime_fields_share_one_aligned_grid_row():

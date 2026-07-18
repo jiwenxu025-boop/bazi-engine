@@ -142,6 +142,32 @@ body{
 .birth-date-context{grid-column:1 / 4}
 .birth-time-context{grid-column:4 / 6}
 .birth-datetime-grid label{grid-row:2;min-width:0}
+.birth-datetime-grid label span{white-space:nowrap}
+.birth-location-row{margin:-2px 0 12px}
+.birth-location-row > label{display:block;margin-bottom:4px}
+.birth-location-row > label span{font-size:12px;font-weight:500;color:var(--text-secondary)}
+.city-picker{position:relative}
+.city-picker input{padding-right:40px}
+.city-clear{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:28px;height:28px;border:0;background:transparent;color:var(--text-tertiary);
+  font-size:22px;line-height:1;cursor:pointer;
+}
+.city-clear:hover{color:var(--text)}
+.city-options{
+  position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);
+  max-height:228px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-modal);padding:4px;
+}
+.city-option{
+  display:flex;align-items:baseline;justify-content:space-between;width:100%;border:0;
+  background:transparent;color:var(--text);font:inherit;text-align:left;padding:8px 9px;
+  border-radius:4px;cursor:pointer;
+}
+.city-option:hover,.city-option[aria-selected="true"]{background:var(--tag-bg)}
+.city-option small{font-size:11px;color:var(--text-tertiary);margin-left:8px}
+.advanced-time-grid{align-items:flex-end}
+.advanced-time-grid label{min-width:0}
 .advanced-options{
   margin-bottom:var(--space-md);
   color:var(--text-secondary);
@@ -830,7 +856,7 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
 .event-main .direction-good{font-size:12px;font-weight:600;color:var(--good)}
 .event-main .prediction-text{font-size:13px;color:var(--text);font-weight:500}
 .event-main .llm-badge{font-size:11px;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;border-radius:3px;padding:0 4px;line-height:1.5}
-.time-basis-note{margin:-6px 0 12px;font-size:12px;line-height:1.5;color:var(--text-tertiary)}
+.time-basis-note{margin:-2px 0 12px;font-size:12px;line-height:1.5;color:var(--text-tertiary)}
 .ai-review{margin:8px 18px 14px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--tag-bg)}
 .ai-review summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary)}
 .ai-review-item{padding:8px 0;border-top:1px solid var(--border);font-size:12px;line-height:1.6}
@@ -1358,6 +1384,8 @@ html.dark .calendar-legend .dot.bad{background:#c53030}
   .form-row{flex-wrap:wrap;gap:8px}
   .birth-datetime-grid{column-gap:6px;row-gap:5px}
   .birth-datetime-grid input{padding:10px 7px}
+  .advanced-time-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .advanced-time-grid label:last-child{grid-column:1 / -1}
   .info-grid{grid-template-columns:1fr;gap:8px}
   .traits-grid{grid-template-columns:1fr;gap:6px}
   .evidence-signals{grid-template-columns:1fr 1fr;gap:6px 12px}

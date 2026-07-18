@@ -6,7 +6,7 @@
 <title>八字解读</title>
 <script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
 <link rel="icon" href="favicon.svg?v=20260716" type="image/svg+xml">
-<link rel="stylesheet" href="style.css?v=20260718-birth-layout1">
+<link rel="stylesheet" href="style.css?v=20260718-time-resolution1">
 <link rel=stylesheet href=chat.css>
 </head>
 <body>
@@ -45,7 +45,15 @@
     <label><span>时</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
     <label><span>分</span><input id="minute" type="number" placeholder="00" min="0" max="59" value="0"></label>
   </div>
-  <p class="time-basis-note">出生时间按中国标准时间（UTC+8）计算，暂不自动校正真太阳时。</p>
+  <div class="birth-location-row">
+    <label for="citySearch"><span>出生城市（默认未知）</span></label>
+    <div class="city-picker">
+      <input id="citySearch" type="search" placeholder="搜索内置城市，如成都" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cityOptions">
+      <button type="button" class="city-clear" id="cityClear" title="清除城市" aria-label="清除城市">&times;</button>
+      <div class="city-options" id="cityOptions" role="listbox" hidden></div>
+    </div>
+  </div>
+  <p class="time-basis-note" id="timeBasisNote">出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。</p>
   <div class="form-row" style="margin-bottom:6px">
     <label style="flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
       <input type="checkbox" id="hourConfirmed" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
@@ -55,6 +63,11 @@
   </div>
   <details class="advanced-options">
     <summary>高级设置</summary>
+    <div class="form-row advanced-time-grid" style="margin-top:10px">
+      <label><span>出生记录精度</span><select id="timeAccuracy"><option value="minute">精确到分钟</option><option value="hour">仅确认时辰</option><option value="unknown">时间不确定</option></select></label>
+      <label><span>手动经度（东经为正）</span><input id="longitude" type="number" step="0.0001" min="-180" max="180" placeholder="可选"></label>
+      <label><span>时区偏移（分钟）</span><input id="timezoneOffset" type="number" min="-720" max="840" value="480"></label>
+    </div>
     <div class="form-row" style="margin-top:10px">
       <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2026" min="1900" max="2100"></label>
       <label><span>至</span><input id="lnTo" type="number" placeholder="2031" min="1900" max="2100"></label>
@@ -88,7 +101,7 @@
   <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">顶部</button>
 </div>
 
-<script src="app.js?v=20260718-ai-review1"></script>
+<script src="app.js?v=20260718-time-resolution1"></script>
 
 <!-- ═══ Chat Toggle ═══ -->
 <button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问">💬<span class=badge id=chatBadge></span></button>
