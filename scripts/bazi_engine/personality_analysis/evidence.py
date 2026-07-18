@@ -15,6 +15,22 @@ _WEIGHTED_SIGNAL_FIELDS: dict[str, tuple[str, ...]] = {
     "财富观": ("欲望_财星", "散财_比劫", "创造力变现_食伤", "储蓄保守_印星"),
 }
 
+_SIGNAL_COMPONENT_COUNTS = {
+    "表达欲": 2,
+    "群体融入": 2,
+    "内敛度": 2,
+    "拘谨度": 2,
+    "责任感_官杀": 2,
+    "欲望_财星": 2,
+    "同辈竞争_比劫": 2,
+    "分析度_印星": 2,
+    "直觉度_食伤": 2,
+    "自我意识_比劫": 2,
+    "散财_比劫": 2,
+    "创造力变现_食伤": 2,
+    "储蓄保守_印星": 2,
+}
+
 _CAREER_FIELDS = ("体制_管理", "商业_经营", "技术_创意", "学术_专业", "创业_独立")
 _DIMENSION_ORDER = ("社交", "感情", "内心", "决策", "事业", "财富观")
 _FIELD_DISPLAY_LABELS = {
@@ -45,11 +61,12 @@ _FIELD_DISPLAY_LABELS = {
 }
 
 
-def weighted_score_level(value: float) -> str:
-    """Classify an unbounded score with fixed, unvalidated engine thresholds."""
-    if value >= WEIGHTED_SCORE_THRESHOLDS["high"]:
+def weighted_score_level(value: float, component_count: int = 1) -> str:
+    """Classify a score with thresholds scaled to its aggregation width."""
+    scale = max(1, component_count)
+    if value >= WEIGHTED_SCORE_THRESHOLDS["high"] * scale:
         return "较强"
-    if value >= WEIGHTED_SCORE_THRESHOLDS["medium"]:
+    if value >= WEIGHTED_SCORE_THRESHOLDS["medium"] * scale:
         return "中等"
     return "较弱"
 
@@ -80,18 +97,18 @@ def build_trait_signal_evidence(trait_signals: dict | None) -> dict[str, dict]:
             value = _number(raw.get(field_name))
             if value is None:
                 continue
+            component_count = _SIGNAL_COMPONENT_COUNTS.get(field_name, 1)
             item["signals"].append({
                 "label": field_name,
                 "display_label": _FIELD_DISPLAY_LABELS.get(field_name, field_name),
                 "kind": "weighted_score",
                 "value": value,
-                "level": weighted_score_level(value),
+                "level": weighted_score_level(value, component_count),
+                "component_count": component_count,
             })
 
         if dimension in ("社交", "决策") and raw.get("综合倾向"):
             item["summary"] = str(raw["综合倾向"])
-        elif dimension == "内心" and raw.get("基础风格"):
-            item["summary"] = str(raw["基础风格"])
         elif dimension == "事业":
             career_signals = []
             for field_name in _CAREER_FIELDS:
@@ -185,8 +202,8 @@ def build_personality_evidence_view(personality: dict | None, pattern: str = "")
         "source_status": raw_scale.get("source_status", raw_scale.get("provenance", "engineering_heuristic")),
         "thresholds": dict(WEIGHTED_SCORE_THRESHOLDS),
     }
-    if raw_scale.get("heju_application"):
-        score_scale["heju_application"] = raw_scale["heju_application"]
+    if raw_scale.get("relationship_policy"):
+        score_scale["relationship_policy"] = raw_scale["relationship_policy"]
     if raw_scale.get("parameter_snapshot"):
         score_scale["parameter_snapshot"] = raw_scale["parameter_snapshot"]
 
@@ -207,8 +224,13 @@ def build_personality_evidence_view(personality: dict | None, pattern: str = "")
 
     pattern_validation = personality.get("pattern_validation", {}) or {}
     return {
-        "version": "2026-07-17-v2",
+        "version": "2026-07-18-v3",
         "score_scale": score_scale,
+        "dimension_scale": {
+            "aggregation": "sum_of_ten_god_components",
+            "threshold_policy": "base_thresholds_scaled_by_component_count",
+            "base_thresholds": dict(WEIGHTED_SCORE_THRESHOLDS),
+        },
         "status": {
             "strength": normalize_strength_label(personality.get("strength_label", "")),
             "pattern": pattern,

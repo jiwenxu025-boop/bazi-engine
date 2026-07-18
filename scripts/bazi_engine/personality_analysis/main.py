@@ -199,62 +199,7 @@ def analyze_personality(
     has_huagai = bool(_huagai_branch(day_branch_str)) and \
                  _has_branch_in_pillars(_huagai_branch(day_branch_str), pillars_data)
     cai_po_yin_flag = any("财破印" in c for c in result.special_combos)
-    # 检查是否存在官杀混杂标签（病药检测已判断）
-    any(c["combo"] == "官杀混杂" for c in result.bingyao_combos)
-    # -- 病药组合 -> 维度信号调制器 --
-    _bingyao_combo_names = {c["combo"] for c in result.bingyao_combos}
-    _bingyao_modifiers = {}
-
-    # 社交维度调制
-    if "伤官见官" in _bingyao_combo_names:
-        _bingyao_modifiers["社交"] = {"表达欲抑制": -1.5, "拘谨度_病药": +1.0}
-    if "印重身滞" in _bingyao_combo_names:
-        _bingyao_modifiers["社交"] = _bingyao_modifiers.get("社交", {}) | {"内敛度_病药": +2.0}
-    if "比劫夺财" in _bingyao_combo_names:
-        _bingyao_modifiers["社交"] = _bingyao_modifiers.get("社交", {}) | {"群体融入_病药": +1.5}
-
-    # 决策维度调制
-    if "伤官见官" in _bingyao_combo_names:
-        _bingyao_modifiers["决策"] = {"反叛倾向_病药": +1.5, "果断_病药": -1.0}
-    if "杀印相生" in _bingyao_combo_names:
-        _bingyao_modifiers["决策"] = _bingyao_modifiers.get("决策", {}) | {"战略思维_病药": +1.5}
-    if "食神制杀" in _bingyao_combo_names or "伤官驾杀" in _bingyao_combo_names:
-        _bingyao_modifiers["决策"] = _bingyao_modifiers.get("决策", {}) | {"果断_病药": +1.0}
-
-    # 感情维度调制
-    if "官杀混杂" in _bingyao_combo_names:
-        _bingyao_modifiers["感情"] = {"抉择困难_病药": +1.5}
-    if "财多身弱" in _bingyao_combo_names:
-        _bingyao_modifiers["感情"] = _bingyao_modifiers.get("感情", {}) | {"高欲望低自信_病药": +1.0}
-
-    # 内心维度调制
-    if "枭神夺食" in _bingyao_combo_names:
-        _bingyao_modifiers["内心"] = {"精神内耗_病药": +2.0, "焦虑倾向_病药": +1.5}
-    if "印重身滞" in _bingyao_combo_names:
-        _bingyao_modifiers["内心"] = _bingyao_modifiers.get("内心", {}) | {"封闭倾向_病药": +1.5}
-
-    # -- 格局维度调制器 --
-    _pattern_modifiers = {}
-    if "建禄" in pattern or "羊刃" in pattern:
-        _pattern_modifiers["决策"] = {"果断_格局": +1.0}
-        _pattern_modifiers["事业"] = {"创业_格局": +1.5}
-    if "正官" in pattern:
-        _pattern_modifiers["事业"] = {"体制_格局": +1.5, "风险_格局": -1.0}
-        _pattern_modifiers["决策"] = {"审慎_格局": +0.5}
-    if "正印" in pattern or "偏印" in pattern:
-        _pattern_modifiers["事业"] = {"学术_格局": +1.5}
-        _pattern_modifiers["社交"] = {"内敛度_格局": +0.5}
-    if "杀" in pattern:
-        _pattern_modifiers["决策"] = {"果断_格局": +1.5}
-        _pattern_modifiers["事业"] = {"创业_格局": +1.0}
-    if "伤官" in pattern:
-        _pattern_modifiers["决策"] = {"反叛_格局": +1.0}
-        _pattern_modifiers["事业"] = {"技术_格局": +1.5}
-    if "食神" in pattern:
-        _pattern_modifiers["社交"] = {"表达欲_格局": +0.5}
-    if "从" in pattern:
-        _pattern_modifiers["决策"] = {"灵活_格局": +1.0}
-        _pattern_modifiers["事业"] = {"适应_格局": +1.0}
+    # 病药与格局保留为独立候选，不直接调制现代人格维度。
 
 
     # ═══════════════════════════════════════════════════════════
@@ -293,7 +238,6 @@ def analyze_personality(
         f"{'男命' if gender == '男' else '女命'}以{'财星' if gender == '男' else '官杀'}为{spouse_label}"
         if gender in ("男", "女") else ""
     )
-    emotion_mod = _bingyao_modifiers.get("感情", {})
     result.trait_signals["感情"] = {
         "责任感_官杀": round(guan_s, 1),
         "欲望_财星": round(cai_s, 1),
@@ -303,7 +247,6 @@ def analyze_personality(
         "日支藏干": day_hidden[:3],
         "身强弱": "强" if is_strong else ("弱" if is_weak else "中和"),
         "性别": gender,
-        "病药调制": dict(emotion_mod) if emotion_mod else None,
     }
     if spouse_star_note:
         result.trait_signals["感情"]["_性别提示"] = spouse_star_note
@@ -326,35 +269,25 @@ def analyze_personality(
         _romance_parts.append("比劫旺，感情中注意同辈竞争或第三者介入")
     if shang_guan_s >= 5:
         _romance_parts.append("伤官旺，对传统关系模式有抵触，需要更多自由空间" if gender == "女" else "伤官旺，容易对伴侣挑剔，需注意沟通方式")
-    if "官杀混杂" in _bingyao_combo_names:
-        _romance_parts.append("官杀混杂——在感情中容易陷入选择困难，或在多个标准之间摇摆不定")
-    if "财多身弱" in _bingyao_combo_names and (gender or "") == "女":
-        _romance_parts.append("财多身弱——对伴侣的经济条件有期待，但也容易因此感到落差")
     if not _romance_parts:
         _romance_parts.append("感情模式平稳，平常比较随缘")
     result.traits["感情"] = "。".join(_romance_parts)
 
     # ── 决策：七杀(果断) + 印星(分析) + 食伤(直觉) ──
-    decide_mod = _bingyao_modifiers.get("决策", {})
-    pattern_decide = _pattern_modifiers.get("决策", {})
     decide_risk = _compute_decision_score(qi_sha_s, shang_guan_s, shi_shen_s, yin_s)
-    decide_risk += decide_mod.get("果断_病药", 0.0) + pattern_decide.get("果断_格局", 0.0)
     if is_strong:
         decide_risk += 0.5
     elif is_weak:
         decide_risk -= 0.5
     decide_label = "果断激进" if decide_risk >= 4 else ("分析后决策" if decide_risk >= 1 else ("审慎" if decide_risk >= -2 else "过度分析"))
     result.trait_signals["决策"] = {
-        "果断度_七杀": round(qi_sha_s + decide_mod.get("果断_病药", 0.0), 1),
+        "果断度_七杀": round(qi_sha_s, 1),
         "分析度_印星": round(yin_s, 1),
         "直觉度_食伤": round(shishang_s, 1),
-        "伤官倾向": round(shang_guan_s + decide_mod.get("反叛倾向_病药", 0.0), 1),
+        "伤官倾向": round(shang_guan_s, 1),
         "食神倾向": round(shi_shen_s, 1),
-        "战略思维": decide_mod.get("战略思维_病药", 0),
         "综合倾向": decide_label,
         "综合分数": round(decide_risk, 1),
-        "病药调制": dict(decide_mod) if decide_mod else None,
-        "格局调制": dict(pattern_decide) if pattern_decide else None,
     }
     _decide_text = "果断激进型，大事不拖但偶尔冲动" if decide_risk >= 4 else (
         "分析后决策型，收集足够信息后能快速拍板" if decide_risk >= 1 else (
@@ -372,7 +305,6 @@ def analyze_personality(
         inner_flags.append("华盖")
     if cai_po_yin_flag:
         inner_flags.append("财破印")
-    inner_style = "印格安稳" if "印" in pattern else (f"{'阳' if day_master_yinyang == '阳' else '阴'}干{'直率' if day_master_yinyang == '阳' else '内敛'}")
     result.trait_signals["内心"] = {
         "精神世界_偏印": round(pian_yin_s, 1),
         "自洽度_食神": round(shi_shen_s, 1),
@@ -380,7 +312,6 @@ def analyze_personality(
         "特殊标记": inner_flags,
         "内在复杂度": round(inner_complex, 1),
         "自我强度": round(inner_self, 1),
-        "基础风格": inner_style,
     }
     _inner_parts = []
     if has_huagai:
@@ -392,11 +323,10 @@ def analyze_personality(
     if inner_self >= 3:
         _inner_parts.append("自我意识强，不被他人轻易带节奏")
     if not _inner_parts:
-        _inner_parts.append(inner_style + ("，内心与外表较一致" if day_master_yinyang == "阳" else "，外表温和内有主见"))
+        _inner_parts.append("当前规则未形成需要强调的内心候选")
     result.traits["内心"] = "。".join(_inner_parts)
 
     # ── 事业 ──
-    pa_career = _pattern_modifiers.get("事业", {})
     career_scores = {
         "体制/管理": guan_s * 0.8 + yin_s * 0.4,
         "商业/经营": cai_s * 0.8 + shishang_s * 0.3,
@@ -417,7 +347,6 @@ def analyze_personality(
         "次要方向": secondary[0],
         "方向差距": round(career_gap, 1),
         "格局": pattern,
-        "格局调制": dict(pa_career) if pa_career else None,
     }
     if career_gap > 2.0:
         result.traits["事业"] = f"当前规则中{primary[0]}方向更突出，{secondary[0]}方向相对次要"

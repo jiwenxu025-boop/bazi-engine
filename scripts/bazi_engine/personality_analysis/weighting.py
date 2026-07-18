@@ -1,7 +1,6 @@
 """加权十神计算"""
 from .._constants import BRANCH_TO_WUXING, STEM_TO_WUXING
 from .constants import (
-    HEJU_WEIGHTS,
     HIDDEN_WEIGHTS,
     MONTH_MULTIPLIER,
     SAME_PILLAR_BONUS,
@@ -9,25 +8,6 @@ from .constants import (
     TOUGAN_WEIGHT,
 )
 
-
-def _extract_heju_wuxing(interactions: dict) -> dict[str, float]:
-    """从 interactions 中提取合局化神五行 → 加成权重。
-
-    三合/半合为“合X”、三会为“会X”、六合为“化X”（X=五行）。
-    返回 {五行: 累计加成}。
-    """
-    wuxing_bonus = {}
-    dizhi_list = interactions.get("dizhi", [])
-    for inter in dizhi_list:
-        itype = inter.get("type", "")
-        weight = HEJU_WEIGHTS.get(itype, 0)
-        if weight <= 0:
-            continue
-        result = inter.get("result", "")
-        if len(result) == 2 and result[0] in ("化", "合", "会") and result[1] in "木火土金水":
-            wx = result[1]
-            wuxing_bonus[wx] = wuxing_bonus.get(wx, 0) + weight
-    return wuxing_bonus
 
 def _get_month_branch_wuxing(pillars_data: list[dict]) -> str | None:
     """获取月支本气五行（月令当权之气）"""
@@ -45,7 +25,6 @@ _WEIGHT_COMPONENTS = (
     "hidden",
     "month_bonus",
     "same_pillar_bonus",
-    "heju_bonus",
 )
 
 
@@ -59,7 +38,7 @@ def _compute_weighted_shishen_with_breakdown(
     1. 透干 +3.0 / 藏干 本气+2.0 中气+1.5 余气+1.0
     2. 月令加成：与月支本气同五行的所有十神 ×1.5
     3. 同柱共振：天干与藏干同一十神 +1.0
-    4. 合局化神：三合/三会/六合的化神五行对应十神各加一次 +2.0~3.0
+    合、会关系只记录为候选；未经化局条件验证，不改变十神权重。
 
     Returns:
         ({十神名: 加权分数}, {十神名: 各分项贡献})
@@ -125,24 +104,6 @@ def _compute_weighted_shishen_with_breakdown(
         if tg and tg in hidden_tgs:
             _add(tg, SAME_PILLAR_BONUS, "same_pillar_bonus")
 
-    # Step 4: 合局化神加成
-    heju_bonus = _extract_heju_wuxing(interactions)
-    for wx, bonus in heju_bonus.items():
-        matching_ten_gods: set[str] = set()
-        for p in pillars_data:
-            tg = p.get("ten_god")
-            stem = p.get("stem", "")
-            if tg and STEM_TO_WUXING.get(stem) == wx:
-                matching_ten_gods.add(tg)
-            hidden = p.get("hidden_stems", [])
-            hidden_tgs = p.get("hidden_ten_gods", [])
-            for i, hs_name in enumerate(hidden_tgs):
-                hs_stem = hidden[i]["stem"] if i < len(hidden) else ""
-                if hs_name and STEM_TO_WUXING.get(hs_stem) == wx:
-                    matching_ten_gods.add(hs_name)
-        for ten_god in sorted(matching_ten_gods):
-            _add(ten_god, bonus, "heju_bonus")
-
     for ten_god, score in scores.items():
         breakdown[ten_god]["total"] = score
 
@@ -169,13 +130,12 @@ def _build_scale_metadata() -> dict:
         "ranking_scope": "within_chart_only",
         "banding_scope": "fixed_engine_thresholds",
         "provenance": "engineering_heuristic",
-        "heju_application": "once_per_matching_ten_god",
+        "relationship_policy": "candidates_do_not_change_weight",
         "parameter_snapshot": {
             "tougan_weight": TOUGAN_WEIGHT,
             "hidden_weights": dict(HIDDEN_WEIGHTS),
             "month_multiplier": MONTH_MULTIPLIER,
             "same_pillar_bonus": SAME_PILLAR_BONUS,
-            "heju_weights": dict(HEJU_WEIGHTS),
         },
     }
 
@@ -207,7 +167,8 @@ def _find_dominant_shishen(pillars_data: list[dict],
                            interactions: dict | None = None) -> tuple[str, bool, str]:
     """找出最旺十神，返回 (十神名, 是否喜用, 性格描述)
 
-    v0.11.0: 使用加权算法（透干3.0/藏干本气2.0中气1.5余气1.0/月令×1.5/同柱共振+1/合局加成）
+    使用加权算法（透干3.0/藏干本气2.0中气1.5余气1.0/月令×1.5/同柱共振+1）。
+    合、会候选未经成局条件验证，不参与加权。
     """
     scores = _compute_weighted_shishen(pillars_data, interactions or {})
     if not scores:
@@ -234,7 +195,7 @@ def get_weighted_shishen_report(pillars_data: list[dict],
             "breakdown": {十神: 各分项贡献},
             "top3": [(十神, 分数), ...],
             "month_wuxing": 月令五行 or None,
-            "heju_wuxing": {五行: 加成},
+            "heju_wuxing": {},  # 兼容旧字段；候选关系不自动加权
             "scale_metadata": 量表口径和参数快照,
         }
     """
@@ -248,7 +209,7 @@ def get_weighted_shishen_report(pillars_data: list[dict],
         "breakdown": breakdown,
         "top3": sorted_items[:3],
         "month_wuxing": _get_month_branch_wuxing(pillars_data),
-        "heju_wuxing": _extract_heju_wuxing(interactions),
+        "heju_wuxing": {},
         "scale_metadata": _build_scale_metadata(),
     }
 

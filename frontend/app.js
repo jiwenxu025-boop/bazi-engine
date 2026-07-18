@@ -413,7 +413,7 @@ function _buildShishenRank(scoreData){
   let h = '<div class=shishen-rank>';
   h += '<div class=shishen-rank-title>十神工程分 <span>排序仅本盘内比较</span></div>';
   h += '<div class=evidence-scale-note>条形以本盘最高项为 100%；档位使用固定工程阈值，不代表人群等级。</div>';
-  let sourceLabels = {tougan:'透干',hidden:'藏干',month_bonus:'月令',same_pillar_bonus:'同柱',heju_bonus:'合局','透干':'透干','藏干':'藏干','月令加成':'月令','同柱加成':'同柱','合局加成':'合局'};
+  let sourceLabels = {tougan:'透干',hidden:'藏干',month_bonus:'月令',same_pillar_bonus:'同柱','透干':'透干','藏干':'藏干','月令加成':'月令','同柱加成':'同柱'};
   for (let i = 0; i < entries.length; i++){
     let pct = Math.round(entries[i].val / maxVal * 100);
     let details = [];
@@ -444,8 +444,9 @@ function _buildEvidenceDimensions(dimensions){
     h += '</div><div class=evidence-signals>';
     let signals = item.signals || [];
     for (let j = 0; j < signals.length; j++){
+      let componentCount = Number(signals[j].component_count) || 1;
       let valueText = signals[j].kind === 'weighted_score'
-        ? (signals[j].level + ' · ' + Number(signals[j].value).toFixed(1))
+        ? (signals[j].level + ' · ' + (componentCount > 1 ? componentCount + '项合计 ' : '') + Number(signals[j].value).toFixed(1))
         : ('本盘相对值 ' + Number(signals[j].value).toFixed(1));
       h += '<div class=evidence-signal><span>' + esc(signals[j].display_label || signals[j].label) + '</span><strong>' + esc(valueText) + '</strong></div>';
     }
@@ -465,14 +466,20 @@ function _evidenceNumber(value){
   return Number.isFinite(number) ? number.toFixed(1) : '';
 }
 
-function _buildEvidenceScale(scale){
+function _buildEvidenceScale(scale, dimensionScale){
   if (!scale) return '';
   let thresholds = scale.thresholds || {};
   let medium = _evidenceNumber(thresholds.medium);
   let high = _evidenceNumber(thresholds.high);
   let params = scale.parameter_snapshot || {};
   let rows = [];
-  if (medium && high) rows.push('档位：较弱 < ' + medium + '；中等 ' + medium + '–<' + high + '；较强 ≥ ' + high);
+  if (medium && high) rows.push('十神单项档位：较弱 < ' + medium + '；中等 ' + medium + '–<' + high + '；较强 ≥ ' + high);
+  if (dimensionScale && dimensionScale.threshold_policy === 'base_thresholds_scaled_by_component_count'){
+    rows.push('六维组合字段：档位阈值按组成项数量同比放大；2项合计使用 4.0 / 10.0');
+  }
+  if (scale.relationship_policy === 'candidates_do_not_change_weight'){
+    rows.push('合、会关系仅作候选，未经成局条件验证不计入十神工程分');
+  }
   if (_evidenceNumber(params.tougan_weight)) rows.push('透干 +' + _evidenceNumber(params.tougan_weight));
   let hidden = params.hidden_weights || {};
   let hiddenParts = [];
@@ -482,12 +489,6 @@ function _buildEvidenceScale(scale){
   if (hiddenParts.length) rows.push('藏干：' + hiddenParts.join('；'));
   if (_evidenceNumber(params.month_multiplier)) rows.push('月令同五行 ×' + _evidenceNumber(params.month_multiplier));
   if (_evidenceNumber(params.same_pillar_bonus)) rows.push('同柱同十神 +' + _evidenceNumber(params.same_pillar_bonus));
-  let heju = params.heju_weights || {};
-  let hejuParts = [];
-  for (let hejuName of ['三会','三合','半合','地支六合']){
-    if (_evidenceNumber(heju[hejuName])) hejuParts.push(hejuName + ' +' + _evidenceNumber(heju[hejuName]));
-  }
-  if (hejuParts.length) rows.push('合局（每个匹配十神一次）：' + hejuParts.join('；'));
   if (!rows.length) return '';
   let h = '<details class=evidence-scale-details><summary>计分口径</summary><div class=evidence-scale-content>';
   for (let row of rows) h += '<div>' + esc(row) + '</div>';
@@ -515,7 +516,7 @@ function _buildPersonalityEvidence(personality){
     if (status.pattern_status) h += '<span><small>格局状态</small>' + esc(status.pattern_status) + '</span>';
     h += '</div>';
   }
-  h += _buildEvidenceScale(evidence.score_scale);
+  h += _buildEvidenceScale(evidence.score_scale, evidence.dimension_scale);
   if (combos.length) h += _buildBingyaoCard(combos);
   if (weighted.length) h += _buildShishenRank(weighted);
   else if (hasLegacyWeighted) h += _buildShishenRank(legacyWeighted);

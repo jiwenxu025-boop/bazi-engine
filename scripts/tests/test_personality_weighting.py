@@ -2,8 +2,9 @@
 
 import pytest
 
+from bazi_engine._constants import DIZHI_LIUHE
+from bazi_engine.interactions import find_dizhi_liuhe
 from bazi_engine.personality_analysis.constants import (
-    HEJU_WEIGHTS,
     HIDDEN_WEIGHTS,
     MONTH_MULTIPLIER,
     SAME_PILLAR_BONUS,
@@ -11,7 +12,6 @@ from bazi_engine.personality_analysis.constants import (
 )
 from bazi_engine.personality_analysis.weighting import (
     _compute_weighted_shishen,
-    _extract_heju_wuxing,
     get_weighted_shishen_report,
 )
 
@@ -54,7 +54,7 @@ INTERACTIONS = {
     "dizhi": [
         {
             "type": "地支六合",
-            "result": "化土",
+            "result": "合土候选",
         }
     ]
 }
@@ -62,8 +62,8 @@ INTERACTIONS = {
 
 def test_weight_report_preserves_existing_scores_and_ranking():
     expected_scores = {
-        "正财": 13.0,
-        "偏财": 4.0,
+        "正财": 11.0,
+        "偏财": 2.0,
         "偏印": 4.5,
         "正印": 3.0,
     }
@@ -72,7 +72,7 @@ def test_weight_report_preserves_existing_scores_and_ranking():
 
     report = get_weighted_shishen_report(PILLARS, INTERACTIONS)
     assert report["scores"] == expected_scores
-    assert report["top3"] == [("正财", 13.0), ("偏印", 4.5), ("偏财", 4.0)]
+    assert report["top3"] == [("正财", 11.0), ("偏印", 4.5), ("正印", 3.0)]
 
 
 def test_weight_breakdown_reconciles_to_each_score():
@@ -82,7 +82,6 @@ def test_weight_breakdown_reconciles_to_each_score():
         "hidden",
         "month_bonus",
         "same_pillar_bonus",
-        "heju_bonus",
     )
 
     assert report["breakdown"]["正财"] == {
@@ -90,8 +89,7 @@ def test_weight_breakdown_reconciles_to_each_score():
         "hidden": 4.0,
         "month_bonus": 0.0,
         "same_pillar_bonus": 1.0,
-        "heju_bonus": 2.0,
-        "total": 13.0,
+        "total": 11.0,
     }
 
     for ten_god, score in report["scores"].items():
@@ -109,30 +107,35 @@ def test_weight_report_declares_scale_and_parameter_snapshot():
         "ranking_scope": "within_chart_only",
         "banding_scope": "fixed_engine_thresholds",
         "provenance": "engineering_heuristic",
-        "heju_application": "once_per_matching_ten_god",
+        "relationship_policy": "candidates_do_not_change_weight",
         "parameter_snapshot": {
             "tougan_weight": TOUGAN_WEIGHT,
             "hidden_weights": HIDDEN_WEIGHTS,
             "month_multiplier": MONTH_MULTIPLIER,
             "same_pillar_bonus": SAME_PILLAR_BONUS,
-            "heju_weights": HEJU_WEIGHTS,
         },
     }
 
 
-def test_heju_extraction_accepts_production_result_formats():
-    interactions = {
-        "dizhi": [
-            {"type": "地支六合", "result": "化土"},
-            {"type": "三合", "result": "合火"},
-            {"type": "半合", "result": "合木"},
-            {"type": "三会", "result": "会金"},
-        ]
-    }
+def test_relationship_candidates_do_not_change_weight():
+    baseline = get_weighted_shishen_report(PILLARS, {"dizhi": []})
+    candidate = get_weighted_shishen_report(PILLARS, INTERACTIONS)
 
-    assert _extract_heju_wuxing(interactions) == {
-        "土": 2.0,
-        "火": 2.5,
-        "木": 1.5,
-        "金": 3.0,
-    }
+    assert candidate["scores"] == baseline["scores"]
+    assert candidate["heju_wuxing"] == {}
+    assert candidate["scale_metadata"]["relationship_policy"] == (
+        "candidates_do_not_change_weight"
+    )
+
+
+def test_production_relationship_objects_follow_the_no_weight_policy():
+    pair = next(iter(DIZHI_LIUHE))
+    relations = find_dizhi_liuhe([
+        (branch, f"pillar-{index}") for index, branch in enumerate(pair)
+    ])
+    interactions = {"dizhi": [relation.to_dict() for relation in relations]}
+
+    assert interactions["dizhi"][0]["result"].endswith("候选")
+    assert get_weighted_shishen_report(PILLARS, interactions)["scores"] == (
+        get_weighted_shishen_report(PILLARS, {"dizhi": []})["scores"]
+    )

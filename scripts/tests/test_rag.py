@@ -163,8 +163,8 @@ def test_fusion_package_sanitizes_raw_scores_and_prompt_order():
     assert "综合分数" not in pkg_text
     assert "7.2分" not in pkg_text
     assert dp["日主画像"]["身强弱"] == "偏强"
-    assert dp["六维度信号"]["社交"]["强度信号"]["主动表达"] == "中等"
-    assert dp["六维度信号"]["社交"]["强度信号"]["观察与保留"] == "较强"
+    assert dp["六维度信号"]["社交"]["强度信号"]["主动表达"] == "较弱"
+    assert dp["六维度信号"]["社交"]["强度信号"]["观察与保留"] == "中等"
     assert "桃花坐日支" not in pkg_text
     assert "_需覆盖信号" not in pkg_text
 

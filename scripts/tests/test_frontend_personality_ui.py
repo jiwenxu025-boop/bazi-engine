@@ -573,9 +573,19 @@ def test_personality_evidence_renderer_handles_empty_scores_labels_and_escaping(
             status: {{strength: '偏强（5.5分）'}},
             score_scale: {{
               thresholds: {{medium: 2, high: 5}},
+              relationship_policy: 'candidates_do_not_change_weight',
               parameter_snapshot: {{tougan_weight: 3}},
             }},
+            dimension_scale: {{threshold_policy: 'base_thresholds_scaled_by_component_count'}},
             dimensions: {{
+              感情: {{signals: [{{
+                label: '责任感_官杀',
+                display_label: '关系责任',
+                kind: 'weighted_score',
+                value: 6,
+                level: '中等',
+                component_count: 2,
+              }}]}},
               事业: {{signals: [{{
                 label: '技术_创意',
                 display_label: '<危险标签>',
@@ -586,6 +596,8 @@ def test_personality_evidence_renderer_handles_empty_scores_labels_and_escaping(
           }},
         }});
         if (!rendered.includes('计分口径')) throw new Error('score scale was not rendered');
+        if (!rendered.includes('2项合计 6.0')) throw new Error('composite score width was hidden');
+        if (!rendered.includes('合、会关系仅作候选')) throw new Error('relationship policy was hidden');
         if (!rendered.includes('本盘相对值 8.0')) throw new Error('relative score scope was missing');
         if (!rendered.includes('&lt;危险标签&gt;')) throw new Error('display label was not escaped');
         if (rendered.includes('<危险标签>')) throw new Error('raw display label reached HTML');
@@ -701,10 +713,10 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
     assert "display:none" in css_rule_body(css, ".report-mobile-actions")
 
 
-def test_gender_luck_release_updates_frontend_asset_cache_versions():
+def test_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'href="style.css?v=20260716-security1"' in html
-    assert 'src="app.js?v=20260716-security1"' in html
+    assert 'src="app.js?v=20260718-evidence1"' in html
 
 
 def test_chart_params_use_default_flow_range_without_empty_optional_numbers():
@@ -1561,7 +1573,9 @@ def test_personality_evidence_panel_explains_scores_and_field_semantics():
     assert "排序仅本盘内比较" in app_source
     assert "固定工程阈值" in app_source
     assert "不是古籍固定比例、概率、准确率或人群常模" in app_source
-    assert "合局（每个匹配十神一次）" in app_source
+    assert "合、会关系仅作候选" in app_source
+    assert "2项合计" in app_source
+    assert "合局（每个匹配十神一次）" not in app_source
     assert "personality.evidence_view" in app_source
     assert "_buildEvidenceDimensions" in app_source
     assert "_buildEvidenceScale" in app_source

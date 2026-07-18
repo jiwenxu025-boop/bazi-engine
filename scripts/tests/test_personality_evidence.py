@@ -11,15 +11,19 @@ from bazi_engine.personality_analysis.main import (
     _canonical_pattern_name,
     _compute_decision_score,
     _pattern_is_favorable,
+    analyze_personality,
 )
 
 
-def test_weighted_score_levels_use_one_unbounded_additive_scale():
+def test_weighted_score_levels_scale_with_the_number_of_components():
     assert weighted_score_level(1.9) == "较弱"
     assert weighted_score_level(2.0) == "中等"
     assert weighted_score_level(4.9) == "中等"
     assert weighted_score_level(5.0) == "较强"
     assert weighted_score_level(18.0) == "较强"
+    assert weighted_score_level(3.9, component_count=2) == "较弱"
+    assert weighted_score_level(6.0, component_count=2) == "中等"
+    assert weighted_score_level(10.0, component_count=2) == "较强"
 
 
 def test_trait_signal_evidence_does_not_band_modifiers_or_differences():
@@ -45,6 +49,7 @@ def test_trait_signal_evidence_does_not_band_modifiers_or_differences():
         "kind": "weighted_score",
         "value": 6.0,
         "level": "较强",
+        "component_count": 1,
     }]
     assert "战略思维" not in str(decision)
 
@@ -65,7 +70,7 @@ def test_fusion_signals_are_qualitative_and_exclude_pending_rules():
         "财富观": {"欲望_财星": 4.0},
     })
 
-    assert package["感情"] == {"强度信号": {"关系责任": "较强"}}
+    assert package["感情"] == {"强度信号": {"关系责任": "中等"}}
     assert package["财富观"] == {"强度信号": {"资源目标": "中等"}}
     assert "夫妻宫" not in str(package)
     assert "桃花" not in str(package)
@@ -86,13 +91,21 @@ def test_evidence_view_explains_score_scope_and_components():
                 "ranking_scope": "within_chart_only",
                 "banding_scope": "fixed_engine_thresholds",
                 "source_status": "engineering_heuristic",
+                "relationship_policy": "candidates_do_not_change_weight",
             },
         },
     }, pattern="偏印格")
 
     assert view["score_scale"]["comparison_scope"] == "absolute_engine_heuristic"
+    assert view["version"] == "2026-07-18-v3"
     assert view["score_scale"]["ranking_scope"] == "within_chart_only"
     assert view["score_scale"]["source_status"] == "engineering_heuristic"
+    assert view["score_scale"]["relationship_policy"] == "candidates_do_not_change_weight"
+    assert view["dimension_scale"] == {
+        "aggregation": "sum_of_ten_god_components",
+        "threshold_policy": "base_thresholds_scaled_by_component_count",
+        "base_thresholds": {"medium": 2.0, "high": 5.0},
+    }
     assert view["status"]["pattern"] == "偏印格"
     assert view["weighted_scores"][0] == {
         "name": "偏印",
@@ -142,3 +155,55 @@ def test_strength_label_and_pattern_aliases_do_not_leak_or_misclassify():
     assert _pattern_is_favorable("羊刃格", ["劫财"]) is False
     assert _pattern_is_favorable("正印格", ["偏官"]) is True
     assert _canonical_pattern_name("偏官格") == "七杀格"
+
+
+def test_candidate_rules_do_not_silently_modify_dimension_scores():
+    pillars = [
+        {
+            "pillar_type": "年柱", "stem": "戊", "branch": "丑",
+            "ten_god": "正财", "source": "stem",
+            "hidden_stems": [{"stem": "己", "level": "本气"}],
+            "hidden_ten_gods": ["偏财"],
+        },
+        {
+            "pillar_type": "月柱", "stem": "庚", "branch": "酉",
+            "ten_god": "偏印", "source": "stem",
+            "hidden_stems": [{"stem": "辛", "level": "本气"}],
+            "hidden_ten_gods": ["正印"],
+        },
+        {
+            "pillar_type": "日柱", "stem": "甲", "branch": "辰",
+            "ten_god": None, "source": "day_master",
+            "hidden_stems": [{"stem": "戊", "level": "本气"}],
+            "hidden_ten_gods": ["正财"],
+        },
+        {
+            "pillar_type": "时柱", "stem": "壬", "branch": "戌",
+            "ten_god": "偏印", "source": "stem",
+            "hidden_stems": [{"stem": "戊", "level": "本气"}],
+            "hidden_ten_gods": ["正财"],
+        },
+    ]
+    result = analyze_personality(
+        day_master_stem="甲",
+        day_master_wuxing="木",
+        day_master_yinyang="阳",
+        pattern="正官格",
+        strength="中和",
+        score=2.5,
+        favorable_shishen=[],
+        harmful_shishen=[],
+        pillars_data=pillars,
+        interactions={"dizhi": [], "tiangan_wuhe": []},
+        gender="男",
+    )
+    scores = result.weighted_shishen["scores"]
+    decision = result.trait_signals["决策"]
+    career = result.trait_signals["事业"]
+    guan = scores.get("正官", 0) + scores.get("偏官", 0)
+    yin = scores.get("正印", 0) + scores.get("偏印", 0)
+
+    assert decision["果断度_七杀"] == scores.get("偏官", 0)
+    assert decision["伤官倾向"] == scores.get("伤官", 0)
+    assert career["体制_管理"] == round(guan * 0.8 + yin * 0.4, 1)
+    assert "调制" not in str(result.trait_signals)
