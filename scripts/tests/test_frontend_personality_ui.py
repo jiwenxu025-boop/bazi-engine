@@ -755,8 +755,27 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
 
 def test_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'href="style.css?v=20260718-ai-review1"' in html
+    assert 'href="style.css?v=20260718-birth-layout1"' in html
     assert 'src="app.js?v=20260718-ai-review1"' in html
+
+
+def test_birth_datetime_fields_share_one_aligned_grid_row():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="form-row birth-datetime-grid"' in html
+    assert "出生日期（公历/阳历）" in html
+    assert "出生时间（24小时制）" in html
+    assert html.index('id="year"') < html.index('id="minute"')
+
+    grid_rules = css_rule_bodies(css, ".birth-datetime-grid")
+    grid_rule = next(rule for rule in grid_rules if "display:grid" in rule)
+    assert "display:grid" in grid_rule
+    assert "grid-template-columns:minmax(0,1.3fr)repeat(4,minmax(0,1fr))" in grid_rule
+    assert "align-items:end" in grid_rule
+    label_rule = css_rule_body(css, ".birth-datetime-grid label")
+    assert "grid-row:2" in label_rule
+    assert "min-width:0" in label_rule
 
 
 def test_chart_params_use_default_flow_range_without_empty_optional_numbers():

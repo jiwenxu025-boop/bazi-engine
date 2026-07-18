@@ -6,7 +6,7 @@
 <title>八字解读</title>
 <script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
 <link rel="icon" href="favicon.svg?v=20260716" type="image/svg+xml">
-<link rel="stylesheet" href="style.css?v=20260718-ai-review1">
+<link rel="stylesheet" href="style.css?v=20260718-birth-layout1">
 <link rel=stylesheet href=chat.css>
 </head>
 <body>
@@ -36,11 +36,13 @@
     <label><span>姓名</span><input id="name" placeholder="可选"></label>
     <label><span>性别</span><select id="gender"><option>男</option><option>女</option></select></label>
   </div>
-  <div class="form-row">
-    <label><span>年 (公历/阳历)</span><input id="year" type="number" placeholder="2000" min="1900" max="2100" required></label>
-    <label><span>月 (公历/阳历)</span><input id="month" type="number" placeholder="1" min="1" max="12" required></label>
-    <label><span>日 (公历/阳历)</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
-    <label><span>时 (24h制)</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
+  <div class="form-row birth-datetime-grid">
+    <span class="birth-datetime-context birth-date-context">出生日期（公历/阳历）</span>
+    <span class="birth-datetime-context birth-time-context">出生时间（24小时制）</span>
+    <label><span>年</span><input id="year" type="number" placeholder="2000" min="1900" max="2100" required></label>
+    <label><span>月</span><input id="month" type="number" placeholder="1" min="1" max="12" required></label>
+    <label><span>日</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
+    <label><span>时</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
     <label><span>分</span><input id="minute" type="number" placeholder="00" min="0" max="59" value="0"></label>
   </div>
   <p class="time-basis-note">出生时间按中国标准时间（UTC+8）计算，暂不自动校正真太阳时。</p>
