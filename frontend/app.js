@@ -141,6 +141,7 @@ function mergeAnnualSignals(year, signals){
     if (chart.annual_scans[si].year === year){
       if (!chart.annual_scans[si].events) chart.annual_scans[si].events = [];
       for (let sj = 0; sj < signals.length; sj++){
+        if (_isDuplicateLlmSignal(chart.annual_scans[si].events, signals[sj])) continue;
         chart.annual_scans[si].events.push(signals[sj]);
       }
       break;
@@ -148,6 +149,25 @@ function mergeAnnualSignals(year, signals){
   }
   setChartData(chart);
   return chart;
+}
+
+function _isDuplicateLlmSignal(existingSignals, candidate){
+  if (!candidate || candidate.source !== 'llm') return false;
+  let candidateKey = _annualSignalKey(candidate);
+  for (let i = 0; i < existingSignals.length; i++){
+    let signal = existingSignals[i];
+    if (signal && signal.source === 'llm' && _annualSignalKey(signal) === candidateKey) return true;
+  }
+  return false;
+}
+
+function _annualSignalKey(signal){
+  let triggers = Array.isArray(signal.triggers) ? signal.triggers.join('\u001f') : '';
+  let notes = Array.isArray(signal.notes) ? signal.notes.join('\u001f') : '';
+  return [
+    signal.category || '', signal.direction || '', signal.strength || 0,
+    signal.prediction || '', triggers, notes,
+  ].join('\u0001');
 }
 
 function setDayunInterpretations(items){
