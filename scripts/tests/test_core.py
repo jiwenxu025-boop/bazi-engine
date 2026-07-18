@@ -52,7 +52,7 @@ class TestNayinChain:
         assert rels == []
 
 
-class GetTenGod:
+class TestTenGod:
     """十神计算测试"""
 
     def test_tong_bi(self):

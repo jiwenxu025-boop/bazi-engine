@@ -134,15 +134,15 @@ function setStreamStatus(status){
   return AppState.streamStatus;
 }
 
-function mergeAnnualSignals(year, signals){
+function mergeAnnualAiReviews(year, signals){
   let chart = getChartData();
   if (!chart || !chart.annual_scans || !signals || !signals.length) return chart;
   for (let si = 0; si < chart.annual_scans.length; si++){
     if (chart.annual_scans[si].year === year){
-      if (!chart.annual_scans[si].events) chart.annual_scans[si].events = [];
+      if (!chart.annual_scans[si].ai_reviews) chart.annual_scans[si].ai_reviews = [];
       for (let sj = 0; sj < signals.length; sj++){
-        if (_isDuplicateLlmSignal(chart.annual_scans[si].events, signals[sj])) continue;
-        chart.annual_scans[si].events.push(signals[sj]);
+        if (_isDuplicateAiReview(chart.annual_scans[si].ai_reviews, signals[sj])) continue;
+        chart.annual_scans[si].ai_reviews.push(signals[sj]);
       }
       break;
     }
@@ -151,14 +151,30 @@ function mergeAnnualSignals(year, signals){
   return chart;
 }
 
-function _isDuplicateLlmSignal(existingSignals, candidate){
+function _isDuplicateAiReview(existingReviews, candidate){
   if (!candidate || candidate.source !== 'llm') return false;
   let candidateKey = _annualSignalKey(candidate);
-  for (let i = 0; i < existingSignals.length; i++){
-    let signal = existingSignals[i];
+  for (let i = 0; i < existingReviews.length; i++){
+    let signal = existingReviews[i];
     if (signal && signal.source === 'llm' && _annualSignalKey(signal) === candidateKey) return true;
   }
   return false;
+}
+
+function _renderAnnualAiReviews(reviews){
+  if (!Array.isArray(reviews) || !reviews.length) return '';
+  let h = '<details class=ai-review><summary>AI 辅助审阅（不计入规则信号）</summary>';
+  for (let i = 0; i < reviews.length; i++){
+    let review = reviews[i] || {};
+    h += '<div class=ai-review-item>';
+    if (review.category) h += '<span class=tag>' + esc(review.category) + '</span>';
+    if (review.direction) h += '<span class=ai-review-direction>' + esc(review.direction) + '</span>';
+    if (review.prediction) h += '<div class=ai-review-text>' + esc(review.prediction) + '</div>';
+    let notes = Array.isArray(review.notes) ? review.notes : [];
+    for (let n = 0; n < notes.length; n++) h += '<div class=ai-review-note>' + esc(notes[n]) + '</div>';
+    h += '</div>';
+  }
+  return h + '</details>';
 }
 
 function _annualSignalKey(signal){
@@ -213,6 +229,7 @@ function _buildChartParams(){
     month: document.getElementById('month').value,
     day: document.getElementById('day').value,
     hour: document.getElementById('hour').value || '12',
+    minute: document.getElementById('minute').value || '0',
     hour_confirmed: document.getElementById('hourConfirmed').checked,
     practical: true,  // 公网只显示白话解读，不暴露技术推导
   });
@@ -230,7 +247,7 @@ function _buildChartRequest(){
 }
 
 function _validateChartForm(){
-  let fields = ['year', 'month', 'day'];
+  let fields = ['year', 'month', 'day', 'hour', 'minute'];
   for (let i = 0; i < fields.length; i++){
     let field = document.getElementById(fields[i]);
     if (!field.reportValidity()) return false;
@@ -310,9 +327,9 @@ async function go(){
               r.scrollIntoView({behavior: 'smooth', block: 'start'});
             }, 80);
           } else if (msg.phase === 'llm_result'){
-            // 2. LLM审查某年完成，合并信号到对应年份
+            // 2. LLM审查某年完成，追加到独立的 AI 审阅区。
             if (d && d.annual_scans){
-              d = mergeAnnualSignals(msg.year, msg.signals) || d;
+              d = mergeAnnualAiReviews(msg.year, msg.signals) || d;
               // 局部刷新流年区域
               refreshFlowSection(d);
             }
@@ -1256,7 +1273,8 @@ function render(d){
     for (let s = 0; s < d.annual_scans.length; s++){
       let scan = d.annual_scans[s];
       let significant = scan.events.filter(function(e){return e.strength >= 2});
-      if (!significant.length) continue;
+      let aiReviews = scan.ai_reviews || [];
+      if (!significant.length && !aiReviews.length) continue;
       hasAny = true;
 
       let summary = _summarizeAnnualScan(scan, d);
@@ -1311,6 +1329,7 @@ function render(d){
         }
         h += '</div>';
       }
+      h += _renderAnnualAiReviews(aiReviews);
       h += '</div></div>'; // /event-body + /event-card
     }
     if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
@@ -1327,21 +1346,27 @@ function render(d){
     h += '</div>';
   }
 
+  if (d.report_meta){
+    let meta = d.report_meta;
+    let input = meta.input || {};
+    let traceability = meta.traceability || {};
+    let uncertainty = meta.uncertainty || {};
+    let signalSources = (traceability.annual_signal_sources || []).map(function(source){
+      return source === 'llm' ? '模型辅助' : '规则引擎';
+    }).join('、') || '规则引擎';
+    let daySource = traceability.day_pillar_source === 'override' ? '用户提供的日柱覆盖' : '公式计算';
+    h += '<details class="evidence-details" style="margin-bottom:16px"><summary>报告依据与边界</summary>';
+    h += '<div class="evidence-scale-content">';
+    h += '<div>出生时间：' + esc(input.birth_time || d.birth || '') + '（分钟精度）</div>';
+    h += '<div>日柱来源：' + esc(daySource) + '；流年信号：' + esc(signalSources) + '</div>';
+    h += '<div>' + esc(uncertainty.scope || '传统文化参考，不构成对具体事件的确定性判断') + '</div>';
+    h += '</div></details>';
+  }
+
   document.getElementById('result').innerHTML = h;
   document.getElementById('copyBtn').style.display = 'inline-block';
   document.getElementById('reportActions').classList.add('active');
 
-  // 用户主动填写的匿名家境反馈，仅保存两个等级用于校准统计。
-  let fl = document.getElementById('familyLevel').value;
-  if (fl){
-    fetch('/api/feedback', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        engine_level: (d.family || {}).level || '',
-        family_level: fl,
-      })
-    }).catch(function(){});
-  }
 }
 
 /* ==========================================
@@ -1459,7 +1484,8 @@ function refreshFlowSection(d){
   for (let s = 0; s < d.annual_scans.length; s++){
     let scan = d.annual_scans[s];
     let significant = scan.events.filter(function(e){return e.strength >= 2});
-    if (!significant.length) continue;
+    let aiReviews = scan.ai_reviews || [];
+    if (!significant.length && !aiReviews.length) continue;
     hasAny = true;
     let summary = _summarizeAnnualScan(scan, d);
     let tagBadges = [];
@@ -1507,6 +1533,7 @@ function refreshFlowSection(d){
       }
       h += '</div>';
     }
+    h += _renderAnnualAiReviews(aiReviews);
     h += '</div></div>';
   }
   if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
@@ -1614,7 +1641,7 @@ document.addEventListener('keydown', function(e){
    ═══════════════════════════════════════════════════════════════ */
 let CHAT = {
   visible: false, chartData: null,
-  history: [], activationCode: '',
+  history: [],
   isStreaming: false, enabled: false
 };
 
@@ -2020,7 +2047,7 @@ function openChat(contextLabel){
     document.getElementById('chatPanel').classList.add('open');
     document.getElementById('chatOverlay').classList.add('active');
     let msgs = document.getElementById('chatMessages');
-    msgs.innerHTML = '<div class=chat-empty><div>AI 功能暂未开放<br><span style=font-size:11px>敬请期待</span></div><div style=margin-top:10px;padding:10px 14px;background:var(--tag-bg);border-radius:8px;font-size:11px;line-height:1.7;text-align:left>💬 <b>收费标准</b><br>· 每日免费 3 次<br>· ⚡体验版 ¥6.9 / 20次<br>· ⭐推荐版 ¥12.9 / 60次<br>· 👑尊享版 ¥19.9 / 永久<br>· 点击 <b>解锁</b> 获取激活码</div></div>';
+    msgs.innerHTML = '<div class=chat-empty><div>AI 功能暂未开放<br><span style=font-size:11px>敬请期待</span></div></div>';
     return;
   }
   if (!localStorage.getItem('bazi-disclaimer')){
@@ -2032,7 +2059,6 @@ function openChat(contextLabel){
   document.getElementById('chatPanel').classList.add('open');
   document.getElementById('chatOverlay').classList.add('active');
   if (contextLabel) setChatContext(contextLabel);
-  loadQuota();
   setTimeout(function(){
     let msgs = document.getElementById('chatMessages');
     msgs.scrollTop = msgs.scrollHeight;
@@ -2099,7 +2125,6 @@ async function sendChat(){
       body: JSON.stringify({
         question: fullQ,
         chart_data: getChartData(),
-        activation_code: CHAT.activationCode,
         history: CHAT.history
       }),
       signal: controller.signal,
@@ -2153,7 +2178,6 @@ async function sendChat(){
   }
   CHAT.isStreaming = false;
   document.getElementById('chatSendBtn').disabled = false;
-  loadQuota();
 }
 
 function appendBubble(text, role){
@@ -2199,63 +2223,6 @@ function useSuggestion(text){
   document.getElementById('chatInput').focus();
 }
 
-/* ── 额度 ── */
-async function loadQuota(){
-  let badge = document.getElementById('quotaBadge');
-  try{
-    let url = '/api/chat/quota';
-    let options = {};
-    if (CHAT.activationCode){
-      options = {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code: CHAT.activationCode}),
-      };
-    }
-    let r = await fetch(url, options);
-    let d = await r.json();
-    if (d.has_code){
-      badge.textContent = '激活码剩余' + d.remaining + '次';
-    } else {
-      badge.textContent = '今日免费' + d.remaining + '次';
-    }
-  }catch(e){ badge.textContent = ''; }
-}
-
-/* ── 激活码 ── */
-function openPayModal(){
-  let m = document.getElementById('payModal');
-  m.classList.add('active');
-  m.style.display = 'flex';
-}
-function closePayModal(){
-  let m = document.getElementById('payModal');
-  m.classList.remove('active');
-  m.style.display = '';
-}
-function submitActivationCode(){
-  let code = document.getElementById('actCodeInput').value.trim().toUpperCase();
-  let status = document.getElementById('actCodeStatus');
-  if (!code){ status.textContent = '请输入激活码'; status.className='status-msg error'; return; }
-  fetch('/api/chat/quota', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({code: code}),
-  }).then(function(r){return r.json()}).then(function(d){
-    if (d.remaining > 0){
-      CHAT.activationCode = code;
-      localStorage.setItem('bazi-act-code', code);
-      status.textContent = '激活成功！剩余' + d.remaining + '次';
-      status.className = 'status-msg success';
-      loadQuota();
-      setTimeout(closePayModal, 1200);
-    } else {
-      status.textContent = d.remaining === 0 ? '该激活码次数已用完' : '激活码无效';
-      status.className = 'status-msg error';
-    }
-  });
-}
-
 /* ── 免责弹窗 ── */
 function closeDisclaimer(){
   document.getElementById('disclaimerModal').classList.remove('active');
@@ -2268,8 +2235,6 @@ document.addEventListener('DOMContentLoaded', function(){
   // 自动检测 API 地址（当前页面同源）
   let autoUrl = location.protocol + '//' + location.host;
   document.getElementById('apiUrl').value = autoUrl;
-  let saved = localStorage.getItem('bazi-act-code');
-  if (saved){ CHAT.activationCode = saved; }
   // 检测 AI 功能可用性
   fetch(autoUrl + '/api/health').then(function(r){return r.json()}).then(function(d){
     CHAT.enabled = d.ai_enabled === true;

@@ -14,10 +14,11 @@ WARNING_DAY_PILLAR = ""  # JDN 公式精确，不再需要此警告
 WARNING_YEAR_BOUNDARY = "出生日期在立春前，年柱已自动使用上一年"
 WARNING_MONTH_BOUNDARY = ""  # 精确节气已消除月柱边界歧义
 WARNING_NIGHT_ZI = "夜子时按次日日柱计算；月柱和年柱仍按实际出生时刻判定"
+WARNING_SHICHEN_BOUNDARY = "出生时间接近时辰交界，时柱可能因出生记录误差而变化，建议核对分钟"
 
 
 def compute_year_pillar(gregorian_year: int, gregorian_month: int, gregorian_day: int,
-                        birth_hour: int = 12) -> tuple[Tiangan, Dizhi, list[str]]:
+                        birth_hour: int = 12, birth_minute: int = 0) -> tuple[Tiangan, Dizhi, list[str]]:
     """返回 (年干, 年支, warnings) — 根据精确立春时刻判断"""
     from datetime import datetime
     warnings: list[str] = []
@@ -26,7 +27,7 @@ def compute_year_pillar(gregorian_year: int, gregorian_month: int, gregorian_day
     try:
         from .solar_terms import get_jie_datetime
         lichun = get_jie_datetime(gregorian_year, 0)  # 立春 = index 0
-        birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour)
+        birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour, birth_minute)
         if birth_dt < lichun:
             effective_year = gregorian_year - 1
             warnings.append(WARNING_YEAR_BOUNDARY)
@@ -45,7 +46,8 @@ def compute_year_pillar(gregorian_year: int, gregorian_month: int, gregorian_day
 
 def compute_month_pillar(year_stem: Tiangan, gregorian_month: int, gregorian_day: int,
                          birth_hour: int = 12,
-                         gregorian_year: int | None = None) -> tuple[Tiangan, Dizhi, list[str]]:
+                         gregorian_year: int | None = None,
+                         *, birth_minute: int = 0) -> tuple[Tiangan, Dizhi, list[str]]:
     """返回 (月干, 月支, warnings)
 
     用精确节气区间确定月支，五虎遁确定月干。
@@ -53,7 +55,7 @@ def compute_month_pillar(year_stem: Tiangan, gregorian_month: int, gregorian_day
     warnings: list[str] = []
 
     month_dz = month_branch_for_datetime(
-        gregorian_year, gregorian_month, gregorian_day, birth_hour,
+        gregorian_year, gregorian_month, gregorian_day, birth_hour, birth_minute,
     )
 
     yin_stem = WUHU_DUNYUAN[year_stem]
@@ -65,12 +67,13 @@ def compute_month_pillar(year_stem: Tiangan, gregorian_month: int, gregorian_day
 
 
 def month_branch_for_datetime(gregorian_year: int | None, gregorian_month: int,
-                              gregorian_day: int, birth_hour: int = 12) -> Dizhi:
+                              gregorian_day: int, birth_hour: int = 12,
+                              birth_minute: int = 0) -> Dizhi:
     """按节气返回月支；没有年份时才回退到近似月表。"""
     if gregorian_year is None:
         return MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
     try:
-        birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour)
+        birth_dt = datetime(gregorian_year, gregorian_month, gregorian_day, birth_hour, birth_minute)
         return _month_branch_from_jieqi(birth_dt, gregorian_year)
     except Exception:
         return MONTH_TO_DIZHI_APPROX.get(gregorian_month, Dizhi.子)
@@ -136,6 +139,7 @@ def compute_hour_pillar(day_stem: Tiangan, hour: int) -> tuple[Tiangan, Dizhi, l
 def build_four_pillars(
     year: int, month: int, day: int, hour: int,
     day_pillar_override: tuple[str, str] | None = None,
+    minute: int = 0,
 ) -> dict:
     """一站式四柱计算，返回包含所有信息的 dict。
 
@@ -144,18 +148,23 @@ def build_four_pillars(
     all_warnings: list[str] = []
 
     # 年柱
-    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour)
+    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour, minute)
     all_warnings.extend(y_w)
 
     # 月柱
-    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour, gregorian_year=year)
+    m_tg, m_dz, m_w = compute_month_pillar(
+        y_tg, month, day, hour, gregorian_year=year, birth_minute=minute,
+    )
     all_warnings.extend(m_w)
 
     # 日柱
-    civil_birth = datetime(year, month, day, hour)
+    civil_birth = datetime(year, month, day, hour, minute)
     day_pillar_date = civil_birth + timedelta(days=1) if hour >= 23 else civil_birth
     if hour >= 23:
         all_warnings.append(WARNING_NIGHT_ZI)
+    minutes_since_boundary = (hour * 60 + minute - 60) % 120
+    if min(minutes_since_boundary, 120 - minutes_since_boundary) <= 30:
+        all_warnings.append(WARNING_SHICHEN_BOUNDARY)
     if day_pillar_override:
         d_tg = Tiangan(day_pillar_override[0])
         d_dz = Dizhi(day_pillar_override[1])

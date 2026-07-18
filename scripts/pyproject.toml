@@ -1,6 +1,6 @@
 [project]
 name = "bazi-engine"
-version = "0.14.0"
+version = "0.18.0"
 description = "八字排盘计算引擎"
 dependencies = [
     "fastapi>=0.100.0",

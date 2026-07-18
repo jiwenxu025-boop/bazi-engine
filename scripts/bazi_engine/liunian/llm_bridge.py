@@ -2,9 +2,11 @@
 
 v0.15.1: 当 ≥3 个年份需要 LLM 审查时，使用 call_llm_batch_review 批量合并调用。
 """
-import sys
+import logging
 
 from .signal import AnnualScan, EventSignal
+
+logger = logging.getLogger(__name__)
 
 
 def _execute_llm_reviews_streaming(results: list[AnnualScan],
@@ -34,9 +36,9 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
             idx, year = futures[future]
             try:
                 llm_results = future.result(timeout=60)
-                # 直接写入 scan.events（v0.16: 不依赖回调，确保前端初始渲染可见）
+                # AI 审阅与规则信号分开，不影响筛选、强度统计或主摘要。
                 for llm_evt in llm_results:
-                    results[idx].events.append(EventSignal(
+                    results[idx].ai_reviews.append(EventSignal(
                         category=llm_evt.category, direction=llm_evt.direction,
                         strength=llm_evt.strength, prediction=llm_evt.prediction,
                         triggers=llm_evt.triggers,
@@ -46,8 +48,8 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
                 if on_llm_result:
                     sig_dicts = _signals_to_dicts(llm_results)
                     on_llm_result(year, sig_dicts)
-            except Exception as e:
-                print(f"[llm_review] 年份{year} LLM调用/回调失败: {e}", file=sys.stderr)
+            except Exception as error:
+                logger.warning("LLM review failed year=%s type=%s", year, type(error).__name__)
 
 
 def _execute_llm_reviews_parallel(results: list[AnnualScan],
@@ -70,7 +72,7 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
             try:
                 llm_results = future.result(timeout=60)
                 for llm_evt in llm_results:
-                    results[idx].events.append(EventSignal(
+                    results[idx].ai_reviews.append(EventSignal(
                         category=llm_evt.category,
                         direction=llm_evt.direction,
                         strength=llm_evt.strength,
@@ -79,8 +81,9 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
                         notes=[f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"],
                         source="llm",
                     ))
-            except Exception as e:
-                print(f"[llm_review] 年份{results[idx].year if idx < len(results) else '?'} LLM并行调用失败: {e}", file=sys.stderr)
+            except Exception as error:
+                year = results[idx].year if idx < len(results) else "?"
+                logger.warning("LLM review failed year=%s type=%s", year, type(error).__name__)
 
 
 def _execute_batch_streaming(results, llm_tasks, on_llm_result, on_llm_token):
@@ -94,9 +97,8 @@ def _execute_batch_streaming(results, llm_tasks, on_llm_result, on_llm_token):
     batch_results = call_llm_batch_review(ctxs, on_token=None)
     for i, yr_results in enumerate(batch_results):
         idx = year_map[i]
-        # 直接写入 scan.events（v0.16: 不依赖回调，确保前端初始渲染可见）
         for llm_evt in yr_results:
-            results[idx].events.append(EventSignal(
+            results[idx].ai_reviews.append(EventSignal(
                 category=llm_evt.category,
                 direction=llm_evt.direction,
                 strength=llm_evt.strength,
@@ -122,7 +124,7 @@ def _execute_batch_parallel(results, llm_tasks):
     for i, yr_results in enumerate(batch_results):
         idx = year_map[i]
         for llm_evt in yr_results:
-            results[idx].events.append(EventSignal(
+            results[idx].ai_reviews.append(EventSignal(
                 category=llm_evt.category,
                 direction=llm_evt.direction,
                 strength=llm_evt.strength,

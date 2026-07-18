@@ -16,15 +16,12 @@ _results, _stats = run_calibration(ALL_WEALTH)
 @pytest.mark.parametrize("case", _results, ids=[r["name"] for r in _results])
 def test_wealth_calibration(case):
     """每个财运案例至少有一个容差匹配"""
-    if "error" in case:
-        pytest.skip(f"build_chart failed: {case['error']}")
-    assert case["total"] > 0 or "error" in case, f"{case['name']}: 无预期事件"
+    assert case["total"] > 0, f"{case['name']}: 无预期事件"
 
 
 def test_wealth_overall_stats():
     """财运总体命中率 ≥70% 严格"""
-    if _stats["expected"] == 0:
-        pytest.skip("no calibration cases produced expected events")
+    assert _stats["expected"] > 0, "财运校准案例没有预期事件"
     assert _stats["strict"] / _stats["expected"] >= 0.65, (
         f"严格命中率 {_stats['strict']}/{_stats['expected']} < 65%"
     )

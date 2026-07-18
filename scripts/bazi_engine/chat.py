@@ -99,7 +99,6 @@ def build_chat_data_package(chart_data: dict) -> dict:
     )
 
     personality = chart_data.get("personality", {})
-    chart_data.get("family", {})
 
     return {
         "name": chart_data.get("name", ""),
@@ -117,7 +116,6 @@ def build_chat_data_package(chart_data: dict) -> dict:
         "personality_profile": base["personality_profile"],
         "personality_traits": base["personality_traits"],
         "special_combos": personality.get("special_combos", []),
-        "family": base.get("family"),
         "spirit_names": base["spirit_names"],
         "key_interactions": base["key_interactions"],
     }
@@ -200,10 +198,6 @@ def build_chat_context(chart_data: dict) -> str:
     if package["special_combos"]:
         combos_short = [c.split("→")[0].strip() for c in package["special_combos"][:8]]
         parts.append(f"【关键组合】{'；'.join(combos_short)}")
-
-    # 家境
-    if package.get("family"):
-        parts.append(f"【家境】等级{package['family']['level']}，{package['family']['father']}，{package['family']['mother']}")
 
     # 神煞
     if package["spirit_names"]:

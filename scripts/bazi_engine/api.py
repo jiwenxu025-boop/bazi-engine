@@ -32,7 +32,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ._http import close_shared_clients
 from ._runtime import close_blocking_executor, submit_blocking
@@ -54,10 +54,11 @@ _LARGE_REQUEST_BODY_LIMITS = {
 }
 _MAX_AI_STREAMS = int(os.getenv("BAZI_MAX_AI_STREAMS", "3"))
 _AI_STREAM_SLOTS = threading.BoundedSemaphore(max(1, _MAX_AI_STREAMS))
-_ALLOW_LEGACY_CHART_GET = os.getenv("BAZI_ALLOW_LEGACY_CHART_GET", "1").lower() in ("1", "true", "yes")
+_ALLOW_LEGACY_CHART_GET = os.getenv("BAZI_ALLOW_LEGACY_CHART_GET", "0").lower() in ("1", "true", "yes")
 _FUSION_STREAM_TOTAL_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_TOTAL_TIMEOUT", "150"))
 _FUSION_STREAM_IDLE_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_IDLE_TIMEOUT", "45"))
 _STREAM_HEARTBEAT_INTERVAL = float(os.getenv("BAZI_STREAM_HEARTBEAT_INTERVAL", "15"))
+_MAX_LIUNIAN_SPAN = 30
 _CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv("BAZI_CORS_ORIGINS", "").split(",")
@@ -76,6 +77,7 @@ class ChartStreamRequest(BaseModel):
     month: int = Field(ge=1, le=12)
     day: int = Field(ge=1, le=31)
     hour: int = Field(ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
     liunian_from: int | None = Field(default=None, ge=1900, le=2100)
     liunian_to: int | None = Field(default=None, ge=1900, le=2100)
     favorable: list[str] | None = None
@@ -83,9 +85,37 @@ class ChartStreamRequest(BaseModel):
     hour_confirmed: bool = False
     practical: bool = False
 
+    @model_validator(mode="after")
+    def validate_liunian_range(self):
+        if (self.liunian_from is None) != (self.liunian_to is None):
+            raise ValueError("liunian_from 和 liunian_to 必须同时提供")
+        if self.liunian_from is not None and self.liunian_to is not None:
+            if self.liunian_from > self.liunian_to:
+                raise ValueError("liunian_from 不能晚于 liunian_to")
+            if self.liunian_to - self.liunian_from > _MAX_LIUNIAN_SPAN:
+                raise ValueError(f"流年范围最多 {_MAX_LIUNIAN_SPAN} 年")
+        return self
 
-class ActivationCodeRequest(BaseModel):
-    code: str = Field(min_length=1, max_length=80)
+
+class BatchChartRequest(ChartStreamRequest):
+    calibrate: bool = False
+
+
+class DatePickRequest(BaseModel):
+    chart: dict = Field(default_factory=dict)
+    year: int = Field(ge=1900, le=2100)
+    month: int = Field(ge=1, le=12)
+
+
+class ChatHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    chart_data: dict = Field(default_factory=dict)
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=20)
 
 
 @asynccontextmanager
@@ -201,14 +231,12 @@ def chart_api(
     month: int = Query(..., ge=1, le=12),
     day: int = Query(..., ge=1, le=31),
     hour: int = Query(..., ge=0, le=23),
+    minute: int = Query(0, ge=0, le=59),
     liunian_from: int | None = Query(None),
     liunian_to: int | None = Query(None),
     favorable: list[str] | None = _FAVORABLE_QUERY,
     calibrate: bool = Query(False),
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
-    family_level: str = Query("", description="用户已知家境: 宽裕/普通/紧张"),
-    father_job: str = Query("", description="父亲职业"),
-    mother_job: str = Query("", description="母亲职业"),
     hour_confirmed: bool = Query(False, description="出生时辰是否经用户确认"),
     practical: bool = Query(False, description="实用模式：仅返回白话解读，不包含技术推导"),
 ):
@@ -223,23 +251,13 @@ def chart_api(
     # 公网模式下强制禁用 calibrate
     use_calibrate = calibrate and not _IS_PUBLIC
 
-    # 家境上下文
-    family_context = None
-    if family_level:
-        family_context = {"economic_level": family_level}
-        if father_job:
-            family_context["father_occupation"] = father_job
-        if mother_job:
-            family_context["mother_occupation"] = mother_job
-
     chart = build_chart(
         name=name or "未知", gender=gender,
-        year=year, month=month, day=day, hour=hour,
+        year=year, month=month, day=day, hour=hour, minute=minute,
         liunian_range=ln_range,
         favorable=fav_set,
         calibrate=use_calibrate,
         life_stage_override=life_stage if life_stage != "auto" else "",
-        family_context=family_context,
         hour_confirmed=hour_confirmed,
     )
     result = _prepare_chart_response(chart.to_dict(), practical)
@@ -247,7 +265,7 @@ def chart_api(
     return JSONResponse(content=result)
 
 
-async def stream_chart(    name, gender, year, month, day, hour,
+async def stream_chart(    name, gender, year, month, day, hour, minute,
     ln_range, fav_set, life_stage, hour_confirmed, practical,
 ):
     queue: asyncio.Queue = asyncio.Queue()
@@ -275,7 +293,7 @@ async def stream_chart(    name, gender, year, month, day, hour,
         try:
             c = build_chart(
                 name=name or "未知", gender=gender,
-                year=year, month=month, day=day, hour=hour,
+                year=year, month=month, day=day, hour=hour, minute=minute,
                 liunian_range=ln_range,
                 favorable=fav_set,
                 calibrate=False,
@@ -549,6 +567,7 @@ async def chart_stream(
     month: int = Query(..., ge=1, le=12),
     day: int = Query(..., ge=1, le=31),
     hour: int = Query(..., ge=0, le=23),
+    minute: int = Query(0, ge=0, le=59),
     liunian_from: int | None = Query(None),
     liunian_to: int | None = Query(None),
     favorable: list[str] | None = _FAVORABLE_QUERY,
@@ -579,6 +598,7 @@ async def chart_stream(
         month=month,
         day=day,
         hour=hour,
+        minute=minute,
         liunian_from=liunian_from,
         liunian_to=liunian_to,
         favorable=favorable,
@@ -601,6 +621,7 @@ def _chart_stream_response(payload: ChartStreamRequest):
         payload.month,
         payload.day,
         payload.hour,
+        payload.minute,
         ln_range,
         fav_set,
         payload.life_stage,
@@ -672,43 +693,41 @@ def _strip_technical(data: dict):
             if isinstance(traits[k], str):
                 traits[k] = _clean_text(traits[k])
 
-    # 家境中去掉古典引用
-    f = data.get("family")
-    if f:
-        for k in ("father", "mother", "parents_health"):
-            if f.get(k):
-                f[k] = _clean_text(f[k])
+    # These sections contain unreviewed third-party or life-event assertions.
+    for internal_key in ("family", "palace_star", "body_use", "nayin_relations", "health_profile"):
+        data.pop(internal_key, None)
 
 
 @app.post("/api/batch")
-def batch_api(records: list[dict]):
+def batch_api(records: list[BatchChartRequest]):
     if _IS_PUBLIC:
         return JSONResponse({"error": "公网不提供批量排盘"}, status_code=403)
     if len(records) > 20:
         return JSONResponse({"error": "单次最多处理20条"}, status_code=422)
     results = []
-    for r in records:
+    for record in records:
         try:
             ln_range = None
-            if r.get("liunian_from") and r.get("liunian_to"):
-                ln_range = (r["liunian_from"], r["liunian_to"])
-            fav_set = set(r["favorable"]) if r.get("favorable") else None
-            use_calibrate = r.get("calibrate", False) and not _IS_PUBLIC
+            if record.liunian_from is not None and record.liunian_to is not None:
+                ln_range = (record.liunian_from, record.liunian_to)
+            fav_set = set(record.favorable) if record.favorable else None
+            use_calibrate = record.calibrate and not _IS_PUBLIC
 
             chart = build_chart(
-                name=r.get("name", ""), gender=r.get("gender", "男"),
-                year=r["year"], month=r["month"], day=r["day"], hour=r.get("hour", 12),
+                name=record.name, gender=record.gender,
+                year=record.year, month=record.month, day=record.day, hour=record.hour,
+                minute=record.minute,
                 liunian_range=ln_range,
                 favorable=fav_set,
                 calibrate=use_calibrate,
-                life_stage_override=r.get("life_stage", ""),
+                life_stage_override=record.life_stage if record.life_stage != "auto" else "",
             )
             data = chart.to_dict()
             _strip_technical(data)
-            results.append({"name": r.get("name"), "status": "ok", "data": data})
+            results.append({"name": record.name, "status": "ok", "data": data})
         except Exception as error:
             logger.exception("batch chart build failed type=%s", type(error).__name__)
-            results.append({"name": r.get("name"), "status": "error", "error": "排盘暂时不可用"})
+            results.append({"name": record.name, "status": "error", "error": "排盘暂时不可用"})
     return {"count": len(results), "results": results}
 
 
@@ -717,7 +736,7 @@ def batch_api(records: list[dict]):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/api/date-pick")
-def date_pick_api(body: dict):
+def date_pick_api(body: DatePickRequest):
     """择日：根据命盘筛选吉日/凶日（v2 完整评分）
 
     POST body:
@@ -734,12 +753,9 @@ def date_pick_api(body: dict):
     from .date_picker import pick_good_dates
     from .enums import Dizhi, Tiangan
 
-    chart_data = body.get("chart", {})
-    yr = body.get("year")
-    mo = body.get("month")
-
-    if not yr or not mo:
-        return JSONResponse({"error": "缺少 year 或 month 参数"}, status_code=400)
+    chart_data = body.chart
+    yr = body.year
+    mo = body.month
 
     pillars = chart_data.get("four_pillars", {})
 
@@ -812,7 +828,7 @@ def date_pick_api(body: dict):
 # ═══════════════════════════════════════════════════════════════
 
 @app.post("/api/chat")
-async def chat_api(request: Request):
+async def chat_api(request: Request, body: ChatRequest):
     """AI 八字追问 — SSE 流式返回"""
     if not _AI_ENABLED:
         return JSONResponse({"error": "AI 功能未启用"}, status_code=503)
@@ -822,24 +838,16 @@ async def chat_api(request: Request):
         build_messages,
         call_deepseek_stream,
         check_free_quota,
-        consume_code,
         consume_free_quota,
         filter_sensitive,
         release_quota_reservation,
-        reserve_activation_code,
         reserve_free_quota,
         settle_quota_reservation,
-        validate_code,
     )
 
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"error": "请求格式错误"}, status_code=400)
-    user_question = (body.get("question") or "").strip()
-    chart_data = body.get("chart_data") or {}
-    activation_code = (body.get("activation_code") or "").strip().upper()
-    history = body.get("history") or []
+    user_question = body.question.strip()
+    chart_data = body.chart_data
+    history = [message.model_dump() for message in body.history]
     client_ip = request.client.host if request.client else "unknown"
 
     # 1. 敏感词检测
@@ -850,38 +858,22 @@ async def chat_api(request: Request):
             yield "data: [DONE]\n\n"
         return StreamingResponse(reject_gen(), media_type="text/event-stream")
 
-    # 2. 权限检查。SQLite 模式先事务预占，首个 token 到达后才结算。
+    # 2. 免费额度检查。SQLite 模式先事务预占，首个 token 到达后才结算。
     sqlite_runtime = _use_sqlite_runtime_store()
     reservation_id = None
-    if sqlite_runtime and activation_code:
-        reservation = reserve_activation_code(activation_code)
-        if reservation is None:
-            _valid, _remaining, msg = validate_code(activation_code)
-            async def invalid_gen():
-                yield f"data: {json.dumps({'token': msg})}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(invalid_gen(), media_type="text/event-stream")
-        reservation_id = reservation.reservation_id
-    elif sqlite_runtime:
+    if sqlite_runtime:
         reservation = reserve_free_quota(client_ip)
         if reservation is None:
             async def quota_gen():
-                yield f"data: {json.dumps({'token': f'今日免费追问次数（{FREE_DAILY_LIMIT}次）已用完。点击"解锁追问"获取激活码。'})}\n\n"
+                yield f"data: {json.dumps({'token': f'今日 AI 追问次数（{FREE_DAILY_LIMIT}次）已用完，请明日再试。'})}\n\n"
                 yield "data: [DONE]\n\n"
             return StreamingResponse(quota_gen(), media_type="text/event-stream")
         reservation_id = reservation.reservation_id
-    elif activation_code:
-        valid, _remaining, msg = validate_code(activation_code)
-        if not valid:
-            async def invalid_gen():
-                yield f"data: {json.dumps({'token': msg})}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(invalid_gen(), media_type="text/event-stream")
     else:
         can_use, _remaining = check_free_quota(client_ip)
         if not can_use:
             async def quota_gen():
-                yield f"data: {json.dumps({'token': f'今日免费追问次数（{FREE_DAILY_LIMIT}次）已用完。点击"解锁追问"获取激活码。'})}\n\n"
+                yield f"data: {json.dumps({'token': f'今日 AI 追问次数（{FREE_DAILY_LIMIT}次）已用完，请明日再试。'})}\n\n"
                 yield "data: [DONE]\n\n"
             return StreamingResponse(quota_gen(), media_type="text/event-stream")
 
@@ -897,8 +889,6 @@ async def chat_api(request: Request):
                     consumed = True
                     if reservation_id:
                         settle_quota_reservation(reservation_id)
-                    elif activation_code:
-                        consume_code(activation_code)
                     else:
                         consume_free_quota(client_ip)
                 yield chunk
@@ -1062,48 +1052,16 @@ async def fusion_stream(request: Request):
 
 @app.get("/api/chat/quota")
 async def chat_quota(request: Request):
-    """查询免费追问次数。激活码额度改由 POST 请求体查询。"""
+    """查询当日免费追问次数。"""
     from .chat import check_free_quota
     client_ip = request.client.host if request.client else "unknown"
     _can_use, remaining = check_free_quota(client_ip)
-    return {"has_code": False, "remaining": remaining}
-
-
-@app.post("/api/chat/quota")
-async def chat_code_quota(payload: ActivationCodeRequest):
-    """查询激活码额度，避免把凭证放进 URL 和访问日志。"""
-    from .chat import validate_code
-    valid, remaining, _ = validate_code(payload.code.strip().upper())
-    return {"has_code": True, "remaining": remaining if valid else 0}
+    return {"remaining": remaining}
 
 
 # ═══════════════════════════════════════════════════════════════
 # 管理端点
 # ═══════════════════════════════════════════════════════════════
-
-@app.get("/api/admin/codes")
-def admin_codes(request: Request):
-    """查看所有激活码状态"""
-    if not _admin_authorized(request):
-        return JSONResponse({"error": "无权访问"}, status_code=403)
-    from .chat import _load_codes
-    codes = _load_codes()
-    items = []
-    total_remaining = 0
-    for code, info in sorted(codes.items(), key=lambda x: x[1].get("剩余", 0)):
-        r = info.get("剩余", 0)
-        total_remaining += r
-        items.append({
-            "code": code,
-            "remaining": r,
-            "note": info.get("备注", ""),
-        })
-    return {
-        "total_codes": len(codes),
-        "total_remaining": total_remaining,
-        "codes": items,
-    }
-
 
 @app.get("/api/admin/feedback")
 def admin_feedback(request: Request, days: int = Query(7, description="查看最近N天的反馈")):
@@ -1483,8 +1441,7 @@ def admin_fusion_generations(
     }
 
 
-@app.post("/api/feedback")
-async def feedback_api(request: Request):
+async def _legacy_family_feedback(request: Request):
     """用户提交家境真实情况，引擎自动比对并保存差异记录。
 
     请求体: { "chart_data": {...}, "family_level": "普通", "father_job": "工人" }

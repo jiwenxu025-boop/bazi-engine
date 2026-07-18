@@ -10,8 +10,8 @@
 """
 
 import json
+import logging
 import re
-import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +26,8 @@ from ._deepseek_config import (
     is_available,
 )
 from ._http import shared_client
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -586,22 +588,19 @@ def interpret_dayun(natal: dict, dayun_modulations: list[dict],
         with shared_client(60.0) as client:
             resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
             if resp.status_code != 200:
-                print(f"[dayun_llm] status={resp.status_code} body={resp.text[:300]}",
-                      file=sys.stderr)
+                logger.warning("dayun LLM request failed status=%s", resp.status_code)
                 return []
             data = resp.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             if not content:
-                print(f"[dayun_llm] empty content body={str(data)[:500]}",
-                      file=sys.stderr)
+                logger.warning("dayun LLM response had empty content")
                 return []
             parsed = _parse_dayun_response(content, len(dayun_modulations))
             if not parsed:
-                print(f"[dayun_llm] parse empty content={content[:800]}",
-                      file=sys.stderr)
+                logger.warning("dayun LLM response could not be parsed")
             return parsed
-    except Exception as e:
-        print(f"[dayun_llm] exception={type(e).__name__}: {e}", file=sys.stderr)
+    except Exception as error:
+        logger.warning("dayun LLM request failed type=%s", type(error).__name__)
         return []
 
 

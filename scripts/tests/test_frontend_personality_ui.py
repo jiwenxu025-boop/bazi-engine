@@ -1386,7 +1386,8 @@ def test_app_state_keeps_chart_context_for_chat_calendar_and_stream_merges():
           id: 'fresh-chart',
           current_context: {{ current_dayun: {{ ganzhi: 'bingwu' }} }},
           annual_scans: [{{ year: 2026, events: [
-            {{ category: 'base', strength: 2 }},
+            {{ category: 'base', strength: 2 }}
+          ], ai_reviews: [
             {{ category: 'stream', direction: 'positive', strength: 3, prediction: 'same', triggers: ['trigger'], notes: ['note'], source: 'llm' }}
           ] }}],
           dayun: {{ interpretations: [] }}
@@ -1398,11 +1399,12 @@ def test_app_state_keeps_chart_context_for_chat_calendar_and_stream_merges():
         if (!vm.runInContext('CHAT.chartData === getChartData()', sandbox)) throw new Error('legacy chat chart was not synchronized');
         if (sandbox.window._calChart !== chart) throw new Error('legacy calendar chart was not synchronized');
 
-        sandbox.mergeAnnualSignals(2026, [{{ category: 'stream', direction: 'positive', strength: 3, prediction: 'same', triggers: ['trigger'], notes: ['note'], source: 'llm' }}]);
+        sandbox.mergeAnnualAiReviews(2026, [{{ category: 'stream', direction: 'positive', strength: 3, prediction: 'same', triggers: ['trigger'], notes: ['note'], source: 'llm' }}]);
         if (chart.current_context.current_dayun.ganzhi !== 'bingwu') throw new Error('current_context changed during annual merge');
-        if (chart.annual_scans[0].events.length !== 2) throw new Error('duplicate LLM stream signal was appended');
-        sandbox.mergeAnnualSignals(2026, [{{ category: 'stream', direction: 'positive', strength: 3, prediction: 'different', triggers: ['trigger'], notes: ['note'], source: 'llm' }}]);
-        if (chart.annual_scans[0].events.length !== 3) throw new Error('distinct LLM stream signal was not merged');
+        if (chart.annual_scans[0].events.length !== 1) throw new Error('LLM review changed rule signals');
+        if (chart.annual_scans[0].ai_reviews.length !== 1) throw new Error('duplicate LLM review was appended');
+        sandbox.mergeAnnualAiReviews(2026, [{{ category: 'stream', direction: 'positive', strength: 3, prediction: 'different', triggers: ['trigger'], notes: ['note'], source: 'llm' }}]);
+        if (chart.annual_scans[0].ai_reviews.length !== 2) throw new Error('distinct LLM review was not merged');
 
         sandbox.setDayunInterpretations([{{ index: 0, text: 'ok' }}]);
         if (chart.current_context.current_dayun.ganzhi !== 'bingwu') throw new Error('current_context changed during dayun merge');

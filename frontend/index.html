@@ -41,7 +41,9 @@
     <label><span>月 (公历/阳历)</span><input id="month" type="number" placeholder="1" min="1" max="12" required></label>
     <label><span>日 (公历/阳历)</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
     <label><span>时 (24h制)</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
+    <label><span>分</span><input id="minute" type="number" placeholder="00" min="0" max="59" value="0"></label>
   </div>
+  <p class="time-basis-note">出生时间按中国标准时间（UTC+8）计算，暂不自动校正真太阳时。</p>
   <div class="form-row" style="margin-bottom:6px">
     <label style="flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
       <input type="checkbox" id="hourConfirmed" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
@@ -54,12 +56,6 @@
     <div class="form-row" style="margin-top:10px">
       <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2026" min="1900" max="2100"></label>
       <label><span>至</span><input id="lnTo" type="number" placeholder="2031" min="1900" max="2100"></label>
-    </div>
-  </details>
-  <details style="margin-bottom:var(--space-md);font-size:13px;color:var(--text-secondary)">
-    <summary style="cursor:pointer;user-select:none">📋 提交匿名家境反馈（可选）</summary>
-    <div class="form-row" style="margin-top:10px">
-      <label><span>经济水平</span><select id="familyLevel"><option value="">不填</option><option>宽裕</option><option>普通</option><option>紧张</option></select></label>
     </div>
   </details>
   <button class="btn" id="submitBtn">生成解读</button>
@@ -101,19 +97,14 @@
 <!-- ═══ Chat Panel ═══ -->
 <div class=chat-panel id=chatPanel>
   <div class=chat-panel-header>
-    <h3>AI 命理解读 <span class=quota-badge id=quotaBadge></span> <span class=ask-ai-btn onclick=openPayModal() style="font-size:11px;margin-left:4px">解锁</span></h3>
+    <h3>AI 命理解读</h3>
     <button class=chat-panel-close onclick=closeChat()>✕</button>
   </div>
   <div class=chat-messages id=chatMessages>
     <div class=chat-empty>
       <div>AI 基于古典命理文献为你解读<br>纯文化娱乐参考</div>
       <div style="margin-top:10px;padding:10px 14px;background:var(--tag-bg);border-radius:8px;font-size:11px;line-height:1.7;text-align:left">
-        💬 <b>收费标准</b><br>
-        · 每日免费 3 次<br>
-        · ⚡体验版 ¥6.9 / 20次<br>
-        · ⭐推荐版 ¥12.9 / 60次<br>
-        · 👑尊享版 ¥19.9 / 永久<br>
-        · 点击 <b>🔓 解锁</b> 获取激活码
+        AI 内容仅作传统文化参考，不构成医疗、法律、投资或人生决策建议。
       </div>
     </div>
   </div>
@@ -139,38 +130,6 @@
         <svg width=13 height=13 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         微信 o0707111
       </span>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ 付费弹窗 ═══ -->
-<div class=modal-overlay id=payModal onclick=closePayModal()>
-  <div class=modal-card onclick="event.stopPropagation()">
-    <h3>🔑 解锁 AI 追问</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0">
-      <div style="background:var(--tag-bg);border-radius:10px;padding:10px 6px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:10px;color:var(--text-tertiary)">⚡ 体验版</div>
-        <div style="font-size:18px;font-weight:700;color:var(--accent)">¥6.9</div>
-        <div style="font-size:10px;color:var(--text-tertiary)">20次</div>
-      </div>
-      <div style="background:var(--accent);border-radius:10px;padding:10px 6px;text-align:center">
-        <div style="font-size:10px;color:rgba(255,255,255,.7)">⭐ 推荐</div>
-        <div style="font-size:18px;font-weight:700;color:#fff">¥12.9</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.7)">60次</div>
-      </div>
-      <div style="background:var(--tag-bg);border-radius:10px;padding:10px 6px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:10px;color:var(--text-tertiary)">👑 尊享版</div>
-        <div style="font-size:18px;font-weight:700;color:var(--accent)">¥19.9</div>
-        <div style="font-size:10px;color:var(--text-tertiary)">永久</div>
-      </div>
-    </div>
-    <p style="font-size:12px;color:var(--text-tertiary);text-align:center">已有激活码？直接输入下方</p>
-    <input id=actCodeInput placeholder="输入激活码" autocomplete=off>
-    <div class=status-msg id=actCodeStatus></div>
-    <p style="font-size:10px;color:var(--text-tertiary);text-align:center;margin:10px 0 0">🛡 退款保障：AI报错/超时不扣次 · 未激活可退款</p>
-    <div class=btn-row>
-      <button class=btn-secondary onclick=closePayModal()>取消</button>
-      <button class=btn-primary onclick=submitActivationCode()>激活</button>
     </div>
   </div>
 </div>

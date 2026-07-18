@@ -101,6 +101,13 @@ def test_init_chart_shell_sets_input_state_and_hour_warning():
     assert chart.warnings
 
 
+def test_stage_failure_warning_hides_internal_exception_text():
+    chart = _case_a_chart()
+
+    chart_module._warn_stage_failure(chart, "测试阶段", ValueError("provider-secret-detail"))
+
+    assert chart.warnings[-1] == "测试阶段暂不可用，已跳过该项"
+    assert "provider-secret-detail" not in chart.warnings[-1]
 def test_compute_four_pillars_sets_expected_known_case():
     chart = _init_chart_shell(
         name="案例A",
@@ -654,7 +661,7 @@ def test_compute_personality_family_stage_sets_analysis_and_returns_context(monk
     scale = chart.personality_result["evidence_view"]["score_scale"]
     assert scale["comparison_scope"] == "absolute_engine_heuristic"
     assert scale["ranking_scope"] == "within_chart_only"
-    assert chart.family_result["level"] == "普通"
+    assert chart.family_result is None
 
 
 def test_compute_personality_family_stage_marks_fusion_ready_when_enabled(monkeypatch):
@@ -698,7 +705,7 @@ def test_compute_body_use_stage_sets_balance_and_muku_signals(monkeypatch):
     assert chart.body_use_result["mu_ku_signals"] == ["原局辰+戌冲→墓库逢冲，重大转机信号"]
 
 
-def test_build_chart_returns_full_analysis_shape_for_known_case(monkeypatch):
+def test_build_chart_skips_unpublished_advanced_derivations_by_default(monkeypatch):
     monkeypatch.setenv("BAZI_LLM_REVIEW", "0")
     monkeypatch.setenv("BAZI_AI_ENABLED", "0")
     monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
@@ -713,7 +720,7 @@ def test_build_chart_returns_full_analysis_shape_for_known_case(monkeypatch):
     assert len(data["annual_scans"]) == 2
     assert len(data["changsheng"]) == 14
     assert data["personality"]
-    assert data["family"]
-    assert len(data["palace_star"]["entries"]) == 4
-    assert data["body_use"]["body_count"] == 1
-    assert data["body_use"]["use_count"] == 2
+    assert data["family"] is None
+    assert data["nayin_relations"] == []
+    assert data["palace_star"] is None
+    assert data["body_use"] is None

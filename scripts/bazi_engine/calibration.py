@@ -29,10 +29,19 @@ class RuleStat:
     source: str = ""    # "calibration" | "textbook"
 
     @property
-    def accuracy(self) -> float | None:
+    def agreement_rate(self) -> float | None:
         if self.total == 0:
             return None
         return self.verified / self.total
+
+    @property
+    def accuracy(self) -> float | None:
+        """Compatibility alias for historical callers.
+
+        This is agreement within recorded calibration signals, not predictive
+        accuracy on an independent population.
+        """
+        return self.agreement_rate
 
     def to_dict(self) -> dict:
         return {
@@ -40,7 +49,7 @@ class RuleStat:
             "category": self.category,
             "verified": self.verified,
             "total": self.total,
-            "accuracy": round(self.accuracy, 2) if self.accuracy is not None else None,
+            "agreement_rate": round(self.agreement_rate, 2) if self.agreement_rate is not None else None,
             "source": self.source,
         }
 
@@ -55,6 +64,11 @@ class CaseRecord:
     verified_signals: list[dict] = field(default_factory=list)
     family_context: dict | None = None  # {economic_level, father_occupation, mother_occupation, notes}
     notes: str = ""
+    dataset: str = "development"  # "development" | "holdout"
+    source_ref: str = ""
+    source_confidence: str = ""
+    event_details: dict[int, dict] = field(default_factory=dict)
+    negative_years: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = {
@@ -64,9 +78,16 @@ class CaseRecord:
             "events": {str(k): v for k, v in self.events.items()},
             "verified_signals": self.verified_signals,
             "notes": self.notes,
+            "dataset": self.dataset,
+            "event_details": {str(k): v for k, v in self.event_details.items()},
+            "negative_years": self.negative_years,
         }
         if self.family_context:
             d["family_context"] = self.family_context
+        if self.source_ref:
+            d["source_ref"] = self.source_ref
+        if self.source_confidence:
+            d["source_confidence"] = self.source_confidence
         return d
 
     @classmethod
@@ -80,7 +101,31 @@ class CaseRecord:
             verified_signals=d.get("verified_signals", []),
             family_context=d.get("family_context"),
             notes=d.get("notes", ""),
+            dataset=d.get("dataset", "development"),
+            source_ref=d.get("source_ref", ""),
+            source_confidence=d.get("source_confidence", ""),
+            event_details={int(k): v for k, v in d.get("event_details", {}).items()},
+            negative_years=[int(year) for year in d.get("negative_years", [])],
         )
+
+    def holdout_validation_issues(self) -> list[str]:
+        """Return missing evidence needed before a case may enter the holdout set."""
+        issues: list[str] = []
+        if self.dataset != "holdout":
+            issues.append("dataset 必须为 holdout")
+        if not {"year", "month", "day", "hour"} <= self.birth.keys():
+            issues.append("birth 缺少完整出生年月日时")
+        if not self.source_ref:
+            issues.append("缺少来源说明")
+        if not self.source_confidence:
+            issues.append("缺少来源可信度")
+        if not self.events:
+            issues.append("缺少已核实事件")
+        for year in self.events:
+            detail = self.event_details.get(year, {})
+            if not detail.get("direction"):
+                issues.append(f"{year} 缺少事件方向")
+        return issues
 
 
 class CalibrationStore:
@@ -127,7 +172,7 @@ class CalibrationStore:
         """保存到 JSON 文件"""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "version": "0.5.0",
+            "version": "0.6.0",
             "updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "cases": [c.to_dict() for c in self.cases.values()],
             "rule_stats": [rs.to_dict() for rs in self.rule_stats.values()],
@@ -144,19 +189,38 @@ class CalibrationStore:
         """
         self._load()
         case = self.cases.get(name)
-        if case and case.events:
+        if case and case.dataset == "development" and case.events:
             return dict(case.events)
         return None
 
-    def add_case(self, name: str, gender: str, birth: dict,
-                 events: dict[int, str] | None = None,
-                 notes: str = ""):
-        """新增或更新案例"""
+    def add_case(
+        self,
+        name: str,
+        gender: str,
+        birth: dict,
+        events: dict[int, str] | None = None,
+        notes: str = "",
+        *,
+        dataset: str = "development",
+        source_ref: str = "",
+        source_confidence: str = "",
+        event_details: dict[int, dict] | None = None,
+        negative_years: list[int] | None = None,
+    ):
+        """新增或更新开发案例；已录入的锁定集不允许覆盖。"""
         self._load()
         case = CaseRecord(
             name=name, gender=gender, birth=birth,
             events=events or {}, notes=notes,
+            dataset=dataset,
+            source_ref=source_ref,
+            source_confidence=source_confidence,
+            event_details=event_details or {},
+            negative_years=negative_years or [],
         )
+        existing = self._cases.get(name)
+        if existing and existing.dataset == "holdout" and existing.to_dict() != case.to_dict():
+            raise ValueError("锁定验证案例不可覆盖；请新增开发案例或建立新的锁定集版本")
         self._cases[name] = case
         self.save()
 
@@ -165,11 +229,16 @@ class CalibrationStore:
         self._load()
         if name not in self.cases:
             return
+        if self._cases[name].dataset == "holdout":
+            raise ValueError("锁定验证案例不可修改事件")
         self._cases[name].events.update(events)
+        self.save()
 
     def set_family_context(self, name: str, family_context: dict):
         """设置案例的家境上下文"""
         self._load()
+        if name in self._cases and self._cases[name].dataset == "holdout":
+            raise ValueError("锁定验证案例不可修改家境上下文")
         if name not in self.cases:
             self._cases[name] = CaseRecord(name=name, gender="", birth={})
         self._cases[name].family_context = family_context
@@ -179,10 +248,10 @@ class CalibrationStore:
         """获取案例的家境上下文"""
         self._load()
         case = self.cases.get(name)
-        return case.family_context if case else None
+        return case.family_context if case and case.dataset == "development" else None
         self.save()
 
-    def list_cases(self) -> list[dict]:
+    def list_cases(self, dataset: str | None = None) -> list[dict]:
         """列出所有案例摘要"""
         self._load()
         return [
@@ -192,9 +261,22 @@ class CalibrationStore:
                 "birth": c.birth,
                 "event_count": len(c.events),
                 "signal_count": len(c.verified_signals),
+                "dataset": c.dataset,
             }
             for c in self.cases.values()
+            if dataset is None or c.dataset == dataset
         ]
+
+    def holdout_readiness_report(self) -> dict:
+        """Report whether locked holdout cases contain enough evidence to score."""
+        self._load()
+        holdout = [case for case in self._cases.values() if case.dataset == "holdout"]
+        issues = {case.name: case.holdout_validation_issues() for case in holdout}
+        return {
+            "total": len(holdout),
+            "ready": sum(1 for case_issues in issues.values() if not case_issues),
+            "issues": {name: case_issues for name, case_issues in issues.items() if case_issues},
+        }
 
     # ── 信号验证 ──
 
@@ -276,8 +358,8 @@ class CalibrationStore:
                 "note": note,
             })
 
-            # 更新该年份的事件状态
-            if cat == "桃花":
+            # 锁定集只用于评估，不能在比较后写回或改变其事件标签。
+            if case.dataset != "holdout" and cat == "桃花":
                 if is_positive_actual:
                     case.events[yr] = "relationship"
                 elif is_negative_actual and actual in ("分手",):
@@ -286,11 +368,13 @@ class CalibrationStore:
         self.save()
         return report
 
-    def get_accuracy_report(self) -> dict:
-        """生成校准准确率报告"""
+    def get_signal_agreement_report(self, dataset: str | None = None) -> dict:
+        """Summarize agreement within recorded signals, not predictive accuracy."""
         self._load()
         report = {"total": 0, "match": 0, "mismatch": 0, "by_category": {}}
         for case in self._cases.values():
+            if dataset is not None and case.dataset != dataset:
+                continue
             for vs in case.verified_signals:
                 report["total"] += 1
                 cat = vs["category"]
@@ -304,12 +388,16 @@ class CalibrationStore:
                     report["mismatch"] += 1
 
         if report["total"] > 0:
-            report["accuracy"] = round(report["match"] / report["total"], 2)
+            report["agreement_rate"] = round(report["match"] / report["total"], 2)
         for cat in report["by_category"]:
             t = report["by_category"][cat]["total"]
             m = report["by_category"][cat]["match"]
-            report["by_category"][cat]["accuracy"] = round(m / t, 2) if t > 0 else 0
+            report["by_category"][cat]["agreement_rate"] = round(m / t, 2) if t > 0 else 0
         return report
+
+    def get_accuracy_report(self, dataset: str | None = None) -> dict:
+        """Compatibility alias for callers that still use the historical name."""
+        return self.get_signal_agreement_report(dataset=dataset)
 
     # ── 规则统计 ──
 

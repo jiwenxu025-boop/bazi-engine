@@ -27,7 +27,7 @@ def find_signal(annual_scans, year, expected_cat, min_strength=2):
     return None, "MISS"
 
 
-def check_case(annual_scans, year, expected_cat):
+def check_case(annual_scans, year, expected_cat) -> tuple[str, str, str]:
     """五级容差匹配。返回 (status, label, detail)。
 
     Returns:
@@ -46,18 +46,20 @@ def check_case(annual_scans, year, expected_cat):
     if sister:
         e, _ = find_signal(annual_scans, year, sister, min_strength=2)
         if e:
-            return "TOL", (
+            return (
+                "TOL",
                 f"{year} {expected_cat}←{sister}",
-                f"{e['direction']} ★{e['strength']} [跨界容差]"
+                f"{e['direction']} ★{e['strength']} [跨界容差]",
             )
 
     # ── L3: ±1年容差 ──
     for adj in [year - YEAR_TOLERANCE, year + YEAR_TOLERANCE]:
         e, _ = find_signal(annual_scans, adj, expected_cat, min_strength=2)
         if e:
-            return "TOL", (
+            return (
+                "TOL",
                 f"{year} {expected_cat}←{adj}年",
-                f"{e['direction']} ★{e['strength']} [±1年容差]"
+                f"{e['direction']} ★{e['strength']} [±1年容差]",
             )
 
     # ── L4: ±1年+跨类别容差 ──
@@ -65,9 +67,10 @@ def check_case(annual_scans, year, expected_cat):
         for adj in [year - YEAR_TOLERANCE, year + YEAR_TOLERANCE]:
             e, _ = find_signal(annual_scans, adj, sister, min_strength=2)
             if e:
-                return "TOL", (
+                return (
+                    "TOL",
                     f"{year} {expected_cat}←{adj}年{sister}",
-                    f"{e['direction']} ★{e['strength']} [±1年+跨界]"
+                    f"{e['direction']} ★{e['strength']} [±1年+跨界]",
                 )
 
     # ── L5: 弱信号 ──
@@ -93,44 +96,36 @@ def run_calibration(cases, liunian_margin=2):
 
     results = []
     for case in cases:
-        try:
-            chart = build_chart(
-                name=case["name"], gender=case["gender"],
-                year=case["year"], month=case["month"],
-                day=case["day"], hour=case["hour"],
-                liunian_range=(min(case["events"]) - liunian_margin,
-                               max(case["events"]) + liunian_margin),
-            )
-            annual_scans = chart.to_dict().get("annual_scans", [])
+        chart = build_chart(
+            name=case["name"], gender=case["gender"],
+            year=case["year"], month=case["month"],
+            day=case["day"], hour=case["hour"],
+            liunian_range=(min(case["events"]) - liunian_margin,
+                           max(case["events"]) + liunian_margin),
+        )
+        annual_scans = chart.to_dict().get("annual_scans", [])
 
-            matches = []
-            tolerances = []
-            misses = []
-            for year, expected_cat in case["events"].items():
-                status, label, detail = check_case(annual_scans, year, expected_cat)
-                if status == "HIT":
-                    matches.append(f"{label}: {detail}")
-                elif status == "TOL":
-                    tolerances.append(f"{label}: {detail}")
-                else:
-                    misses.append(f"{label}: {detail}")
+        matches = []
+        tolerances = []
+        misses = []
+        for year, expected_cat in case["events"].items():
+            status, label, detail = check_case(annual_scans, year, expected_cat)
+            if status == "HIT":
+                matches.append(f"{label}: {detail}")
+            elif status == "TOL":
+                tolerances.append(f"{label}: {detail}")
+            else:
+                misses.append(f"{label}: {detail}")
 
-            results.append({
-                "name": case["name"],
-                "matches": matches,
-                "tolerances": tolerances,
-                "misses": misses,
-                "hits": len(matches),
-                "tols": len(tolerances),
-                "total": len(case["events"]),
-            })
-        except Exception as e:
-            results.append({
-                "name": case["name"],
-                "error": str(e),
-                "matches": [], "tolerances": [], "misses": [],
-                "hits": 0, "tols": 0, "total": 0,
-            })
+        results.append({
+            "name": case["name"],
+            "matches": matches,
+            "tolerances": tolerances,
+            "misses": misses,
+            "hits": len(matches),
+            "tols": len(tolerances),
+            "total": len(case["events"]),
+        })
 
     total_strict = sum(r["hits"] for r in results)
     total_tolerance = sum(r["tols"] for r in results)

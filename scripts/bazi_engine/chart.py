@@ -142,6 +142,20 @@ class BaziChart:
     hour_confirmed: bool = True  # 时辰是否经用户确认
 
     def to_dict(self) -> dict:
+        signal_sources = sorted({
+            event.get("source", "rule")
+            for scan in self.annual_scans
+            for event in scan.to_dict().get("events", [])
+        })
+        ai_review_sources = sorted({
+            review.get("source", "llm")
+            for scan in self.annual_scans
+            for review in scan.to_dict().get("ai_reviews", [])
+        })
+        boundary_sensitive = any(
+            "边界" in warning or "交界" in warning or "夜子时" in warning
+            for warning in self.warnings
+        )
         data = {
             "name": self.name,
             "gender": self.gender,
@@ -215,6 +229,25 @@ class BaziChart:
             "tiaohou": self.tiaohou_result,
             "health_profile": self.health_profile,
             "body_use": self.body_use_result,
+            "report_meta": {
+                "schema_version": "1.0",
+                "engine": "bazi-engine",
+                "input": {
+                    "birth_time": self.birth_dt.strftime("%Y-%m-%d %H:%M"),
+                    "time_precision": "minute",
+                    "hour_confirmed": self.hour_confirmed,
+                },
+                "traceability": {
+                    "day_pillar_source": self.day_pillar_source,
+                    "annual_signal_sources": signal_sources or ["rule"],
+                    "annual_ai_review_sources": ai_review_sources,
+                },
+                "uncertainty": {
+                    "boundary_sensitive": boundary_sensitive,
+                    "warnings": list(self.warnings),
+                    "scope": "传统文化参考，不构成对具体事件的确定性判断",
+                },
+            },
         }
         from ._chart_context import build_current_context
         data["current_context"] = build_current_context(data)
@@ -343,17 +376,22 @@ def _init_chart_shell(
     life_stage_override: str,
     family_context: dict | None,
     hour_confirmed: bool,
+    minute: int = 0,
 ) -> BaziChart:
     chart = BaziChart.__new__(BaziChart)
     chart.name = name
     chart.gender = gender
-    chart.birth_dt = datetime(year, month, day, hour)
+    chart.birth_dt = datetime(year, month, day, hour, minute)
     chart.day_pillar_source = "override" if day_pillar_override else "formula"
     chart.favorable_tags = favorable or set()
     chart.warnings = []
     chart.life_stage_override = life_stage_override
     chart._life_stage_override = life_stage_override  # 供 scan_years 内部使用
     chart.family_context = family_context
+    chart.family_result = None
+    chart.nayin_relations = []
+    chart.palace_star_result = None
+    chart.body_use_result = None
     chart.hour_confirmed = hour_confirmed
     chart.jiaoyun_detail = {}
     chart.xiaoyun_pillars = []
@@ -375,12 +413,15 @@ def _compute_four_pillars(
     day: int,
     hour: int,
     day_pillar_override: tuple[str, str] | None,
+    minute: int = 0,
 ) -> tuple[Tiangan, Tiangan, Dizhi, Dizhi]:
-    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour)
+    y_tg, y_dz, y_w = compute_year_pillar(year, month, day, hour, minute)
     chart.warnings.extend(y_w)
     chart.year = PillarData("年柱", y_tg, y_dz)
 
-    m_tg, m_dz, m_w = compute_month_pillar(y_tg, month, day, hour, gregorian_year=year)
+    m_tg, m_dz, m_w = compute_month_pillar(
+        y_tg, month, day, hour, gregorian_year=year, birth_minute=minute,
+    )
     chart.warnings.extend(m_w)
     chart.month = PillarData("月柱", m_tg, m_dz)
 
@@ -397,6 +438,9 @@ def _compute_four_pillars(
     chart.warnings.extend(h_w)
     chart.hour = PillarData("时柱", h_tg, h_dz)
     chart.hour_zi_flag = zi_flag
+    minutes_since_boundary = (hour * 60 + minute - 60) % 120
+    if min(minutes_since_boundary, 120 - minutes_since_boundary) <= 30:
+        chart.warnings.append("出生时间接近时辰交界，时柱可能因出生记录误差而变化，建议核对分钟")
 
     return y_tg, m_tg, m_dz, h_dz
 
@@ -436,8 +480,14 @@ def _compute_nayin_relations(chart: BaziChart) -> None:
         chart.nayin_relations = find_all_nayin_relations(
             chart.year.nayin, chart.month.nayin, chart.day.nayin, chart.hour.nayin,
         )
-    except Exception as e:
-        chart.warnings.append(f"纳音生克链分析失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "纳音关系", error)
+
+
+def _warn_stage_failure(chart: BaziChart, stage: str, error: Exception) -> None:
+    """Keep internal exception details in logs, not in public report warnings."""
+    logger.exception("chart stage failed stage=%s type=%s", stage, type(error).__name__)
+    chart.warnings.append(f"{stage}暂不可用，已跳过该项")
 
 
 def _compute_yongshen_stage(
@@ -455,8 +505,8 @@ def _compute_yongshen_stage(
         # 若用户提供了喜用神，合并覆盖自动推荐
         if favorable:
             chart._yongshen_result["favorable"] = sorted(favorable)
-    except Exception as e:
-        chart.warnings.append(f"用神推荐失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "用神推荐", error)
 
     return all_stems, all_branches
 
@@ -472,8 +522,8 @@ def _compute_tiaohou_health_stage(
             chart.day_master, chart.month.branch, chart.day.branch, all_branches,
             all_stems=all_stems,
         ).to_dict()
-    except Exception as e:
-        chart.warnings.append(f"调候分析失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "调候分析", error)
 
     chart.health_profile = None
     try:
@@ -489,8 +539,8 @@ def _compute_tiaohou_health_stage(
             "tiaohou_advice": tiaohou_health["advice"],
             "wuxing_risks": wuxing_risks,
         }
-    except Exception as e:
-        chart.warnings.append(f"健康画像生成失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "健康符号分布", error)
 
 
 def _compute_ten_gods_stage(chart: BaziChart) -> None:
@@ -518,8 +568,8 @@ def _compute_pattern_stage(chart: BaziChart) -> list[Tiangan]:
             pys = _get_pattern_yongshen(chart.pattern, chart.day_master)
             if pys:
                 chart._yongshen_result["pattern_yongshen"] = pys
-        except Exception:
-            pass
+        except Exception as error:
+            _warn_stage_failure(chart, "格局用神补充", error)
 
     return all_stems
 
@@ -532,8 +582,8 @@ def _compute_void_gods_stage(chart: BaziChart, all_stems: list[Tiangan]) -> None
             chart.day_master, chart.month.branch, all_stems,
             favorable_shishen=fav,
         )
-    except Exception as e:
-        chart.warnings.append(f"虚神检测失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "虚神检测", error)
 
 
 def _compute_dayun_stage(chart: BaziChart, gender: str) -> int:
@@ -575,8 +625,8 @@ def _compute_dayun_modulation_stage(chart: BaziChart, start_age: int) -> None:
             harmful_shishen=set(yongshen_data.get("harmful", [])),
         )
         chart.dayun_modulations = [m.to_dict() for m in modulator.modulate()]
-    except Exception as e:
-        chart.warnings.append(f"大运调制失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "大运调制", error)
 
 
 def _compute_interactions_stage(
@@ -615,8 +665,8 @@ def _compute_interactions_stage(
                  "severity": fg.severity, "fix_wuxing": fg.fix_wuxing}
                 for fg in false_gens
             ]
-    except Exception:
-        pass
+    except Exception as error:
+        _warn_stage_failure(chart, "假生关系检测", error)
 
     return stem_labels, branch_labels
 
@@ -653,7 +703,8 @@ def _compute_liunian_stage(
                             chart.day.stem, chart.hour.stem],
             gender=gender,
         )
-    except Exception:
+    except Exception as error:
+        logger.exception("personality context failed type=%s", type(error).__name__)
         chart.warnings.append("性格上下文构建失败，流年将无个性化备注")
 
     chart.annual_scans = scan_years(
@@ -699,8 +750,8 @@ def _compute_changsheng_stage(chart: BaziChart) -> None:
                 chart.luck_pillars,
                 chart.annual_scans,
             )
-        except Exception as e:
-            chart.warnings.append(f"十二长生分析失败: {e}")
+        except Exception as error:
+            _warn_stage_failure(chart, "十二长生分析", error)
 
 
 def _compute_life_stage(chart: BaziChart, life_stage_override: str, start_age: int) -> None:
@@ -730,8 +781,9 @@ def _compute_life_stage(chart: BaziChart, life_stage_override: str, start_age: i
                 current_age, dayun_ten_god=dn_tg_name,
                 pattern=chart.pattern, has_xuesheng_signal=has_xs,
             )
-        except Exception:
+        except Exception as error:
             # fallback: 纯年龄判断
+            logger.exception("life stage calculation failed type=%s", type(error).__name__)
             chart.warnings.append("智能人生阶段判定失败，降级为纯年龄判断")
             today = date.today()
             current_age = today.year - chart.birth_dt.year
@@ -753,7 +805,7 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
     pd = None
     interactions_dict = None
     try:
-        from .personality_analysis import analyze_family, analyze_personality, build_pillars_data_for_analysis
+        from .personality_analysis import analyze_personality, build_pillars_data_for_analysis
         pd = build_pillars_data_for_analysis(chart)
 
         yongshen_data = chart._yongshen_result or {}
@@ -799,22 +851,8 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
                 interactions=interactions_dict,
             )
             chart.personality_result["pattern_validation"] = pattern_val
-        except Exception:
-            pass
-
-        # 家境分析
-        fr = analyze_family(
-            day_master_stem=chart.day_master.value,
-            day_master_wuxing=chart.day_master.wuxing.value,
-            gender=gender,
-            strength=yongshen_data.get("strength", "中和"),
-            yongshen_result=yongshen_data,
-            pillars_data=pd,
-            interactions=interactions_dict,
-            pattern=chart.pattern,
-            family_context=family_context,
-        )
-        chart.family_result = fr.to_dict()
+        except Exception as error:
+            _warn_stage_failure(chart, "格局状态校验", error)
 
         from .personality_analysis.evidence import build_personality_evidence_view
         chart.personality_result["evidence_view"] = build_personality_evidence_view(
@@ -827,8 +865,8 @@ def _compute_personality_family_stage(chart: BaziChart, gender: str, family_cont
             chart.personality_result["_fusion_ready"] = True
 
     except Exception as error:
-        logger.exception("personality and family analysis failed type=%s", type(error).__name__)
-        chart.warnings.append("性格家境分析暂不可用")
+        logger.exception("personality analysis failed type=%s", type(error).__name__)
+        chart.warnings.append("性格分析暂不可用")
 
     return pd, interactions_dict
 
@@ -842,8 +880,8 @@ def _compute_palace_star_stage(chart: BaziChart, pd) -> None:
             chart.palace_star_result = analyze_palace_stars(
                 pd_ps, chart.spirits, chart.day_master
             ).to_dict()
-        except Exception as e:
-            chart.warnings.append(f"宫位叠象分析失败: {e}")
+        except Exception as error:
+            _warn_stage_failure(chart, "宫位叠象分析", error)
 
 
 def _compute_body_use_stage(chart: BaziChart, pd, interactions_dict: dict | None) -> None:
@@ -853,8 +891,8 @@ def _compute_body_use_stage(chart: BaziChart, pd, interactions_dict: dict | None
             chart.body_use_result = analyze_body_use(
                 pd, interactions_dict, chart.luck_pillars, chart.annual_scans
             ).to_dict()
-    except Exception as e:
-        chart.warnings.append(f"宾主体用分析失败: {e}")
+    except Exception as error:
+        _warn_stage_failure(chart, "宾主体用分析", error)
 
 
 def build_chart(
@@ -872,6 +910,7 @@ def build_chart(
     life_stage_override: str = "",
     family_context: dict | None = None,
     hour_confirmed: bool = True,
+    minute: int = 0,
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, signals)
     on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
 ) -> BaziChart:
@@ -901,6 +940,7 @@ def build_chart(
         life_stage_override=life_stage_override,
         family_context=family_context,
         hour_confirmed=hour_confirmed,
+        minute=minute,
     )
 
     # 校准数据库自动加载
@@ -918,7 +958,7 @@ def build_chart(
 
     # ── 1-4. 四柱 ──
     y_tg, m_tg, m_dz, h_dz = _compute_four_pillars(
-        chart, year, month, day, hour, day_pillar_override
+        chart, year, month, day, hour, day_pillar_override, minute
     )
 
     # ── 5. 藏干 + 纳音 ──
@@ -926,9 +966,6 @@ def build_chart(
 
     # ── 5b. 命宫 + 身宫 + 胎元 ──
     _compute_palace_origins(chart, y_tg, m_tg, m_dz, h_dz)
-
-    # ── 5d. 纳音生克链 ──
-    _compute_nayin_relations(chart)
 
     # ── 5c. 用神自动推荐（始终运行以获取强弱数据，用户喜用可补充）──
     all_stems, all_branches = _compute_yongshen_stage(chart, favorable)
@@ -977,12 +1014,6 @@ def build_chart(
     _compute_life_stage(chart, life_stage_override, start_age)
 
     # ── 13. 性格与家境分析 ──
-    pd, interactions_dict = _compute_personality_family_stage(chart, gender, family_context)
-
-    # ── 13b. 宫位叠象 ──
-    _compute_palace_star_stage(chart, pd)
-
-    # ── 13c. 宾主体用 + 墓库应期 ──
-    _compute_body_use_stage(chart, pd, interactions_dict)
+    _compute_personality_family_stage(chart, gender, family_context)
 
     return chart

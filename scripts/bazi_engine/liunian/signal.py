@@ -119,6 +119,7 @@ class AnnualScan:
     dayun_stem: Tiangan | None = None
     dayun_branch: Dizhi | None = None
     events: list[EventSignal] = field(default_factory=list)
+    ai_reviews: list[EventSignal] = field(default_factory=list)
     age: int | None = None
     sb_relation: str = ""            # 干支关系
     stem_weight: float = 0.5         # 天干权重
@@ -136,5 +137,6 @@ class AnnualScan:
             "branch_weight": self.branch_weight,
             "dayun_weight_note": self.dayun_weight_note,
             "events": [e.to_dict() for e in self.events],
+            "ai_reviews": [review.to_dict() for review in self.ai_reviews],
         }
 

@@ -674,6 +674,7 @@ def main():
     parser.add_argument("--month", type=int, required=True)
     parser.add_argument("--day", type=int, required=True)
     parser.add_argument("--hour", type=int, required=True, help="24小时制 (0-23)")
+    parser.add_argument("--minute", type=int, default=0, choices=range(60), help="分钟 (0-59)")
     parser.add_argument("--day-pillar", nargs=2, metavar=("STEM", "BRANCH"),
                         help="日柱覆盖 (如: 壬 辰)")
     parser.add_argument("--liunian", type=str, help="流年范围 (如: 2023-2030)")
@@ -719,6 +720,7 @@ def main():
         month=args.month,
         day=args.day,
         hour=args.hour,
+        minute=args.minute,
         day_pillar_override=override,
         liunian_range=ln_range,
         favorable=favorable_set,
@@ -748,15 +750,22 @@ def main():
         from .calibration import get_store
         store = get_store()
         report = store.compare_with_chart(args.name, chart)
-        acc = store.get_accuracy_report()
+        agreement = store.get_signal_agreement_report(dataset="development")
         if report:
             print("\n  ── 校准对比 ──")
             for r in report:
                 s = "✓" if r["status"] == "match" else "✗"
                 print(f"  {s} {r['year']} [{r['category']}] {r['note']}")
-            print(f"\n  准确率: {acc.get('accuracy', 0)*100:.0f}% ({acc['match']}/{acc['total']})")
-            for cat, v in acc.get("by_category", {}).items():
-                print(f"    {cat}: {v['accuracy']*100:.0f}% ({v['match']}/{v['total']})")
+            print(
+                "\n  已记录信号一致率: "
+                f"{agreement.get('agreement_rate', 0)*100:.0f}% "
+                f"({agreement['match']}/{agreement['total']})"
+            )
+            for cat, value in agreement.get("by_category", {}).items():
+                print(
+                    f"    {cat}: {value['agreement_rate']*100:.0f}% "
+                    f"({value['match']}/{value['total']})"
+                )
 
 
 if __name__ == "__main__":
