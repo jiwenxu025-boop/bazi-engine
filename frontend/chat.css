@@ -281,7 +281,7 @@
 .modal-card input{
   width:100%;border:1.5px solid var(--border);border-radius:10px;
   padding:11px 14px;font-size:14px;outline:none;
-  margin:12px 0;text-align:center;letter-spacing:2px;
+  margin:12px 0;text-align:center;letter-spacing:0;
   box-sizing:border-box;transition:border-color .2s;
 }
 .modal-card input:focus{border-color:var(--accent)}
@@ -327,4 +327,44 @@
   .chat-context-hint{margin:0 12px 8px}
   .chat-input-suggestions{gap:4px}
   .chat-input-suggestions span{font-size:10px;padding:3px 8px}
+}
+
+/* Editorial chat treatment */
+body .chat-toggle{
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:var(--accent);
+  color:var(--accent-text);
+  box-shadow:0 10px 26px rgba(28,50,39,.2);
+  font-size:0;
+}
+body .chat-toggle:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(28,50,39,.25)}
+body .chat-toggle svg{width:22px;height:22px}
+body .chat-panel{width:430px;background:var(--surface);border-left-color:var(--border);box-shadow:-16px 0 44px rgba(21,39,29,.16)}
+body .modal-card{border-radius:8px}
+body .chat-panel-header{padding:20px 22px}
+body .chat-panel-header h3{font-family:"Noto Serif SC","Songti SC",serif;font-size:17px;font-weight:600}
+body .chat-panel-close{display:grid;place-items:center;width:32px;height:32px;padding:0}
+body .chat-panel-close svg{width:16px;height:16px}
+body .chat-input-suggestions{padding:4px 18px 10px}
+body .chat-input-suggestions button{
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:5px 10px;
+  color:var(--text-secondary);
+  background:transparent;
+  font:inherit;
+  font-size:11px;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+body .chat-input-suggestions button:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-text);transform:translateY(-1px)}
+body .chat-input-suggestions span{display:none}
+body .chat-input-area button{display:grid;place-items:center;background:var(--accent);color:var(--accent-text)}
+body .chat-input-area button svg{width:17px;height:17px}
+body .chat-empty>div:first-child{font-family:"Noto Serif SC","Songti SC",serif;font-size:15px;color:var(--text-secondary)}
+@media(max-width:520px){
+  body .chat-toggle{bottom:18px;right:18px;width:48px;height:48px}
+  body .chat-panel{width:100vw}
 }

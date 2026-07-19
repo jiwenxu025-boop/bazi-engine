@@ -2,6 +2,16 @@
 /* HTML 转义：防止用户输入中的 <>&'" 破坏页面结构 */
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+function _uiIcon(name){
+  let paths = {
+    'chevron-left': '<path d="m15 18-6-6 6-6"></path>',
+    'chevron-right': '<path d="m9 18 6-6-6-6"></path>',
+    'calendar': '<rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',
+  };
+  if (!paths[name]) return '';
+  return '<svg class=ui-icon aria-hidden=true viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width="1.8" stroke-linecap=round stroke-linejoin=round>' + paths[name] + '</svg>';
+}
+
 /* ==========================================
    Theme
    ========================================== */
@@ -37,8 +47,8 @@ function toggleTheme(){
 function updateToggle(){
   let btn = document.getElementById('themeToggle');
   let isDark = document.documentElement.classList.contains('dark');
-  btn.textContent = isDark ? '☾' : '☀';
   btn.title = isDark ? '切换浅色模式' : '切换深色模式';
+  if (btn.setAttribute) btn.setAttribute('aria-label', btn.title);
 }
 
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
@@ -73,7 +83,7 @@ function updateHourHint(){
   if (!confirmed || !hint) return;
   hint.textContent = confirmed.checked
     ? '已确认，格局、起运和时柱神煞将纳入解读'
-    : '⚠ 未确认，格局、起运、时柱神煞仅供参考';
+    : '未确认，格局、起运、时柱神煞仅供参考';
 }
 
 document.getElementById('hourConfirmed').addEventListener('change', updateHourHint);
@@ -906,7 +916,13 @@ function _buildReportOverview(d){
   h += '<div class=report-eyebrow>命盘总览</div>';
   h += '<div class=report-headline>' + esc(headline) + '</div>';
   h += '<div class=report-subline>先看结论，再看依据。下面的四柱、流年和规则细节用于解释这些判断从哪里来。</div>';
+  h += '<div class=report-document-meta>';
+  h += '<span>' + esc(d.name || '命主') + '</span>';
+  if (d.gender) h += '<span>' + esc(d.gender) + '</span>';
+  if (d.birth) h += '<span>' + esc(d.birth) + '</span>';
   h += '</div>';
+  h += '</div>';
+  h += _buildOverviewPillars(d);
   h += '<div class=overview-grid>';
   h += '<div class=overview-item><span>日主</span><b>' + esc(dayMaster || '待判断') + '</b></div>';
   h += '<div class=overview-item><span>格局</span><b>' + esc(pattern) + '</b></div>';
@@ -916,6 +932,30 @@ function _buildReportOverview(d){
   h += '<div class=overview-item><span>近期重点</span><b>' + esc(focusText) + '</b></div>';
   h += '</div>';
   h += '</section>';
+  return h;
+}
+
+function _buildOverviewPillars(d){
+  let pillars = d && d.four_pillars ? d.four_pillars : {};
+  let labels = {year:'年柱', month:'月柱', day:'日柱', hour:'时柱'};
+  let keys = ['year', 'month', 'day', 'hour'];
+  let h = '<div class=overview-pillars aria-label=四柱>';
+  for (let i = 0; i < keys.length; i++){
+    let key = keys[i];
+    let pv = pillars[key] || {};
+    let stem = pv.stem || '—';
+    let branch = pv.branch || '';
+    let hidden = Array.isArray(pv.hidden_stems) ? pv.hidden_stems.map(function(item){return item && item.stem ? item.stem : '';}).join('') : '';
+    let tenGod = pv.ten_god || (key === 'day' ? '日主' : '');
+    let dayClass = key === 'day' ? ' overview-pillar-day' : '';
+    let dayAttr = key === 'day' ? ' data-daymaster tabindex="0" role="button" aria-label="查看日主详情"' : '';
+    h += '<div class="pillar overview-pillar' + dayClass + '"' + dayAttr + '>';
+    h += '<span class=overview-pillar-label>' + labels[key] + '</span>';
+    h += '<strong class=overview-pillar-ganzhi>' + esc(stem + branch) + '</strong>';
+    h += '<span class=overview-pillar-sub>' + esc(tenGod || hidden || '—') + '</span>';
+    h += '</div>';
+  }
+  h += '</div>';
   return h;
 }
 
@@ -1251,7 +1291,8 @@ function _buildReportNav(d){
   let h = '<nav class=report-nav aria-label=报告导航>';
   h += '<span class=report-nav-label>报告导航</span>';
   for (let i = 0; i < items.length; i++){
-    h += '<a href="#' + items[i].id + '">' + items[i].label + '</a>';
+    let index = String(i + 1).padStart(2, '0');
+    h += '<a href="#' + items[i].id + '"><small>' + index + '</small><span>' + items[i].label + '</span></a>';
   }
   h += '</nav>';
   return h;
@@ -1387,8 +1428,8 @@ function render(d){
       let prevIdx2 = curIdx2 - 1; if (prevIdx2 < 0) prevIdx2 = allStages2.length - 1;
       let nextIdx2 = curIdx2 + 1; if (nextIdx2 >= allStages2.length) nextIdx2 = 0;
       h += '<span style="font-size:11px;color:var(--text-tertiary);margin-right:6px">引擎判定: ' + stageLabel + '</span>';
-      h += '<button class="stage-toggle-btn" onclick="toggleLifeStage(\'' + curStage2 + '\', -1)" style="margin-right:4px">◀</button>';
-      h += '<button class="stage-toggle-btn" onclick="toggleLifeStage(\'' + curStage2 + '\', 1)">▶</button>';
+      h += '<button class="stage-toggle-btn" onclick="toggleLifeStage(\'' + curStage2 + '\', -1)" style="margin-right:4px" title="上一阶段" aria-label="上一阶段">' + _uiIcon('chevron-left') + '</button>';
+      h += '<button class="stage-toggle-btn" onclick="toggleLifeStage(\'' + curStage2 + '\', 1)" title="下一阶段" aria-label="下一阶段">' + _uiIcon('chevron-right') + '</button>';
     }
     h += '</div>';
   }
@@ -1555,7 +1596,7 @@ function render(d){
       h += '<span class=event-ganzhi>' + scan.liunian + '</span>';
       h += '<span class=event-age>' + scan.age + '岁</span>';
       h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
-      h += '<span class=chevron>▶</span>';
+      h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
       h += '</div>';
       let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '规则层暂无显著信号';
       h += '<div class=event-summary-line>' + esc(ruleSummary) + '</div>';
@@ -1639,9 +1680,43 @@ function render(d){
   }
 
   document.getElementById('result').innerHTML = h;
-  document.getElementById('copyBtn').style.display = 'inline-block';
+  document.getElementById('copyBtn').style.display = 'inline-flex';
   document.getElementById('reportActions').classList.add('active');
+  _setupReportNavigation();
 
+}
+
+function _setupReportNavigation(){
+  let nav = document.querySelector('.report-nav');
+  if (!nav) return;
+  let links = nav.querySelectorAll('a[href^="#"]');
+  if (!links.length) return;
+  for (let i = 0; i < links.length; i++){
+    links[i].addEventListener('click', function(){
+      for (let j = 0; j < links.length; j++) links[j].classList.remove('active');
+      this.classList.add('active');
+    });
+  }
+  let Observer = (typeof IntersectionObserver !== 'undefined') ? IntersectionObserver : null;
+  if (!Observer) {
+    links[0].classList.add('active');
+    return;
+  }
+  let sections = [];
+  for (let i = 0; i < links.length; i++){
+    let id = links[i].getAttribute('href').slice(1);
+    let section = document.getElementById(id);
+    if (section) sections.push({link:links[i], section:section});
+  }
+  if (!sections.length) return;
+  let observer = new Observer(function(entries){
+    for (let i = 0; i < entries.length; i++){
+      if (!entries[i].isIntersecting) continue;
+      for (let j = 0; j < sections.length; j++) sections[j].link.classList.toggle('active', sections[j].section === entries[i].target);
+    }
+  }, {rootMargin:'-18% 0px -68% 0px', threshold:0});
+  for (let i = 0; i < sections.length; i++) observer.observe(sections[i].section);
+  sections[0].link.classList.add('active');
 }
 
 /* ==========================================
@@ -1777,7 +1852,7 @@ function refreshFlowSection(d){
     h += '<span class=event-ganzhi>' + scan.liunian + '</span>';
     h += '<span class=event-age>' + scan.age + '岁</span>';
     h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
-    h += '<span class=chevron>▶</span>';
+    h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
     h += '</div>';
     let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '规则层暂无显著信号';
     h += '<div class=event-summary-line>' + esc(ruleSummary) + '</div>';
@@ -1791,7 +1866,7 @@ function refreshFlowSection(d){
       h += '<span class=stars>' + '★'.repeat(ev2.strength) + '</span>';
       h += '<span class=tag>' + ev2.category + '</span>';
       h += '<span class="' + cls2 + '">' + ev2.direction + '</span>';
-      if (ev2.source === 'llm') h += '<span class=llm-badge>🤖</span>';
+      if (ev2.source === 'llm') h += '<span class=llm-badge>AI</span>';
       if (ev2.prediction) h += '<span class=prediction-text>' + ev2.prediction + '</span>';
       h += '</div>';
       if (ev2.triggers[0]){
@@ -1861,9 +1936,11 @@ document.getElementById('copyBtn').addEventListener('click', function(){
   if (!text) return;
   navigator.clipboard.writeText(text).then(function(){
     let btn = document.getElementById('copyBtn');
-    let orig = btn.textContent;
-    btn.textContent = '✓ 已复制';
-    setTimeout(function(){ btn.textContent = orig; }, 1800);
+    let label = btn.querySelector ? btn.querySelector('.copy-label') : null;
+    let orig = label ? label.textContent : btn.textContent;
+    if (label) label.textContent = '已复制';
+    else btn.textContent = '已复制';
+    setTimeout(function(){ if (label) label.textContent = orig; else btn.textContent = orig; }, 1800);
   }).catch(function(){
     // Fallback for older browsers
     let ta = document.createElement('textarea');
@@ -1872,9 +1949,11 @@ document.getElementById('copyBtn').addEventListener('click', function(){
     document.execCommand('copy');
     document.body.removeChild(ta);
     let btn = document.getElementById('copyBtn');
-    let orig2 = btn.textContent;
-    btn.textContent = '✓ 已复制';
-    setTimeout(function(){ btn.textContent = orig2; }, 1800);
+    let label = btn.querySelector ? btn.querySelector('.copy-label') : null;
+    let orig2 = label ? label.textContent : btn.textContent;
+    if (label) label.textContent = '已复制';
+    else btn.textContent = '已复制';
+    setTimeout(function(){ if (label) label.textContent = orig2; else btn.textContent = orig2; }, 1800);
   });
 });
 
@@ -2001,9 +2080,9 @@ function _buildCalendar(d){
   h += '<div class=info-panel>';
   h += '<div class=calendar-section id=calendarSection>';
   h += '<div class=calendar-header>';
-  h += '<button class=calendar-nav onclick="_calendarNav(-1)" title="上个月">◀</button>';
+  h += '<button class=calendar-nav onclick="_calendarNav(-1)" title="上个月" aria-label="上个月">' + _uiIcon('chevron-left') + '</button>';
   h += '<span class=calendar-month id=calendarMonth>' + yr + '年' + months[mo-1] + '</span>';
-  h += '<button class=calendar-nav onclick="_calendarNav(1)" title="下个月">▶</button>';
+  h += '<button class=calendar-nav onclick="_calendarNav(1)" title="下个月" aria-label="下个月">' + _uiIcon('chevron-right') + '</button>';
   h += '</div>';
 
   // 星期头
@@ -2027,7 +2106,7 @@ function _buildCalendar(d){
   h += '</div>';
 
   h += '<div class=calendar-actions>';
-  h += '<button class=calendar-export-btn onclick="_exportICS()">📅 导出日历</button>';
+  h += '<button class=calendar-export-btn onclick="_exportICS()">' + _uiIcon('calendar') + '<span>导出日历</span></button>';
   h += '</div>';
 
   h += '</div></div>'; // /calendar-section + /info-panel

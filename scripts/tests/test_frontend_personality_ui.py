@@ -703,10 +703,19 @@ def test_report_overview_summarizes_chart_for_reading_first_result_page():
         vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
 
         const html = sandbox._buildReportOverview({{
+          name: '测试用户',
+          gender: '男',
+          birth: '1990-06-15 08:00',
           day_master: {{ stem: '甲', wuxing: '木', yinyang: '阳' }},
           pattern: '正官格',
           yongshen: {{ strength: '身弱', favorable_wuxing: ['水', '木'] }},
           life_stage: '职场',
+          four_pillars: {{
+            year: {{stem: '庚', branch: '午', hidden_stems: [], ten_god: '七杀'}},
+            month: {{stem: '壬', branch: '午', hidden_stems: [], ten_god: '偏印'}},
+            day: {{stem: '甲', branch: '寅', hidden_stems: [], ten_god: ''}},
+            hour: {{stem: '戊', branch: '辰', hidden_stems: [], ten_god: '偏财'}}
+          }},
           annual_scans: [
             {{ year: 2026, events: [{{ category: '事业', strength: 3 }}, {{ category: '财运', strength: 2 }}] }},
             {{ year: 2027, events: [{{ category: '感情', strength: 3 }}] }}
@@ -719,6 +728,9 @@ def test_report_overview_summarizes_chart_for_reading_first_result_page():
         if (!html.includes('身弱')) throw new Error('strength summary missing');
         if (!html.includes('职场')) throw new Error('life stage summary missing');
         if (!html.includes('事业')) throw new Error('future focus summary missing');
+        if (!html.includes('overview-pillars')) throw new Error('pillar masthead missing');
+        if (!html.includes('庚午') || !html.includes('甲寅')) throw new Error('pillar values missing');
+        if (!html.includes('data-daymaster')) throw new Error('day-master interaction missing');
         """
     )
 
@@ -741,6 +753,30 @@ def test_home_form_keeps_advanced_options_collapsed_and_uses_report_cta():
     assert 'id="submitBtn">生成解读</button>' in html
 
 
+def test_editorial_shell_uses_wide_task_first_layout_and_svg_tools():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    compact_css = "".join(css.split())
+
+    for class_name in (
+        'class="brand"',
+        'class="entry-shell"',
+        'class="entry-intro"',
+        'class="entry-visual"',
+        'class="entry-pillars"',
+        'class="form-heading"',
+        'class="result-zone"',
+    ):
+        assert class_name in html
+
+    assert "💬" not in html
+    assert "<svg" in html
+    assert "body.container{max-width:1180px" in compact_css
+    assert "body.entry-shell{display:grid" in compact_css
+    assert "grid-template-columns:190pxminmax(0,1fr)" in compact_css
+    assert "body.report-overview{display:grid" in compact_css
+
+
 def test_mobile_report_action_bar_contains_primary_reader_actions():
     html = INDEX_HTML.read_text(encoding="utf-8")
     css = (ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
@@ -755,8 +791,9 @@ def test_mobile_report_action_bar_contains_primary_reader_actions():
 
 def test_frontend_asset_cache_versions():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'href="style.css?v=20260718-cn-locations1"' in html
-    assert 'src="app.js?v=20260718-cn-locations1"' in html
+    assert 'href="style.css?v=20260719-editorial1"' in html
+    assert 'src="app.js?v=20260719-editorial1"' in html
+    assert 'href="chat.css?v=20260719-editorial1"' in html
 
 
 def test_frontend_exposes_city_search_and_true_solar_time_contract():

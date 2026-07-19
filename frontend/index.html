@@ -6,8 +6,8 @@
 <title>八字解读</title>
 <script>(function(){var t=localStorage.getItem('bazi-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')})()</script>
 <link rel="icon" href="favicon.svg?v=20260716" type="image/svg+xml">
-<link rel="stylesheet" href="style.css?v=20260718-cn-locations1">
-<link rel=stylesheet href=chat.css>
+<link rel="stylesheet" href="style.css?v=20260719-editorial1">
+<link rel="stylesheet" href="chat.css?v=20260719-editorial1">
 </head>
 <body>
 
@@ -15,85 +15,153 @@
 
 <!-- Header -->
 <header class="header">
-  <button class="theme-toggle" id="themeToggle" title="切换深浅色" aria-label="切换深浅色">☀</button>
-  <h1>八字解读</h1>
-  <p class="disclaimer">仅供娱乐参考，不构成任何决策依据 · <a href=/privacy target=_blank>隐私政策</a> · <a href=/terms target=_blank>服务协议</a></p>
+  <a class="brand" href="/" aria-label="八字解读首页">
+    <span class="brand-mark" aria-hidden="true">八</span>
+    <span class="brand-copy">
+      <h1>八字解读</h1>
+      <span>BAZI ENGINE</span>
+    </span>
+  </a>
+  <nav class="header-nav" aria-label="辅助导航">
+    <a href=/privacy target=_blank>隐私</a>
+    <a href=/terms target=_blank>条款</a>
+    <button class="theme-toggle" id="themeToggle" title="切换深浅色" aria-label="切换深浅色">
+      <svg class="theme-icon theme-icon-sun" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"></path>
+      </svg>
+      <svg class="theme-icon theme-icon-moon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+  </nav>
   <div class="api-row">
     <label>API</label>
     <input id="apiUrl" type=hidden>
   </div>
 </header>
 
-<div class="start-steps" aria-label="生成流程">
-  <span>填写出生信息</span>
-  <span>生成命盘</span>
-  <span>阅读报告</span>
-</div>
-
-<!-- Form -->
-<div class="form-card" id="formCard">
-  <div class="form-row">
-    <label><span>姓名</span><input id="name" placeholder="可选"></label>
-    <label><span>性别</span><select id="gender"><option>男</option><option>女</option></select></label>
-  </div>
-  <div class="form-row birth-datetime-grid">
-    <span class="birth-datetime-context birth-date-context">出生日期（公历/阳历）</span>
-    <span class="birth-datetime-context birth-time-context">出生时间（24小时制）</span>
-    <label><span>年</span><input id="year" type="number" placeholder="2000" min="1900" max="2100" required></label>
-    <label><span>月</span><input id="month" type="number" placeholder="1" min="1" max="12" required></label>
-    <label><span>日</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
-    <label><span>时</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
-    <label><span>分</span><input id="minute" type="number" placeholder="00" min="0" max="59" value="0"></label>
-  </div>
-  <div class="birth-location-row">
-    <label for="citySearch"><span>出生城市/区县（默认未知）</span></label>
-    <div class="city-picker">
-      <input id="citySearch" type="search" placeholder="搜索城市或区县，如成都、朝阳区" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cityOptions">
-      <button type="button" class="city-clear" id="cityClear" title="清除城市" aria-label="清除城市">&times;</button>
-      <div class="city-options" id="cityOptions" role="listbox" hidden></div>
+<main>
+  <section class="entry-shell" aria-labelledby="entryTitle">
+    <div class="entry-intro">
+      <div class="entry-copy">
+        <h2 id="entryTitle">时间落笔，四柱成章。</h2>
+        <p>出生的年月日时，是这份命盘唯一的起点。</p>
+      </div>
+      <div class="entry-visual" aria-hidden="true">
+        <div class="orbit orbit-outer"></div>
+        <div class="orbit orbit-inner"></div>
+        <div class="entry-pillars">
+          <span><small>年柱</small><b>—</b></span>
+          <span><small>月柱</small><b>—</b></span>
+          <span><small>日柱</small><b>—</b></span>
+          <span><small>时柱</small><b>—</b></span>
+        </div>
+        <div class="visual-seal">命<br>盘</div>
+      </div>
+      <div class="entry-meta" aria-label="当前排盘口径">
+        <span>公历输入</span>
+        <span>UTC+8</span>
+        <span>真太阳时校正</span>
+      </div>
     </div>
-  </div>
-  <p class="time-basis-note" id="timeBasisNote">出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。</p>
-  <div class="form-row" style="margin-bottom:6px">
-    <label style="flex-direction:row;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
-      <input type="checkbox" id="hourConfirmed" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
-      <span>我知道准确出生时辰</span>
-      <span id="hourHint" style="font-size:11px;color:var(--gold);margin-left:2px">⚠ 未确认，格局、起运、时柱神煞仅供参考</span>
-    </label>
-  </div>
-  <details class="advanced-options">
-    <summary>高级设置</summary>
-    <div class="form-row advanced-time-grid" style="margin-top:10px">
-      <label><span>出生记录精度</span><select id="timeAccuracy"><option value="minute">精确到分钟</option><option value="hour">仅确认时辰</option><option value="unknown">时间不确定</option></select></label>
-      <label><span>手动经度（东经为正）</span><input id="longitude" type="number" step="0.0001" min="-180" max="180" placeholder="可选"></label>
-      <label><span>时区偏移（分钟）</span><input id="timezoneOffset" type="number" min="-720" max="840" value="480"></label>
-    </div>
-    <div class="form-row" style="margin-top:10px">
-      <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2026" min="1900" max="2100"></label>
-      <label><span>至</span><input id="lnTo" type="number" placeholder="2031" min="1900" max="2100"></label>
-    </div>
-  </details>
-  <button class="btn" id="submitBtn">生成解读</button>
-</div>
 
-<!-- Copy button -->
-<button class="btn-sm copy-btn" id="copyBtn">&#x2398; 复制命盘</button>
+    <div class="form-column">
+      <div class="start-steps" aria-label="生成流程">
+        <span><b>01</b>填写出生信息</span>
+        <span><b>02</b>生成命盘</span>
+        <span><b>03</b>阅读报告</span>
+      </div>
 
-<!-- Results -->
-<div id="result" class="result"></div>
+      <!-- Form -->
+      <div class="form-card" id="formCard">
+        <div class="form-heading">
+          <h2>出生信息</h2>
+          <span>公历</span>
+        </div>
+        <div class="form-row identity-row">
+          <label><span>姓名</span><input id="name" placeholder="可选"></label>
+          <label><span>性别</span><select id="gender"><option>男</option><option>女</option></select></label>
+        </div>
+        <div class="form-row birth-datetime-grid">
+          <span class="birth-datetime-context birth-date-context">出生日期（公历/阳历）</span>
+          <span class="birth-datetime-context birth-time-context">出生时间（24小时制）</span>
+          <label><span>年</span><input id="year" type="number" placeholder="2000" min="1900" max="2100" required></label>
+          <label><span>月</span><input id="month" type="number" placeholder="1" min="1" max="12" required></label>
+          <label><span>日</span><input id="day" type="number" placeholder="1" min="1" max="31" required></label>
+          <label><span>时</span><input id="hour" type="number" placeholder="12" min="0" max="23"></label>
+          <label><span>分</span><input id="minute" type="number" placeholder="00" min="0" max="59" value="0"></label>
+        </div>
+        <div class="birth-location-row">
+          <label for="citySearch"><span>出生城市/区县（默认未知）</span></label>
+          <div class="city-picker">
+            <input id="citySearch" type="search" placeholder="搜索城市或区县，如成都、朝阳区" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cityOptions">
+            <button type="button" class="city-clear" id="cityClear" title="清除城市" aria-label="清除城市">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+            </button>
+            <div class="city-options" id="cityOptions" role="listbox" hidden></div>
+          </div>
+        </div>
+        <p class="time-basis-note" id="timeBasisNote">出生地未知：按输入时间排盘，默认采用中国标准时间（UTC+8）。</p>
+        <div class="form-row hour-confirm-row">
+          <label>
+            <input type="checkbox" id="hourConfirmed">
+            <span>我知道准确出生时辰</span>
+            <span id="hourHint">未确认，格局、起运、时柱神煞仅供参考</span>
+          </label>
+        </div>
+        <details class="advanced-options">
+          <summary>高级设置</summary>
+          <div class="form-row advanced-time-grid" style="margin-top:10px">
+            <label><span>出生记录精度</span><select id="timeAccuracy"><option value="minute">精确到分钟</option><option value="hour">仅确认时辰</option><option value="unknown">时间不确定</option></select></label>
+            <label><span>手动经度（东经为正）</span><input id="longitude" type="number" step="0.0001" min="-180" max="180" placeholder="可选"></label>
+            <label><span>时区偏移（分钟）</span><input id="timezoneOffset" type="number" min="-720" max="840" value="480"></label>
+          </div>
+          <div class="form-row" style="margin-top:10px">
+            <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2026" min="1900" max="2100"></label>
+            <label><span>至</span><input id="lnTo" type="number" placeholder="2031" min="1900" max="2100"></label>
+          </div>
+        </details>
+        <button class="btn" id="submitBtn">生成解读</button>
+        <p class="form-legal">仅供传统文化娱乐参考，不构成任何决策依据。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="result-zone" aria-live="polite">
+    <!-- Copy button -->
+    <button class="btn-sm copy-btn" id="copyBtn">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+      <span class="copy-label">复制命盘</span>
+    </button>
+
+    <!-- Results -->
+    <div id="result" class="result"></div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <span>八字解读</span>
+  <span>传统文化娱乐参考</span>
+  <span><a href=/privacy target=_blank>隐私政策</a> · <a href=/terms target=_blank>服务协议</a></span>
+</footer>
 
 </div><!-- /container -->
 
 <!-- Day Pillar Modal -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
-    <h3>日主详情 <button class="modal-close" id="modalClose">&times;</button></h3>
+    <h3>日主详情 <button class="modal-close" id="modalClose" aria-label="关闭">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button></h3>
     <div id="modalContent"></div>
   </div>
 </div>
 
 <!-- Back to Top -->
-<button class="back-top" id="backTop" title="回到顶部">&#8593;</button>
+<button class="back-top" id="backTop" title="回到顶部" aria-label="回到顶部">
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"></path></svg>
+</button>
 
 <div class="report-mobile-actions" id="reportActions">
   <button type="button" onclick="openChat('报告')">问 AI</button>
@@ -101,10 +169,13 @@
   <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">顶部</button>
 </div>
 
-<script src="app.js?v=20260718-cn-locations1"></script>
+<script src="app.js?v=20260719-editorial1"></script>
 
 <!-- ═══ Chat Toggle ═══ -->
-<button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问">💬<span class=badge id=chatBadge></span></button>
+<button class=chat-toggle id=chatToggle onclick=toggleChat() title="AI 追问" aria-label="打开 AI 追问">
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path><path d="M8 9h8M8 13h5"></path></svg>
+  <span class=badge id=chatBadge></span>
+</button>
 
 <!-- ═══ Chat Overlay ═══ -->
 <div class=chat-overlay id=chatOverlay onclick=closeChat()></div>
@@ -113,7 +184,9 @@
 <div class=chat-panel id=chatPanel>
   <div class=chat-panel-header>
     <h3>AI 命理解读</h3>
-    <button class=chat-panel-close onclick=closeChat()>✕</button>
+    <button class=chat-panel-close onclick=closeChat() aria-label="关闭 AI 追问">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button>
   </div>
   <div class=chat-messages id=chatMessages>
     <div class=chat-empty>
@@ -125,14 +198,16 @@
   </div>
   <div class=chat-context-hint id=chatContextHint></div>
   <div class=chat-input-suggestions>
-    <span onclick="useSuggestion('这个八字整体格局怎么样')">格局层次</span>
-    <span onclick="useSuggestion('我最近几年感情运如何')">感情运势</span>
-    <span onclick="useSuggestion('适合做什么行业')">事业方向</span>
-    <span onclick="useSuggestion('性格上有哪些优势和短板')">性格解读</span>
+    <button type=button onclick="useSuggestion('这个八字整体格局怎么样')">格局层次</button>
+    <button type=button onclick="useSuggestion('我最近几年感情运如何')">感情运势</button>
+    <button type=button onclick="useSuggestion('适合做什么行业')">事业方向</button>
+    <button type=button onclick="useSuggestion('性格上有哪些优势和短板')">性格解读</button>
   </div>
   <div class=chat-input-area>
     <input id=chatInput placeholder=追问八字… onkeydown="if(event.key==='Enter')sendChat()">
-    <button id=chatSendBtn onclick=sendChat()>➤</button>
+    <button id=chatSendBtn onclick=sendChat() aria-label="发送">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+    </button>
   </div>
   <div class=chat-footer>
     <div class=chat-footer-row>
