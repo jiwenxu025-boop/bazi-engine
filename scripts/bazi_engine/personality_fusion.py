@@ -70,16 +70,25 @@ _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看
 - 遇到矛盾信号，先解释它们分别在哪些场景成立，再给综合判断。
 - 感情和健康相关内容必须谨慎表达，不做绝对断言；禁止输出心理或医学诊断。
 
+# 生成前的人物建模（只在内部完成，不要输出过程）
+1. 从六维度中提炼一条至少由两个领域共同支持的核心驱动力，作为全文人物主线。
+2. 找出1-2组最有依据的内在拉扯；矛盾不是互相抵消，而是要说明它们分别在什么场景、关系距离或压力状态下更容易出现。
+3. 找出至少2处有依据的跨维度影响，例如内心处理方式如何影响决策、社交方式如何影响事业协作。依据不足时宁可少写，不得硬连。
+4. 区分强信号、普通信号和较弱信号，决定各板块篇幅与语气，不把六个板块写成同样重要。
+5. 规划完成后只输出正式报告，不得展示“核心驱动力”“内在拉扯”“行为链”等分析过程或标签。
+
 # 输出结构
 
 ## 核心画像
-50-80字。先给出全盘最有辨识度的一组核心拉扯。不要使用“你是一个……的人”这类空泛定义，也不要在这里重复后文的场景。
+60-100字。用核心驱动力和最有辨识度的一组拉扯建立人物主线，让后面六个领域像在解释同一个人。不要使用“你是一个……的人”这类空泛定义，也不要在这里重复后文的具体场景。
 
 ## 重点分析
-只写2-3个证据最充分的主题，不强制覆盖所有维度。每个主题必须使用“### 【领域】具体标题”：领域只能是社交、感情、内心、决策、事业、财富观；跨维度时使用“### 【社交 × 决策】具体标题”，最多两个领域。领域标签用于导航，后半句必须概括真实矛盾或表现，不能只有“社交”“内心”这类维度名。
-每个主题70-100字、2-3句，围绕一个主要机制，写清现实场景、带来的优势以及可能代价。能解释“容易被误解”的落差时，直接写进对应主题，不另起板块。信号全部处于中等、与其他主题重复或缺少依据的维度直接省略；证据不足时只写2个主题，不凑第三个。
+必须按社交、感情、内心、决策、事业、财富观的顺序写满6个主题，每个领域单独出现一次，不得省略或合并标题。每个主题使用“### 【领域】具体标题”：领域标签用于导航，后半句必须概括该领域真实的矛盾或表现，不能只有“社交”“内心”这类维度名。跨维度联动写进正文，不使用跨领域合并标题。
+按证据强弱分配篇幅，不要求六个主题等长：强信号或矛盾信号可写80-110字、2-3句，普通或弱信号写40-70字、1-2句。每段自然组成一条小型行为链，在“触发场景、内在处理、外在表现、带来的优势或代价、适用边界”中至少写清3项；不要把这些名称直接写成小标题。优先说明“在什么情况下更容易这样”，避免把倾向写成全天候人格。能解释“容易被误解”的落差时，直接写进对应主题，不另起板块。信号中等、较弱或较少时也要保留对应主题，但只能保守描述数据支持的倾向和适用边界，不能用空话或虚构经历凑数。
 
-全文控制在400-650个汉字左右。重点优先于完整，宁可少写一个普通维度，也不要用泛泛而谈的内容凑齐板块。不要输出开场白、总结、收尾语或建议清单。
+六个主题必须围绕核心画像中的同一条人物主线，但不能换词重复同一句结论。全文至少自然串联2处有依据的跨维度影响；存在矛盾信号时，至少解释1组倾向如何随场景切换。不要连续使用“你比较……”“你也比较……”罗列标签。
+
+全文控制在500-800个汉字左右。六个领域都要覆盖，同时把更多篇幅留给证据充分、辨识度高的部分。不要输出开场白、总结、收尾语或建议清单。
 
 # 数据使用
 - [组合候选]只表示工程规则命中，不是最高指令；必须有六维度中的不同字段相互印证才可使用。
@@ -92,13 +101,13 @@ _FALLBACK_SYSTEM_PROMPT = """把一份结构化命理数据写成一份给人看
 - **禁止输出底层术语**：如果数据或参考里出现"七杀/偏印/伤官/食伤/夫妻宫/日支/华盖/财破印/杀印相生/自刑"等词，必须翻译成现代行为语言再写。
 
 # 多信号叠合（重要）
-**不允许只看一个信号写结论。优先级是辨识度高于覆盖度：只展开2-3个证据最充分的主题，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
+**不允许只看一个信号写结论。六个领域必须逐一覆盖，但优先级仍是辨识度高于平均篇幅：证据充分的领域展开写，普通或弱信号领域简写，合并同类项，不逐条解释；有明显跨维度互动时再点出关系。**
 具体方法：
 1. **维度内叠合**：同一维度的多个信号一起看。如社交维度同时有"表达欲较强"和"内敛度较强"→写出两种倾向如何共存，什么场景下哪一种占主导。
 2. **跨维度叠合**：不同维度之间相互影响，但不得从两个分值直接编造具体经历。
 3. **底层驱动解读**：每个维度的高/低信号不是孤立的，背后有底层行为驱动在共同作用。比如"决策维度的冒险倾向高"可能不是单纯冲动，而是机会敏感、风险承受和执行力叠加的结果。在分析中把这种驱动关系点出来。
 4. **当代场景落地**：每个重点主题都要让读者能在脑海中对应到一个具体的日常场景——不是"你很内向"，而是"在聚会上你通常先观察，但遇到真正感兴趣的话题会聊得很深"。场景用于解释信号，不得假装知道用户实际发生过什么。
-- **如果一个维度的全部信号都处于中等，不写；不要用一句空话凑覆盖度。**
+- **如果一个维度的全部信号都处于中等，只写数据支持的温和倾向或场景差异，不把“中等”硬说成鲜明特质。**
 - **不要输出"立刻能做的事"、"建议"、"行动步骤"这类独立板块。**"""
 
 def _load_system_prompt() -> str:
@@ -112,7 +121,7 @@ def _load_system_prompt() -> str:
     return _FALLBACK_SYSTEM_PROMPT
 
 FUSION_SYSTEM_PROMPT = _load_system_prompt()
-FUSION_PROMPT_VERSION = "2026-07-17-evidence-v3"
+FUSION_PROMPT_VERSION = "2026-07-19-human-portrait-v5"
 
 # 最终报告质量闸门：把模型偶发泄漏的术语和格式残留转成用户可读表达。
 _REPORT_TERM_REPLACEMENTS: list[tuple[str, str]] = [
@@ -238,11 +247,13 @@ def fusion_report_quality_issues(text: str) -> list[str]:
 
 _REPORT_REQUIRED_SECTIONS = ("核心画像", "重点分析")
 _REPORT_REMOVED_SECTIONS = ("最像你的三个瞬间", "容易被误解的一面")
-_FOCUS_TOPIC_LABEL = (
-    r"【(社交|感情|内心|决策|事业|财富观)"
-    r"(?:\s*[×xX]\s*(社交|感情|内心|决策|事业|财富观))?】"
-)
+_FOCUS_DOMAINS = ("社交", "感情", "内心", "决策", "事业", "财富观")
+_FOCUS_TOPIC_LABEL = rf"【({'|'.join(_FOCUS_DOMAINS)})】"
 _FOCUS_TOPIC_PATTERN = re.compile(rf"{_FOCUS_TOPIC_LABEL}\s*\S.+")
+_FOCUS_TOPIC_SECTION_PATTERN = re.compile(
+    r"^###\s*(.+?)\s*$\n([\s\S]*?)(?=^###\s|\Z)",
+    re.MULTILINE,
+)
 
 
 def fusion_report_structure_issues(text: str) -> list[str]:
@@ -260,20 +271,49 @@ def fusion_report_structure_issues(text: str) -> list[str]:
         re.MULTILINE,
     )
     if topics_match:
-        topic_titles = re.findall(r"^###\s*(.+?)\s*$", topics_match.group(1), re.MULTILINE)
+        topic_sections = _FOCUS_TOPIC_SECTION_PATTERN.findall(topics_match.group(1))
+        topic_titles = [title for title, _ in topic_sections]
         topic_count = len(topic_titles)
-        if not 2 <= topic_count <= 3:
+        if topic_count != len(_FOCUS_DOMAINS):
             issues.append(f"重点主题数量:{topic_count}")
-        if topic_titles and any(not _FOCUS_TOPIC_PATTERN.fullmatch(title) for title in topic_titles):
+        topic_matches = [_FOCUS_TOPIC_PATTERN.fullmatch(title) for title in topic_titles]
+        if topic_titles and any(match is None for match in topic_matches):
             issues.append("重点主题标签不合格")
+        covered_domains = [match.group(1) for match in topic_matches if match]
+        missing_domains = [domain for domain in _FOCUS_DOMAINS if domain not in covered_domains]
+        if missing_domains:
+            issues.append(f"重点主题缺少领域:{'、'.join(missing_domains)}")
+        duplicate_domains = [
+            domain for domain in _FOCUS_DOMAINS if covered_domains.count(domain) > 1
+        ]
+        if duplicate_domains:
+            issues.append(f"重点主题重复领域:{'、'.join(duplicate_domains)}")
+
+        normalized_bodies: dict[str, str] = {}
+        short_domains: list[str] = []
+        repeated_domains: list[str] = []
+        for (title, body), match in zip(topic_sections, topic_matches, strict=True):
+            domain = match.group(1) if match else title
+            normalized_body = re.sub(r"\s+", "", body)
+            if len(normalized_body) < 30:
+                short_domains.append(domain)
+                continue
+            if normalized_body in normalized_bodies:
+                repeated_domains.extend((normalized_bodies[normalized_body], domain))
+            else:
+                normalized_bodies[normalized_body] = domain
+        if short_domains:
+            issues.append(f"重点主题内容过短:{'、'.join(dict.fromkeys(short_domains))}")
+        if repeated_domains:
+            issues.append(f"重点主题内容重复:{'、'.join(dict.fromkeys(repeated_domains))}")
 
     for title in _REPORT_REMOVED_SECTIONS:
         if re.search(rf"^#{1,3}\s*{re.escape(title)}\s*$", normalized, re.MULTILINE):
             issues.append(f"多余板块:{title}")
 
-    if len(normalized) < 280:
+    if len(normalized) < 420:
         issues.append(f"篇幅过短:{len(normalized)}")
-    elif len(normalized) > 850:
+    elif len(normalized) > 1050:
         issues.append(f"篇幅过长:{len(normalized)}")
 
     if normalized and normalized[-1] not in "。！？!?":
@@ -281,19 +321,31 @@ def fusion_report_structure_issues(text: str) -> list[str]:
     return issues
 
 
-def _repair_fusion_report(text: str, issues: list[str]) -> str | None:
+def _repair_fusion_report(
+    text: str,
+    issues: list[str],
+    data_package: dict | None = None,
+) -> str | None:
     """对明显不合格的报告做一次低温修订；失败时由调用方保留原文。"""
+    six_domain_signals = (data_package or {}).get("六维度信号", {})
+    signals_text = json.dumps(six_domain_signals, ensure_ascii=False, indent=2)
     messages = [
         {"role": "system", "content": FUSION_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
-                "下面的报告已经完成事实分析，只修订结构和表达，不添加任何新事实、职业、经历或建议。\n"
+                "下面的报告已经完成事实分析。只根据待修订报告和所附六维度信号修订结构与表达，"
+                "不添加任何其他事实、职业、经历或建议。\n"
                 f"需要修复的问题：{'；'.join(issues)}\n"
-                "必须保留核心画像和重点分析两个板块；重点分析保留2-3个主题，"
-                "每个主题必须使用“### 【领域】具体标题”，领域只能取社交、感情、内心、决策、事业、财富观，"
-                "跨维度最多两个。总长度控制在400-650个汉字左右。"
+                "核心画像必须用共同驱动力和主要拉扯建立人物主线，六个主题要像在解释同一个人，不能各说各话。"
+                "必须保留核心画像和重点分析两个板块；重点分析按顺序写满社交、感情、内心、决策、事业、财富观六个主题，"
+                "每个领域单独出现一次并使用“### 【领域】具体标题”，不得省略、重复或使用跨领域合并标题。"
+                "每段从触发场景、内在处理、外在表现、优势或代价、适用边界中自然写清至少3项，不显示这些过程标签。"
+                "强信号多写，普通或弱信号少写；信号中等或较少时只做保守表述，不得重复段落。"
+                "全文自然串联至少2处有依据的跨维度影响；存在矛盾信号时，解释它们如何随场景切换。"
+                "总长度控制在500-800个汉字左右。"
                 "直接输出修订后的完整报告，不解释修改过程。\n\n"
+                f"【六维度信号】\n{signals_text}\n\n"
                 f"【待修订报告】\n{text}"
             ),
         },
@@ -323,7 +375,11 @@ def _repair_fusion_report(text: str, issues: list[str]) -> str | None:
         return None
 
 
-def _finalize_fusion_report(text: str, result_metadata: dict | None = None) -> str:
+def _finalize_fusion_report(
+    text: str,
+    result_metadata: dict | None = None,
+    data_package: dict | None = None,
+) -> str:
     """清洗报告，并在严重结构问题出现时最多修订一次。"""
     cleaned = sanitize_fusion_report(text)
     issues = fusion_report_quality_issues(cleaned) + fusion_report_structure_issues(cleaned)
@@ -341,7 +397,7 @@ def _finalize_fusion_report(text: str, result_metadata: dict | None = None) -> s
         record_metadata(False)
         return cleaned
 
-    repaired = _repair_fusion_report(cleaned, issues)
+    repaired = _repair_fusion_report(cleaned, issues, data_package)
     if not repaired:
         record_metadata(False)
         return cleaned
@@ -562,11 +618,16 @@ def build_fusion_user_prompt(data_package: dict) -> str:
         "【输出要求】\n"
         "- 严格按照系统提示的格式和约束输出。\n"
         "- 禁止在报告中出现任何原始分数或原始八字术语。\n"
-        "- 先写核心画像，再只展开2-3个最有辨识度的主题。\n"
-        "- 每个主题必须写成“### 【领域】具体标题”；领域只能取社交、感情、内心、决策、事业、财富观，跨维度最多两个。\n"
-        "- 辨识度高于覆盖度；合并同类信号，不逐条罗列标签，中等或证据不足的维度直接省略。\n"
+        "- 输出前在内部提炼共同驱动力、主要拉扯、场景切换和跨维度影响，不展示规划过程。\n"
+        "- 核心画像建立贯穿全文的人物主线，后面六个主题必须像在解释同一个人，不能各说各话。\n"
+        "- 先写核心画像，再按社交、感情、内心、决策、事业、财富观的顺序写满六个主题，每个领域单独出现一次。\n"
+        "- 每个主题必须写成“### 【领域】具体标题”，不得省略、重复或使用跨领域合并标题；跨维度联动写进正文。\n"
+        "- 六个领域不要求等长：强信号展开写，普通或弱信号简写；合并同类信号，不逐条罗列标签。\n"
+        "- 每段从触发场景、内在处理、外在表现、优势或代价、适用边界中自然写清至少3项，不显示这些过程标签。\n"
+        "- 全文自然串联至少2处有依据的跨维度影响；存在矛盾信号时，解释它们如何随场景切换。\n"
+        "- 中等、较弱或信号较少的领域也要保留，但只做有依据的保守表述，不用空话或虚构经历凑数。\n"
         "- 组合候选和粒度候选不能单独生成结论，至少需要两个不同字段相互印证。\n"
-        "- 全文控制在400-650个汉字左右，不使用网络热词、贬损比喻代替分析。\n"
+        "- 全文控制在500-800个汉字左右，不使用网络热词、贬损比喻代替分析。\n"
         "- 不输出“立刻能做的事”“建议”“行动步骤”等独立板块。"
     )
 
@@ -646,7 +707,11 @@ def generate_fusion_report(
                 except json.JSONDecodeError:
                     continue
 
-        text = _finalize_fusion_report("".join(full_text_parts), result_metadata)
+        text = _finalize_fusion_report(
+            "".join(full_text_parts),
+            result_metadata,
+            data_package,
+        )
         if not text:
             raise RuntimeError("流式响应已完成但未收到任何内容")
         return text
@@ -689,7 +754,7 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
 
             body = resp.json()
             content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return _finalize_fusion_report(content) if content else None
+            return _finalize_fusion_report(content, data_package=data_package) if content else None
 
     except Exception:
         return None

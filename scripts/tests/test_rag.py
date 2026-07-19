@@ -221,7 +221,7 @@ def test_fusion_prompt_contains_zhihe_style_contract():
 
 
 def test_fusion_prompt_prioritizes_distinctive_progressive_structure():
-    """融合报告应使用可扫读的领域标签展开少量高辨识度主题。"""
+    """融合报告应逐一覆盖六个领域，同时按证据强弱分配篇幅。"""
     from bazi_engine.personality_fusion import FUSION_SYSTEM_PROMPT, build_fusion_user_prompt
 
     for heading in ("## 核心画像", "## 重点分析"):
@@ -229,19 +229,29 @@ def test_fusion_prompt_prioritizes_distinctive_progressive_structure():
 
     assert "最像你的三个瞬间" not in FUSION_SYSTEM_PROMPT
     assert "## 容易被误解的一面" not in FUSION_SYSTEM_PROMPT
-    assert "只写2-3个证据最充分的主题" in FUSION_SYSTEM_PROMPT
+    assert "写满6个主题" in FUSION_SYSTEM_PROMPT
+    assert "每个领域单独出现一次" in FUSION_SYSTEM_PROMPT
     assert "### 【领域】具体标题" in FUSION_SYSTEM_PROMPT
-    assert "全文控制在400-650个汉字左右" in FUSION_SYSTEM_PROMPT
+    assert "# 生成前的人物建模（只在内部完成，不要输出过程）" in FUSION_SYSTEM_PROMPT
+    assert "至少由两个领域共同支持的核心驱动力" in FUSION_SYSTEM_PROMPT
+    assert "小型行为链" in FUSION_SYSTEM_PROMPT
+    assert "至少写清3项" in FUSION_SYSTEM_PROMPT
+    assert "同一条人物主线" in FUSION_SYSTEM_PROMPT
+    assert "至少自然串联2处有依据的跨维度影响" in FUSION_SYSTEM_PROMPT
+    assert "全文控制在500-800个汉字左右" in FUSION_SYSTEM_PROMPT
     assert "[组合候选]" in FUSION_SYSTEM_PROMPT
     assert "不是最高指令" in FUSION_SYSTEM_PROMPT
     assert "年轻化不等于堆网络热词" in FUSION_SYSTEM_PROMPT
-    assert "每个维度必须覆盖" not in FUSION_SYSTEM_PROMPT
+    assert "只写2-3个证据最充分的主题" not in FUSION_SYSTEM_PROMPT
 
     prompt = build_fusion_user_prompt({"六维度信号": {"社交": "内敛"}})
-    assert "只展开2-3个最有辨识度的主题" in prompt
+    assert "输出前在内部提炼共同驱动力、主要拉扯、场景切换和跨维度影响" in prompt
+    assert "必须像在解释同一个人" in prompt
+    assert "按社交、感情、内心、决策、事业、财富观的顺序写满六个主题" in prompt
     assert "### 【领域】具体标题" in prompt
-    assert "中等或证据不足的维度直接省略" in prompt
-    assert "400-650个汉字" in prompt
+    assert "自然写清至少3项" in prompt
+    assert "中等、较弱或信号较少的领域也要保留" in prompt
+    assert "500-800个汉字" in prompt
 
 
 def test_fusion_report_quality_gate_repairs_percentages_and_harsh_phrasing():
@@ -264,50 +274,102 @@ def test_fusion_report_quality_gate_repairs_percentages_and_harsh_phrasing():
     assert "行动开关失灵" not in cleaned
 
 
-def test_fusion_report_structure_issues_detects_only_gross_failures():
-    """结构验收应拦截无标签主题，同时接受两到三个强主题。"""
-    from bazi_engine.personality_fusion import fusion_report_structure_issues
+_SIX_DOMAIN_TITLES = {
+    "社交": "熟悉以后表达更多",
+    "感情": "靠近以前先确认分寸",
+    "内心": "深入思考时也会反复",
+    "决策": "看清方向以后再推进",
+    "事业": "在合适分工里发挥长处",
+    "财富观": "机会和稳定需要权衡",
+}
 
-    valid = (
-        "# 核心画像\n" + "核心拉扯带来稳定但稍慢的节奏。" * 4
-        + "\n# 重点分析\n### 【社交】熟悉以后表达更多\n" + "分析一。" * 21
-        + "\n### 【感情 × 内心】在意但不急着说出口\n" + "分析二。" * 21
+
+def _six_domain_body(domain, title):
+    return (
+        f"在{domain}相关场景中，{title}更容易出现；这种处理方式既有实际作用，也会受现实条件限制。"
+        "它会和其他领域相互影响，但具体表现仍取决于当时的关系距离与压力。"
     )
 
-    assert 280 <= len(valid) <= 850
+
+def _six_domain_topic(domain, title):
+    return f"### 【{domain}】{title}\n{_six_domain_body(domain, title)}"
+
+
+def _valid_six_domain_fusion_report():
+    topics = "\n".join(
+        _six_domain_topic(domain, title)
+        for domain, title in _SIX_DOMAIN_TITLES.items()
+    )
+    return (
+        "# 核心画像\n"
+        + "核心拉扯带来稳定但稍慢的节奏。" * 4
+        + f"\n# 重点分析\n{topics}"
+    )
+
+
+def test_fusion_report_structure_issues_requires_each_domain_once():
+    """结构验收应要求六个领域各自出现一次，并拦截缺失、重复和坏标签。"""
+    from bazi_engine.personality_fusion import fusion_report_structure_issues
+
+    valid = _valid_six_domain_fusion_report()
+
+    assert 420 <= len(valid) <= 1050
     assert fusion_report_structure_issues(valid) == []
 
-    missing_label = valid.replace("### 【感情 × 内心】在意但不急着说出口", "### 有情绪但不直说")
+    missing_label = valid.replace("### 【感情】靠近以前先确认分寸", "### 有情绪但不直说")
     assert "重点主题标签不合格" in fusion_report_structure_issues(missing_label)
 
-    only_one_topic = valid.replace("\n### 【感情 × 内心】在意但不急着说出口\n" + "分析二。" * 21, "")
-    assert "重点主题数量:1" in fusion_report_structure_issues(only_one_topic)
+    missing_domain = valid.replace("【财富观】", "【事业】")
+    missing_domain_issues = fusion_report_structure_issues(missing_domain)
+    assert "重点主题缺少领域:财富观" in missing_domain_issues
+    assert "重点主题重复领域:事业" in missing_domain_issues
+
+    only_five_topics = valid.replace(
+        _six_domain_topic("财富观", _SIX_DOMAIN_TITLES["财富观"]),
+        "",
+    )
+    only_five_issues = fusion_report_structure_issues(only_five_topics)
+    assert "重点主题数量:5" in only_five_issues
+    assert "重点主题缺少领域:财富观" in only_five_issues
+
+    short_topic = valid.replace(
+        _six_domain_body("社交", _SIX_DOMAIN_TITLES["社交"]),
+        "只有一句空话。",
+    )
+    assert "重点主题内容过短:社交" in fusion_report_structure_issues(short_topic)
+
+    repeated_topic = valid.replace(
+        _six_domain_body("财富观", _SIX_DOMAIN_TITLES["财富观"]),
+        _six_domain_body("事业", _SIX_DOMAIN_TITLES["事业"]),
+    )
+    assert "重点主题内容重复:事业、财富观" in fusion_report_structure_issues(
+        repeated_topic
+    )
 
 
 def test_finalize_fusion_report_repairs_at_most_once(monkeypatch):
     """明显不合格时只调用一次修订，并采用问题更少的结果。"""
     import bazi_engine.personality_fusion as fusion_module
 
-    repaired = (
-        "# 核心画像\n" + "核心拉扯带来稳定但稍慢的节奏。" * 4
-        + "\n# 重点分析\n### 【社交】熟悉以后表达更多\n" + "分析一。" * 21
-        + "\n### 【感情 × 内心】在意但不急着说出口\n" + "分析二。" * 21
-    )
+    repaired = _valid_six_domain_fusion_report()
     calls = []
 
-    def fake_repair(text, issues):
-        calls.append((text, issues))
+    def fake_repair(text, issues, data_package):
+        calls.append((text, issues, data_package))
         return repaired
 
     monkeypatch.setattr(fusion_module, "_repair_fusion_report", fake_repair)
     metadata = {}
+    data_package = {"六维度信号": {"社交": {"表达欲": "中等"}}}
     result = fusion_module._finalize_fusion_report(
         "只有一小段，结构完全缺失。",
         metadata,
+        data_package,
     )
 
     assert result == repaired
     assert len(calls) == 1
+    assert calls[0][2] == data_package
     assert metadata["prompt_version"] == fusion_module.FUSION_PROMPT_VERSION
     assert metadata["repaired"] is True
     assert metadata["temperature"] == 0.3
