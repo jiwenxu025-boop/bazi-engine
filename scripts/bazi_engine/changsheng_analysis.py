@@ -73,7 +73,7 @@ def get_state_interpretation(state: str, branch: Dizhi, day_master: Tiangan) -> 
     elif state == "帝旺":
         special = "【阳刃】能量顶峰亦最危险，物极必反，需防冲动"
     elif state == "墓":
-        special = "【墓库】辰戌丑未，能量封存。旺为库（待开发资源），衰为墓（被埋没），需刑冲激发"
+        special = "【墓库】辰戌丑未，传统上区分库与墓；是否形成可用资源及刑冲作用，需结合透藏、旺衰和整体结构"
     elif state == "绝":
         special = "【绝地】旧事物终结，等待新生。需看有无合局解救（绝处逢生）"
 

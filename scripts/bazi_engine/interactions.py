@@ -228,7 +228,7 @@ class MukuChongResult:
     tu_boost: int          # 土气放大倍数
     zaqi_damaged: list[str]  # 被损毁的杂气五行
     health_note: str        # 健康影响
-    wealth_note: str        # 财运影响（墓库为财库时冲开=财变）
+    wealth_note: str        # 财务主题备注（仅在已确认财库时保留）
     note: str
 
     def to_dict(self) -> dict:
@@ -257,8 +257,8 @@ def find_muku_chong(branches_and_labels: list[tuple[Dizhi, str]]) -> list[Intera
                     inter_type="墓库六冲",
                     participants=(bi, bj),
                     pillar_labels=(branches_and_labels[i][1], branches_and_labels[j][1]),
-                    result="墓库关系待验",
-                    notes=[info["note"]],
+                    result="仅记录墓库六冲结构",
+                    notes=[info["note"], "不据此单独推断开库、财运或人生转折。"],
                 ))
     return results
 

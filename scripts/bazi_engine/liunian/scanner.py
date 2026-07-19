@@ -616,10 +616,10 @@ def scan_years(
             if has_strong_positive or has_hunjia:
                 relationship_state = "dating"
         elif relationship_state == "dating":
-            # 恋爱→分手：负面桃花≥2★ 且 有冲夫妻宫/劫财/伤官（优先判断）
+            # 恋爱→分手：负面桃花≥2★ 且有其他明确风险信号；日支六冲本身不定方向。
             has_breakup = any(
                 e.direction == "负面" and e.strength >= 2 and
-                any("冲夫妻宫" in str(t) or "劫财" in str(t) or "伤官克官" in str(t)
+                any("劫财" in str(t) or "伤官克官" in str(t)
                     for t in e.triggers)
                 for e in taohua_sigs
             )
@@ -632,7 +632,7 @@ def scan_years(
         elif relationship_state == "married":
             has_divorce = any(
                 e.direction == "负面" and e.strength >= 3 and
-                any("冲夫妻宫" in str(t) or "伤官" in str(t) for t in e.triggers)
+                any("伤官" in str(t) for t in e.triggers)
                 for e in hunjia_sigs + taohua_sigs
             )
             if has_divorce:

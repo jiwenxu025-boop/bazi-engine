@@ -702,7 +702,7 @@ def test_compute_body_use_stage_sets_balance_and_muku_signals(monkeypatch):
     assert chart.body_use_result["use_stars"] == ["正财", "偏官"]
     assert chart.body_use_result["body_count"] == 1
     assert chart.body_use_result["use_count"] == 2
-    assert chart.body_use_result["mu_ku_signals"] == ["原局辰+戌冲→墓库逢冲，重大转机信号"]
+    assert chart.body_use_result["mu_ku_signals"] == ["原局辰+戌冲→墓库六冲结构参考，不单独判定转机"]
 
 
 def test_build_chart_skips_unpublished_advanced_derivations_by_default(monkeypatch):

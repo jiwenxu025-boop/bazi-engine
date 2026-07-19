@@ -60,11 +60,16 @@ def test_trait_signal_evidence_does_not_band_modifiers_or_differences():
     assert "较弱" not in str(career)
 
 
-def test_fusion_signals_are_qualitative_and_exclude_pending_rules():
+def test_fusion_signals_are_qualitative_and_exclude_structural_context():
     package = build_fusion_trait_signals({
         "感情": {
             "责任感_官杀": 6.0,
             "夫妻宫状态": "冲",
+            "夫妻宫关系": [{
+                "type": "六冲",
+                "participants": ["子", "午"],
+                "pillars": ["年柱", "日柱"],
+            }],
             "桃花坐日支": False,
         },
         "财富观": {"欲望_财星": 4.0},
@@ -74,6 +79,27 @@ def test_fusion_signals_are_qualitative_and_exclude_pending_rules():
     assert package["财富观"] == {"强度信号": {"资源目标": "中等"}}
     assert "夫妻宫" not in str(package)
     assert "桃花" not in str(package)
+
+
+def test_evidence_view_keeps_reproducible_relationship_context_outside_scores():
+    view = build_personality_evidence_view({
+        "trait_signals": {
+            "感情": {
+                "责任感_官杀": 6.0,
+                "夫妻宫状态": "冲",
+                "夫妻宫关系": [{
+                    "type": "六冲",
+                    "participants": ["子", "午"],
+                    "pillars": ["年柱", "日柱"],
+                }],
+            },
+        },
+    })
+
+    context = view["dimensions"]["感情"]["structural_context"]
+    assert context[0]["kind"] == "traditional_structure"
+    assert "不单独推断关系结果" in context[0]["boundary"]
+    assert "夫妻宫关系" not in str(view["dimensions"]["感情"]["signals"])
 
 
 def test_evidence_view_explains_score_scope_and_components():

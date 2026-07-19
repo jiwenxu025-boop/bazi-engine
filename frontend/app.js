@@ -759,9 +759,10 @@ function _buildEvidenceDimensions(dimensions){
     }
     h += '</div>';
     if (item.secondary) h += '<div class=evidence-secondary>次要方向：' + esc(item.secondary) + '</div>';
-    let pending = item.pending_review || [];
-    for (let k = 0; k < pending.length; k++){
-      h += '<div class=evidence-pending>' + esc(pending[k].label) + '：' + esc(pending[k].value) + '（待复核规则）</div>';
+    let context = item.structural_context || [];
+    for (let k = 0; k < context.length; k++){
+      let boundary = context[k].boundary || '仅作传统结构参考，不进入评分';
+      h += '<div class=evidence-context><span>' + esc(context[k].label) + '：' + esc(context[k].value) + '</span><small>' + esc(boundary) + '</small></div>';
     }
     h += '</div>';
   }

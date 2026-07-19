@@ -1,5 +1,4 @@
 """校准规则 — 十神出处 + 性格联动 + 信号合并 + 事件矛盾检查。"""
-from .._constants import chong_pair
 from ..enums import Dizhi, Tiangan
 from .signal import EventSignal
 from .utils import _make_prediction
@@ -178,34 +177,14 @@ def _check_event_conflicts(events: list[EventSignal],
     """事件矛盾检查：检测同一年内多个信号之间的冲突，修正强度和方向。
 
     规则：
-    - 桃花+空亡 → 强度-1，"浮桃花不落地"
-    - 桃花+冲夫妻宫 → 方向变中性
+    - 桃花+空亡只保留结构备注，不自动降低强度
     - 事业+伤官见官 → 同时输出上升/冲突两面
     - 财+比劫夺财 → 标注社交/感情消费
-    - 婚嫁+冲夫妻宫 → 方向变中性
+    - 日支六冲只作结构提示，不自动改变方向
     """
     # 收集事件类别
     cats = {e.category for e in events}
     ev_map = {e.category: e for e in events}
-
-    # 检查流年是否冲夫妻宫（日支）
-    chong_fuqi = (ln_dz == chong_pair(day_branch)) if day_branch else False
-
-    # 桃花+冲夫妻宫 → 中性
-    if "桃花" in ev_map and chong_fuqi:
-        e = ev_map["桃花"]
-        if e.direction == "正面":
-            e.direction = "中性"
-            e.notes.append("流年冲夫妻宫→桃花机会与波动并存，感情节点期")
-            if e.strength >= 2:
-                e.strength -= 1
-
-    # 婚嫁+冲夫妻宫 → 中性
-    if "婚嫁" in ev_map and chong_fuqi:
-        e = ev_map["婚嫁"]
-        if e.direction == "正面":
-            e.direction = "中性"
-            e.notes.append("婚年逢冲夫妻宫→婚姻建立可能伴随压力，需沟通")
 
     # 桃花+财运同时出现 → 感情消费提示
     if "桃花" in cats and "财运" in cats:
@@ -222,12 +201,12 @@ def _check_event_conflicts(events: list[EventSignal],
         ev_map["健康"].notes.append("健康+事业同现→工作/学业压力可能影响身体")
 
     # 桃花负面(分手型) + 婚嫁正面 → 婚嫁降级
-    # 仅当桃花负面源于分手信号(冲夫妻宫/卯辰穿)才降级, 竞争型(劫财)不降
+    # 仅当桃花负面明确来自卯辰穿时才降级；日支六冲本身不决定分手方向。
     if "桃花" in ev_map and "婚嫁" in ev_map:
         th = ev_map["桃花"]
         hj = ev_map["婚嫁"]
         th_trig = str(th.triggers)
-        is_breakup_type = ("冲夫妻宫" in th_trig or "卯辰穿" in th_trig)
+        is_breakup_type = "卯辰穿" in th_trig
         if th.direction == "负面" and hj.direction == "正面" and is_breakup_type:
             hj.direction = "中性"
             hj.strength = max(1, hj.strength - 1)

@@ -1708,7 +1708,9 @@ def test_personality_evidence_panel_explains_scores_and_field_semantics():
     assert "行为模式与家庭背景" not in app_source
     assert "性格与家境" not in app_source
     assert "暂无可核对的性格分析依据" in app_source
-    assert "待复核规则" in app_source
+    assert "structural_context" in app_source
+    assert "evidence-context" in app_source
+    assert "待复核规则" not in app_source
     assert "entries.filter(function(item){returnitem.val>0;}).slice(0,10)" in "".join(app_source.split())
 
     assert ".evidence-signals" in css

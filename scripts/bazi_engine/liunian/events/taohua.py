@@ -96,15 +96,14 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # 流年支冲夫妻宫
     if _has_branch_interaction(day_branch, ln_branch, "六冲"):
-        strength = max(strength, 2)
-        triggers.append("流年冲夫妻宫")
-        notes.append("夫妻宫逢冲→感情波动/分手可能性")
+        triggers.append("流年与日支六冲（结构参考）")
+        notes.append("日支六冲只记录关系结构引动，不单独判断分手或危机。")
 
     # ── ★ 级别 ──
-    # 空亡：降星+加备注（升级：统一降强度）
+    # 空亡只保留结构提示，不单独降低信号强度。
     kw = _kongwang_branches(day_master, day_branch)
     if _is_kongwang(ln_branch, kw) and triggers:
-        notes.append("流年落空亡→机会真实但结果虚浮不实（《三命通会》：吉神空亡则吉减半，非无吉也）")
+        notes.append("流年地支落旬空：是否影响机会需结合合冲旺衰，不单独降低强度。")
 
     if ln_branch == hongluan:
         strength = max(strength, 1)
@@ -133,13 +132,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         _triggers_str = str(triggers)
         _notes_str = str(notes)
 
-        # 夫妻宫逢冲+七杀 → 负面
-        if "冲夫妻宫" in _triggers_str and ln_shishen == Shishen.偏官:
-            direction = "负面"
-            notes.append("冲夫妻宫+七杀→感情危机加剧 (段建业: 夫宫冲穿必离婚)")
-
-        # 冲夫妻宫 → 负面
-        if "冲夫妻宫" in _triggers_str or "分手" in _notes_str or ("卯辰穿" in _triggers_str and "天喜伴生" not in _triggers_str) or ("自刑" in _triggers_str and "伏吟" in _triggers_str):
+        if "分手" in _notes_str or ("卯辰穿" in _triggers_str and "天喜伴生" not in _triggers_str) or ("自刑" in _triggers_str and "伏吟" in _triggers_str):
             direction = "负面"
         elif "困扰" in _notes_str or "不稳" in _notes_str:
             direction = "中性"

@@ -1,7 +1,7 @@
-"""宾主体用分析 + 墓库应期检测
+"""宾主体用分析 + 墓库结构提示
 
 宾主体用: 段建业《段氏理象学》— 比劫/印/食伤为"体"(自身资源), 财/官为"用"(外部追求)
-墓库应期: 辰戌丑未逢冲为关键时间节点
+墓库关系: 只记录辰戌/丑未六冲，不能单独推出关键时间节点
 """
 
 from dataclasses import dataclass
@@ -14,7 +14,7 @@ class BodyUseResult:
     body_count: int           # 体神数量
     use_count: int            # 用神数量
     balance_note: str         # 体用平衡说明
-    mu_ku_signals: list[str]  # 墓库刑冲信号
+    mu_ku_signals: list[str]  # 墓库六冲结构提示
 
     def to_dict(self) -> dict:
         return {
@@ -29,7 +29,7 @@ class BodyUseResult:
 
 def analyze_body_use(pillars_data: list[dict], interactions: dict,
                      luck_pillars: list, annual_scans) -> BodyUseResult:
-    """宾主体用分析 + 墓库应期检测"""
+    """宾主体用分析 + 墓库结构提示"""
     body = []
     use = []
 
@@ -62,7 +62,7 @@ def analyze_body_use(pillars_data: list[dict], interactions: dict,
     else:
         balance_note = "体用配置偏单一，需结合大运流年看发展方向。"
 
-    # 墓库应期检测: 辰戌丑未逢冲
+    # 墓库结构提示: 辰戌/丑未的实际六冲不自动升级为应期
     mu_ku = {"辰", "戌", "丑", "未"}
     mu_ku_signals = []
 
@@ -72,7 +72,7 @@ def analyze_body_use(pillars_data: list[dict], interactions: dict,
             parts = inter.get("participants", [])
             if len(parts) == 2 and set(parts) <= mu_ku:
                 mu_ku_signals.append(
-                    f"原局{'+'.join(parts)}冲→墓库逢冲，重大转机信号"
+                    f"原局{'+'.join(parts)}冲→墓库六冲结构参考，不单独判定转机"
                 )
 
     # 流年/大运逢墓库冲
@@ -81,7 +81,7 @@ def analyze_body_use(pillars_data: list[dict], interactions: dict,
         dn_b = scan.dayun_branch.value if scan.dayun_branch else ""
         if ln_b in mu_ku and dn_b and dn_b in mu_ku and ln_b != dn_b:
             mu_ku_signals.append(
-                f"{scan.year}年流年{ln_b}冲大运{dn_b}→墓库应期，关键转折年"
+                f"{scan.year}年流年{ln_b}冲大运{dn_b}→墓库六冲结构参考，不单独判定转折"
             )
 
     return BodyUseResult(

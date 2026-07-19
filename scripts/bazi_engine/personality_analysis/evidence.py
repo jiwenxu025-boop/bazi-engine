@@ -133,22 +133,48 @@ def build_trait_signal_evidence(trait_signals: dict | None) -> dict[str, dict]:
             if gap is not None:
                 item["comparison"] = "差异明显" if gap > 2.0 else "方向接近"
 
-        # These are visible for traceability but are not promoted to scored personality facts.
-        if dimension == "感情" and raw.get("夫妻宫状态") not in (None, "", "平稳"):
-            item["pending_review"] = [{
-                "label": "夫妻宫状态",
-                "value": str(raw["夫妻宫状态"]),
-                "kind": "traditional_rule_candidate",
-            }]
+        # Structural relations are reproducible, but their modern interpretation is not
+        # promoted to scored personality facts or fusion conclusions.
+        if dimension == "感情":
+            relation_context = []
+            for relation in raw.get("夫妻宫关系", []) or []:
+                if not isinstance(relation, dict):
+                    continue
+                relation_type = str(relation.get("type", "")).strip()
+                participants = [str(value) for value in relation.get("participants", []) if value]
+                pillars = [str(value) for value in relation.get("pillars", []) if value]
+                if not relation_type:
+                    continue
+                value = relation_type
+                if participants:
+                    value = "".join(participants) + relation_type
+                if pillars:
+                    value = "、".join(pillars) + "：" + value
+                relation_context.append({
+                    "label": "原局日支关系",
+                    "value": value,
+                    "kind": "traditional_structure",
+                    "boundary": "仅记录可复算关系，不单独推断关系结果",
+                })
+            # Keep compatibility with older callers that only provide the status field.
+            if not relation_context and raw.get("夫妻宫状态") not in (None, "", "平稳"):
+                relation_context.append({
+                    "label": "夫妻宫状态",
+                    "value": str(raw["夫妻宫状态"]),
+                    "kind": "traditional_structure",
+                    "boundary": "仅记录可复算关系，不单独推断关系结果",
+                })
+            if relation_context:
+                item["structural_context"] = relation_context
 
-        if item["signals"] or any(key in item for key in ("summary", "secondary", "comparison", "pending_review")):
+        if item["signals"] or any(key in item for key in ("summary", "secondary", "comparison", "structural_context")):
             result[dimension] = item
 
     return result
 
 
 def build_fusion_signals_from_evidence(evidence: dict | None) -> dict[str, dict]:
-    """Remove raw values and pending rules from a public evidence view."""
+    """Keep scored evidence only; structural context remains outside fusion."""
     result: dict[str, dict] = {}
 
     for dimension, item in (evidence or {}).items():
@@ -240,7 +266,8 @@ def build_personality_evidence_view(personality: dict | None, pattern: str = "")
         "dimensions": build_trait_signal_evidence(personality.get("trait_signals", {})),
         "fusion_boundaries": [
             "病药说明仅作规则候选，不作为心理诊断或行动指令",
-            "地支心理映射、特殊组合与家境规则待完成来源复核后再进入融合结论",
+            "地支心理映射、特殊组合与家境规则已完成边界审计，仍作为工程候选，不进入融合结论",
+            "日支合冲、墓库与空亡只记录可复算结构；解释需结合条件，不单独改变评分",
             "固定档位是未经验证的工程阈值；排序和条形仅用于本盘内比较",
             "分值不是概率、准确率、人群常模或临床测量结果",
         ],

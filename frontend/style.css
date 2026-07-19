@@ -1214,10 +1214,11 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
 .evidence-signal{display:flex;justify-content:space-between;gap:8px;font-size:11px;min-width:0}
 .evidence-signal span{color:var(--text-tertiary);overflow-wrap:anywhere}
 .evidence-signal strong{color:var(--text);font-weight:600;white-space:nowrap}
-.evidence-secondary,.evidence-pending{
+.evidence-secondary,.evidence-context{
   margin-top:7px;font-size:11px;color:var(--text-secondary);line-height:1.55;
 }
-.evidence-pending{color:var(--gold)}
+.evidence-context{display:flex;flex-direction:column;gap:2px;color:var(--gold)}
+.evidence-context small{color:var(--text-tertiary);font-size:10px}
 .evidence-boundaries{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .evidence-boundaries strong{font-size:11px;color:var(--text-secondary)}
 .evidence-boundaries ul{margin:5px 0 0 17px}

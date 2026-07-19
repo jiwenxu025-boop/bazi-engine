@@ -7,8 +7,6 @@ from ..utils import (
     HEAVENLY_HE,
     _has_branch_interaction,
     _has_root,
-    _is_kongwang,
-    _kongwang_branches,
     _make_prediction,
     is_favorable,
 )
@@ -44,12 +42,14 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if dayun_branch:
         dy_chong_gong = _has_branch_interaction(dayun_branch, day_branch, "六冲")
         dy_he_gong = _has_branch_interaction(dayun_branch, day_branch, "六合")
-        # 大运冲夫妻宫 + 流年合夫妻宫 → 婚期 (段建业: 冲处逢合)
+        # 大运冲日支、流年合入只记录关系结构组合，不单独判定婚期。
         if dy_chong_gong and (gong_he or gong_sanhe):
-            s.add(4, "大运冲夫妻宫+流年合入→冲处逢合婚期", "段建业: 原局冲/大运冲, 岁合为婚期", fixed=True)
-        # 大运合夫妻宫 + 流年冲夫妻宫 → 婚变风险
+            s.add(0, "大运冲日支+流年合入→关系结构引动",
+                  "冲合组合需结合配偶星及其他现实信息，不单独判断婚期。", fixed=True)
+        # 大运合日支、流年冲入只记录关系结构组合，不单独判定婚变。
         if dy_he_gong and gong_chong:
-            s.add(-3, "大运合夫妻宫+流年冲→合处逢冲婚变", "段建业: 合处逢冲为离婚应期", fixed=True)
+            s.add(0, "大运合日支+流年六冲→关系结构引动",
+                  "合冲组合需结合配偶星及其他现实信息，不单独判断婚变。", fixed=True)
 
     # 检查流年地支藏干是否含配偶星
     ln_canggan_shishen = [get_ten_god(day_master, hs.stem) for hs in DIZHI_CANGGAN.get(ln_branch, [])]
@@ -83,7 +83,7 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         s.add(2, "流年天喜入命")
 
     # 合动天喜 + 夫妻宫引动
-    if tianxi_activated and (gong_he or gong_sanhe or gong_chong):
+    if tianxi_activated and (gong_he or gong_sanhe):
         s.add(3, "流年合动天喜+夫妻宫引动→婚期")
 
     # 配偶星合入夫妻宫
@@ -133,15 +133,12 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             s.add(0, f"流年{second_name}透干虚浮", "偏星无根→短暂/非正式")
 
     # ════════════════════════════════════════════════
-    # 负面因子（婚变/离婚风险）
+    # 关系结构提示（不单独决定方向）
     # ════════════════════════════════════════════════
 
-    # 冲夫妻宫
     if gong_chong:
-        if ln_shishen == Shishen.偏官:
-            s.add(-3, "流年冲夫妻宫+七杀→婚变危机", "段建业: 夫宫冲穿必离婚")
-        else:
-            s.add(-2, "流年冲夫妻宫", "夫妻宫逢冲→感情波动/婚姻危机")
+        s.add(0, "流年与日支六冲→关系结构引动",
+              "六冲只记录关系变化候选，不单独判断分手、婚变或离婚。", fixed=True)
 
     # 比劫夺财(男) / 比劫争官(女) — 弱风险，不抵消婚期
     if ln_shishen == Shishen.劫财:
@@ -156,11 +153,6 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             if br == day_branch and _has_branch_interaction(ln_branch, br, "相害"):
                 hai_pair = f"{ln_branch.value}{br.value}穿"
                 s.add(-2, f"{hai_pair}夫妻宫→婚姻不和", "穿害入夫妻宫→感情伤害/离婚风险")
-
-    # 空亡（仅在总分≥3时才扣分，避免弱信号被空亡全吞）
-    kw = _kongwang_branches(day_master, day_branch)
-    if _is_kongwang(ln_branch, kw) and s.total >= 3:
-        s.add(-1, "流年落空亡", "强婚期落空亡→真实但结果虚浮")
 
     # ════════════════════════════════════════════════
     # 输出判断

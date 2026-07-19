@@ -189,12 +189,23 @@ def analyze_personality(
 
     day_branch_chong = False
     day_branch_he = False
+    day_branch_relations = []
     for inter in interactions.get("dizhi", []):
         if "日柱" in inter.get("pillars", []):
             if inter["type"] == "六冲":
                 day_branch_chong = True
+                day_branch_relations.append({
+                    "type": inter["type"],
+                    "participants": list(inter.get("participants", [])),
+                    "pillars": list(inter.get("pillars", [])),
+                })
             elif inter["type"] in ("地支六合", "三合", "半合"):
                 day_branch_he = True
+                day_branch_relations.append({
+                    "type": inter["type"],
+                    "participants": list(inter.get("participants", [])),
+                    "pillars": list(inter.get("pillars", [])),
+                })
 
     has_huagai = bool(_huagai_branch(day_branch_str)) and \
                  _has_branch_in_pillars(_huagai_branch(day_branch_str), pillars_data)
@@ -244,6 +255,7 @@ def analyze_personality(
         "同辈竞争_比劫": round(bijie_s, 1),
         "独立反叛_伤官": round(shang_guan_s, 1),
         "夫妻宫状态": fq_state,
+        "夫妻宫关系": day_branch_relations,
         "日支藏干": day_hidden[:3],
         "身强弱": "强" if is_strong else ("弱" if is_weak else "中和"),
         "性别": gender,
@@ -258,9 +270,9 @@ def analyze_personality(
             f"{'明显' if spouse_score >= 5 else ('偏弱' if spouse_score <= 2 else '中等')}"
         )
     if day_branch_chong:
-        _romance_parts.append("夫妻宫被冲，感情波动较大，磨合期长")
+        _romance_parts.append("原局日支参与六冲，作为传统关系结构参考，不单独推断关系结果")
     elif day_branch_he:
-        _romance_parts.append("夫妻宫被合，配偶缘好但需注意边界感")
+        _romance_parts.append("原局日支参与合局，作为传统关系结构参考，不单独推断关系结果")
     if guan_s >= 5:
         _romance_parts.append("责任感强，在关系中重承诺" + ("，敢主动追求" if is_strong else "，但也容易感到压力"))
     elif cai_s >= 5:

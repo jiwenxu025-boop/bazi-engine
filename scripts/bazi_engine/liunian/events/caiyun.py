@@ -8,8 +8,6 @@ from ..utils import (
     _has_branch_interaction,
     _has_tiangan_wuhe,
     _is_ke_wx,
-    _is_kongwang,
-    _kongwang_branches,
     _make_prediction,
     _wealth_magnitude,
     get_caiku_branch,
@@ -88,10 +86,6 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     if lu_cai and _has_branch_interaction(ln_branch, lu_cai, "六冲"):
         s.add(-2, "冲禄→预算调整主题")
-
-    kw_cy = _kongwang_branches(day_master, day_branch)
-    if _is_kongwang(ln_branch, kw_cy) and is_cai:
-        s.add(-1, "财星落空亡→财务信号待验")
 
     if s.is_significant():
         magnitude = _wealth_magnitude(s.total, s.triggers())

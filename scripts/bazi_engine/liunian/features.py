@@ -54,13 +54,13 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
     # 3. 流年与夫妻宫(日支)的关系
     rizhi_rels = []
     if _has_branch_interaction(day_branch, ln_branch, "六合"):
-        rizhi_rels.append("合夫妻宫")
+        rizhi_rels.append("流年与日支六合（结构参考）")
     if _has_branch_interaction(day_branch, ln_branch, "六冲"):
-        rizhi_rels.append("冲夫妻宫")
+        rizhi_rels.append("流年与日支六冲（结构参考）")
     if _has_branch_interaction(day_branch, ln_branch, "三合"):
-        rizhi_rels.append("三合夫妻宫")
+        rizhi_rels.append("流年与日支三合（结构参考）")
     if _has_branch_interaction(day_branch, ln_branch, "相害"):
-        rizhi_rels.append("害夫妻宫")
+        rizhi_rels.append("流年与日支相害（结构参考）")
     if rizhi_rels:
         features["夫妻宫引动"] = ", ".join(rizhi_rels)
 
@@ -77,7 +77,7 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
     # 6. 空亡
     kw = _kongwang_branches(day_master, day_branch)
     if _is_kongwang(ln_branch, kw):
-        features["空亡"] = f"流年{ln_branch.value}落空亡→信号虚浮"
+        features["空亡"] = f"流年{ln_branch.value}落旬空（结构参考，影响需结合合冲旺衰）"
 
     # 7. 十二长生
     cs = _changsheng_status(day_master, ln_branch)
@@ -88,9 +88,9 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
     if dn_branch:
         dn_rizhi_rels = []
         if _has_branch_interaction(dn_branch, day_branch, "六冲"):
-            dn_rizhi_rels.append("大运冲夫妻宫")
+            dn_rizhi_rels.append("大运与日支六冲（结构参考）")
         if _has_branch_interaction(dn_branch, day_branch, "六合"):
-            dn_rizhi_rels.append("大运合夫妻宫")
+            dn_rizhi_rels.append("大运与日支六合（结构参考）")
         if dn_rizhi_rels:
             features["大运夫妻宫"] = ", ".join(dn_rizhi_rels)
 
