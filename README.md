@@ -48,7 +48,7 @@
 ### LLM 推理层（v0.9.0）
 - **Hybrid 模式** — 规则引擎主跑，LLM 仅介入边界年份（无信号或仅 1★）
 - **流年近失特征** — 十神/神煞/冲合/空亡等规则引擎内算但未触发的特征传给 LLM
-- **DeepSeek 集成** — 支持 `deepseek-chat`/`deepseek-v4-pro`/`deepseek-v4-flash`
+- **DeepSeek 集成** — 支持 `deepseek-chat`/`deepseek-v4-pro`/`deepseek-v4-flash`；`deepseek-v4-flash` 默认允许使用完整 1M 模型窗口，实际请求按内容长度发送
 - **开关控制** — `BAZI_LLM_REVIEW=1` 启用，默认关闭
 
 ## 安装
@@ -180,7 +180,8 @@ bazi-engine/
    ```
    BAZI_PUBLIC=true
    DEEPSEEK_API_KEY=          # 可选，启用 AI 追问，不要提交到仓库
-   DEEPSEEK_MODEL=deepseek-chat
+   DEEPSEEK_MODEL=deepseek-v4-flash
+   BAZI_LLM_CONTEXT_LIMIT=1000000  # 上下文上限（含预留输出），实际请求不会填充到该长度
    BAZI_LLM_REVIEW=1          # 可选，启用 LLM 推理层
    ```
 4. 部署完成后获得公网 URL

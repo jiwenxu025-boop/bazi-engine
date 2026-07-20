@@ -26,6 +26,7 @@ from ._deepseek_config import (
     is_available,
 )
 from ._http import shared_client
+from ._token_budget import prepare_messages_for_request
 
 logger = logging.getLogger(__name__)
 
@@ -389,6 +390,13 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
         {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
         {"role": "user", "content": prompt},
     ]
+    max_output_tokens = 4096
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="liunian_review",
+    )
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -399,13 +407,8 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
         "messages": messages,
         "stream": True,
         "temperature": 0.3,
-        "max_tokens": 4096,
+        "max_tokens": max_output_tokens,
     }
-
-    # Token 预算检查
-    from ._token_budget import check_token_budget, truncate_messages
-    if not check_token_budget(messages, DEEPSEEK_MODEL, payload["max_tokens"])[0]:
-        messages = truncate_messages(messages, DEEPSEEK_MODEL, payload["max_tokens"])
 
     try:
         _timeout = get_timeout()
@@ -637,6 +640,13 @@ def interpret_dayun(natal: dict, dayun_modulations: list[dict],
         {"role": "system", "content": "你是八字命理大运分析专家。分析每步大运对命主的影响，输出简洁直接的解读。只输出 JSON，不输出其他内容。"},
         {"role": "user", "content": prompt},
     ]
+    max_output_tokens = 4096
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="dayun_interpretation",
+    )
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -647,7 +657,7 @@ def interpret_dayun(natal: dict, dayun_modulations: list[dict],
         "messages": messages,
         "stream": False,
         "temperature": 0.3,
-        "max_tokens": 4096,
+        "max_tokens": max_output_tokens,
     }
 
     try:
@@ -956,11 +966,13 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
         {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
         {"role": "user", "content": prompt},
     ]
-
-    # Token 预算
-    from ._token_budget import check_token_budget, truncate_messages
-    if not check_token_budget(messages, DEEPSEEK_MODEL, 4096)[0]:
-        messages = truncate_messages(messages, DEEPSEEK_MODEL, 4096)
+    max_output_tokens = 4096
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="liunian_batch_review",
+    )
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -971,7 +983,7 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
         "messages": messages,
         "stream": True,
         "temperature": 0.3,
-        "max_tokens": 4096,
+        "max_tokens": max_output_tokens,
     }
 
     try:

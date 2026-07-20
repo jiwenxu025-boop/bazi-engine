@@ -15,6 +15,7 @@ import httpx
 
 from ._deepseek_config import DEEPSEEK_API_URL, DEEPSEEK_KEY, DEEPSEEK_MODEL
 from ._http import shared_async_client
+from ._token_budget import prepare_messages_for_request
 from .runtime_store import QuotaReservation, RuntimeStore
 
 # ═══════════════════════════════════════════════════════════════
@@ -317,10 +318,13 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
         yield "data: [ERROR] AI服务暂不可用，请稍后重试\n\n"
         return
 
-    # Token 预算检查
-    from ._token_budget import check_token_budget, truncate_messages
-    if not check_token_budget(messages, DEEPSEEK_MODEL, 2048)[0]:
-        messages = truncate_messages(messages, DEEPSEEK_MODEL, 2048)
+    max_output_tokens = 2048
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="chat",
+    )
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -331,7 +335,7 @@ async def call_deepseek_stream(messages: list[dict]) -> AsyncGenerator[str]:
         "messages": messages,
         "stream": True,
         "temperature": 0.7,
-        "max_tokens": 2048,
+        "max_tokens": max_output_tokens,
     }
 
     try:

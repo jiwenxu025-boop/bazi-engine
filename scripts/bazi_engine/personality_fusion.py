@@ -23,6 +23,7 @@ from ._deepseek_config import (
     DEEPSEEK_MODEL,
 )
 from ._http import shared_client
+from ._token_budget import prepare_messages_for_request
 from .personality_analysis.evidence import (
     build_fusion_signals_from_evidence,
     build_fusion_trait_signals,
@@ -350,12 +351,19 @@ def _repair_fusion_report(
             ),
         },
     ]
+    max_output_tokens = 1800
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="personality_fusion_repair",
+    )
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": messages,
         "stream": False,
         "temperature": 0.1,
-        "max_tokens": 1800,
+        "max_tokens": max_output_tokens,
     }
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -660,6 +668,13 @@ def generate_fusion_report(
         {"role": "system", "content": FUSION_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]
+    max_output_tokens = 4096
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="personality_fusion_stream",
+    )
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -670,7 +685,7 @@ def generate_fusion_report(
         "messages": messages,
         "stream": True,
         "temperature": float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3")),
-        "max_tokens": 4096,
+        "max_tokens": max_output_tokens,
     }
 
     full_text_parts: list[str] = []
@@ -732,6 +747,13 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
         {"role": "system", "content": FUSION_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]
+    max_output_tokens = 4096
+    messages = prepare_messages_for_request(
+        messages,
+        DEEPSEEK_MODEL,
+        max_output_tokens,
+        operation="personality_fusion_sync",
+    )
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_KEY}",
@@ -742,7 +764,7 @@ def generate_fusion_report_sync(data_package: dict) -> str | None:
         "messages": messages,
         "stream": False,
         "temperature": float(os.getenv("BAZI_FUSION_TEMPERATURE", "0.3")),
-        "max_tokens": 4096,
+        "max_tokens": max_output_tokens,
     }
 
     try:
