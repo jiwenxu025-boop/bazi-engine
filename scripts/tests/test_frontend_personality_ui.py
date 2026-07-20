@@ -634,11 +634,22 @@ def test_annual_ai_review_matrix_summary_and_visibility():
         if (meta.signalCategories.join(',') !== '桃花') throw new Error('signal categories are wrong');
 
         const summary = sandbox._renderAnnualAiSummary(meta);
-        if (!summary.includes('AI审阅 5/6类') || !summary.includes('有提示：桃花')) throw new Error('visible summary is incomplete');
+        if (!summary.includes('AI审阅') || !summary.includes('5/6类已完成') || !summary.includes('有提示：桃花')) throw new Error('visible summary is incomplete');
         const header = sandbox._renderAnnualAiHeaderTag(meta);
         if (!header.includes('AI 桃花↑')) throw new Error('AI header category is missing');
         const details = sandbox._renderAnnualAiReviews(reviews);
         if (!details.includes('无明显信号') || !details.includes('未完成')) throw new Error('matrix states are not rendered');
+
+        const clearMeta = sandbox._annualAiReviewMeta([
+          {{category: '婚嫁', review_status: '无明显信号', direction: '中性'}},
+          {{category: '事业', review_status: '无明显信号', direction: '中性'}},
+        ]);
+        const clearSummary = sandbox._renderAnnualAiSummary(clearMeta);
+        if (!clearSummary.includes('2/2类已完成') || !clearSummary.includes('无额外提示')) throw new Error('all-clear review was hidden');
+        const emptySummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]));
+        if (!emptySummary.includes('AI审阅') || !emptySummary.includes('暂无返回结果')) throw new Error('empty review state was hidden');
+        const emptyDetails = sandbox._renderAnnualAiReviews([]);
+        if (!emptyDetails.includes('AI 辅助审阅') || !emptyDetails.includes('暂无返回结果')) throw new Error('empty review details were hidden');
         """
     )
 
@@ -646,7 +657,60 @@ def test_annual_ai_review_matrix_summary_and_visibility():
 
     assert result.returncode == 0, result.stderr or result.stdout
     source = APP_JS.read_text(encoding="utf-8")
-    assert source.count("if (!significant.length && !aiMeta.signalReviews.length) continue;") == 2
+    assert "if (!significant.length && !aiMeta.signalReviews.length) continue;" not in source
+    assert source.count("本年规则层没有两星以上显著信号") == 2
+    assert source.count("annual-layer-label>规则判断") == 2
+
+
+def test_flow_refresh_keeps_all_clear_and_pending_years_visible():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const source = fs.readFileSync({str(APP_JS)!r}, 'utf8');
+        const start = source.indexOf('function _annualAiReviewMeta');
+        const end = source.indexOf('function applyEventFilter');
+        const eventsSection = {{innerHTML: ''}};
+        const sandbox = {{
+          esc(value) {{ return String(value); }},
+          _uiIcon() {{ return ''; }},
+          _summarizeAnnualScan() {{ return []; }},
+          document: {{
+            addEventListener() {{}},
+            querySelector(selector) {{
+              if (selector === '.events-section') return eventsSection;
+              return null;
+            }},
+          }},
+        }};
+        vm.createContext(sandbox);
+        vm.runInContext(source.slice(start, end), sandbox);
+        sandbox._summarizeAnnualScan = function() {{ return []; }};
+
+        sandbox.refreshFlowSection({{
+          annual_scans: [
+            {{
+              year: 2027, liunian: '丁未', age: 20, events: [],
+              ai_reviews: [
+                {{category: '婚嫁', review_status: '无明显信号', direction: '中性'}},
+                {{category: '事业', review_status: '无明显信号', direction: '中性'}},
+              ],
+            }},
+            {{year: 2028, liunian: '戊申', age: 21, events: [], ai_reviews: []}},
+          ],
+        }});
+
+        const cardCount = (eventsSection.innerHTML.match(/class=event-card/g) || []).length;
+        if (cardCount !== 2) throw new Error('all-clear or pending years were hidden');
+        if (!eventsSection.innerHTML.includes('2/2类已完成 · 无额外提示')) throw new Error('all-clear AI status was not visible');
+        if (!eventsSection.innerHTML.includes('AI审阅</span><span>暂无返回结果')) throw new Error('pending AI status was not visible');
+        if ((eventsSection.innerHTML.match(/本年规则层没有两星以上显著信号/g) || []).length !== 2) throw new Error('empty rule layers were hidden');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_report_overview_summarizes_chart_for_reading_first_result_page():

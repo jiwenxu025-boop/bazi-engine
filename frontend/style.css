@@ -831,16 +831,10 @@ input[type="checkbox"]{width:auto;padding:0;-webkit-appearance:checkbox;appearan
   background:var(--tag-bg);color:var(--text-secondary);
 }
 .ai-header-tag{border:1px solid var(--accent);background:transparent;color:var(--accent)}
-.event-summary-line{
-  margin:-6px 18px 12px;
-  color:var(--text-secondary);
-  font-size:12px;
-  line-height:1.6;
-}
-.ai-review-inline{
-  margin:-8px 18px 12px;padding-left:9px;border-left:2px solid var(--accent);
-  color:var(--text-secondary);font-size:11px;line-height:1.6;
-}
+.annual-layer-summary{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;margin:0 18px 8px;color:var(--text-secondary);font-size:12px;line-height:1.6}
+.annual-layer-label{font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--text-tertiary)}
+.rule-layer-summary{margin-top:-6px}
+.ai-layer-summary{margin-bottom:12px;padding-left:9px;border-left:2px solid var(--accent)}
 /* pattern bar */
 .pattern-fav{font-size:13px;color:var(--good);font-weight:500}
 .pattern-harm{font-size:13px;color:var(--bad);font-weight:500}
@@ -855,6 +849,8 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
   padding:4px 0;
 }
 .event-card.open .event-body{display:block}
+.annual-layer-title{padding:10px 18px 4px;font-size:11px;font-weight:700;color:var(--text-secondary)}
+.event-layer-empty{padding:6px 18px 12px;color:var(--text-tertiary);font-size:12px;border-bottom:1px solid var(--border)}
 .event-item{padding:12px 18px;border-bottom:1px solid var(--border)}
 .event-item:last-child{border-bottom:none}
 /* 主行: 星级+类别+方向+预测 */
@@ -867,6 +863,9 @@ html.dark .tag-xi{background:#1a3b2a;color:#6ee7b7}
 .event-main .llm-badge{font-size:11px;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;border-radius:3px;padding:0 4px;line-height:1.5}
 .time-basis-note{margin:-2px 0 12px;font-size:12px;line-height:1.5;color:var(--text-tertiary)}
 .ai-review{margin:8px 18px 14px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:var(--tag-bg)}
+.ai-review-empty{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text-secondary);font-size:12px}
+.ai-review-empty strong{font-weight:600}
+.ai-review-empty span{color:var(--text-tertiary)}
 .ai-review summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary)}
 .ai-review-item{padding:8px 0;border-top:1px solid var(--border);font-size:12px;line-height:1.6}
 .ai-review-item:first-of-type{border-top:none;padding-top:6px}
@@ -1402,8 +1401,7 @@ html.dark .calendar-legend .dot.bad{background:#c53030}
   .evidence-scale-content{grid-template-columns:1fr;padding-left:12px}
   .shishen-breakdown{margin-left:4px}
   .event-card .event-header{padding:14px 14px}
-  .event-summary-line{margin:-6px 14px 10px}
-  .ai-review-inline{margin:-6px 14px 10px}
+  .annual-layer-summary{grid-template-columns:56px minmax(0,1fr);gap:8px;margin-left:14px;margin-right:14px}
   .event-item{padding:6px 14px}
   .report-mobile-actions.active{
     display:grid;

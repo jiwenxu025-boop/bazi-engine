@@ -400,24 +400,26 @@ function _renderAnnualAiHeaderTag(meta){
 }
 
 function _renderAnnualAiSummary(meta){
-  if (!meta || !meta.reviews.length) return '';
-  let text = '';
-  if (meta.hasExplicitStatuses){
-    text = 'AI审阅 ' + meta.completedCount + '/' + meta.categoryCount + '类';
+  let text = '暂无返回结果';
+  if (meta && meta.reviews.length && meta.hasExplicitStatuses){
+    text = meta.completedCount + '/' + meta.categoryCount + '类已完成';
     if (meta.incompleteCount) text += ' · ' + meta.incompleteCount + '类未完成';
-  } else {
-    text = 'AI辅助提示';
+    if (meta.signalCategories.length){
+      text += ' · 有提示：' + meta.signalCategories.join('、');
+    } else if (!meta.incompleteCount){
+      text += ' · 无额外提示';
+    }
+  } else if (meta && meta.reviews.length){
+    text = '辅助提示已返回';
+    if (meta.signalCategories.length) text += ' · 有提示：' + meta.signalCategories.join('、');
   }
-  if (meta.signalCategories.length){
-    text += ' · 有提示：' + meta.signalCategories.join('、');
-  } else if (meta.hasExplicitStatuses && !meta.incompleteCount){
-    text += ' · 无额外提示';
-  }
-  return '<div class=ai-review-inline>' + esc(text) + '</div>';
+  return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>' + esc(text) + '</span></div>';
 }
 
 function _renderAnnualAiReviews(reviews){
-  if (!Array.isArray(reviews) || !reviews.length) return '';
+  if (!Array.isArray(reviews) || !reviews.length){
+    return '<div class="ai-review ai-review-empty"><strong>AI 辅助审阅</strong><span>暂无返回结果</span></div>';
+  }
   let meta = _annualAiReviewMeta(reviews);
   let detailLabel = meta.hasExplicitStatuses
     ? 'AI 辅助审阅（' + meta.completedCount + '/' + meta.categoryCount + '类，不计入规则信号）'
@@ -1577,7 +1579,6 @@ function render(d){
       let significant = scan.events.filter(function(e){return e.strength >= 2});
       let aiReviews = scan.ai_reviews || [];
       let aiMeta = _annualAiReviewMeta(aiReviews);
-      if (!significant.length && !aiMeta.signalReviews.length) continue;
       hasAny = true;
 
       let summary = _summarizeAnnualScan(scan, d);
@@ -1599,11 +1600,13 @@ function render(d){
       h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
       h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
       h += '</div>';
-      let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '规则层暂无显著信号';
-      h += '<div class=event-summary-line>' + esc(ruleSummary) + '</div>';
+      let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
+      h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
       h += _renderAnnualAiSummary(aiMeta);
       // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
       h += '<div class=event-body>';
+      h += '<div class=annual-layer-title>规则判断</div>';
+      if (!significant.length) h += '<div class=event-layer-empty>本年规则层没有两星以上显著信号</div>';
       for (let e = 0; e < significant.length; e++){
         let ev2 = significant[e];
         let cls2 = ev2.direction === '负面' ? 'direction-bad' : ev2.direction === '正面' ? 'direction-good' : '';
@@ -1837,7 +1840,6 @@ function refreshFlowSection(d){
     let significant = scan.events.filter(function(e){return e.strength >= 2});
     let aiReviews = scan.ai_reviews || [];
     let aiMeta = _annualAiReviewMeta(aiReviews);
-    if (!significant.length && !aiMeta.signalReviews.length) continue;
     hasAny = true;
     let summary = _summarizeAnnualScan(scan, d);
     let tagBadges = [];
@@ -1855,10 +1857,12 @@ function refreshFlowSection(d){
     h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
     h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
     h += '</div>';
-    let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '规则层暂无显著信号';
-    h += '<div class=event-summary-line>' + esc(ruleSummary) + '</div>';
+    let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
+    h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
     h += _renderAnnualAiSummary(aiMeta);
     h += '<div class=event-body>';
+    h += '<div class=annual-layer-title>规则判断</div>';
+    if (!significant.length) h += '<div class=event-layer-empty>本年规则层没有两星以上显著信号</div>';
     for (let e = 0; e < significant.length; e++){
       let ev2 = significant[e];
       let cls2 = ev2.direction === '负面' ? 'direction-bad' : ev2.direction === '正面' ? 'direction-good' : '';
