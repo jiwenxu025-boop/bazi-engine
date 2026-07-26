@@ -858,9 +858,7 @@ def _parse_dayun_response(content: str, expected_count: int) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════
 
 def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMReviewResult]]:
-    """多年合并为一次 API 调用，共享原局/大运上下文。
-
-    8 次独立调用 → 1 次合并调用，省去每份中重复的原局描述。
+    """小批量合并 API 调用，共享原局/大运上下文。
 
     Args:
         ctxs: 多个年份的 review context（来自 build_review_context）
@@ -994,6 +992,11 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
             client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
         ):
             if resp.status_code != 200:
+                logger.warning(
+                    "LLM batch review provider rejected status=%s years=%s",
+                    resp.status_code,
+                    len(ctxs),
+                )
                 return [[] for _ in ctxs]
             for line in resp.iter_lines():
                 line = line.strip()
@@ -1017,11 +1020,29 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
 
         content = "".join(full_text_parts)
         if not content:
+            logger.warning("LLM batch review returned empty content years=%s", len(ctxs))
             return [[] for _ in ctxs]
 
-        return _parse_batch_response(content, ctxs)
+        parsed = _parse_batch_response(content, ctxs)
+        missing_years = [
+            ctxs[index]["liunian"]["year"]
+            for index, year_results in enumerate(parsed)
+            if not year_results
+        ]
+        if missing_years:
+            logger.warning(
+                "LLM batch review response incomplete years=%s content_length=%s",
+                missing_years,
+                len(content),
+            )
+        return parsed
 
-    except Exception:
+    except Exception as error:
+        logger.warning(
+            "LLM batch review failed years=%s type=%s",
+            len(ctxs),
+            type(error).__name__,
+        )
         return [[] for _ in ctxs]
 
 
