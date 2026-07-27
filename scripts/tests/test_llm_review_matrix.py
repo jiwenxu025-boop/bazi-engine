@@ -135,3 +135,27 @@ def test_batch_response_builds_a_matrix_for_each_year():
     assert [len(year_results) for year_results in results] == [6, 6]
     assert any(result.category == "桃花" and result.review_status == "有信号" for result in results[0])
     assert all(result.review_status == "无明显信号" for result in results[1])
+
+
+def test_positive_review_text_uses_larger_limits_and_complete_sentence_boundaries():
+    prediction = "甲" * 70 + "。" + "乙" * 70 + "。"
+    reasoning = "丙" * 150 + "。" + "丁" * 150 + "。"
+    event = _positive_event("事业")
+    event["prediction"] = prediction
+    event["reasoning"] = reasoning
+
+    results = _parse_review_response(
+        json.dumps(
+            {"category_matrix": _matrix(事业=1), "events": [event]},
+            ensure_ascii=False,
+        ),
+        2027,
+    )
+    review = next(result for result in results if result.category == "事业")
+
+    assert review.prediction == "甲" * 70 + "。"
+    assert len(review.prediction) <= 120
+    assert review.reasoning == "丙" * 150 + "。"
+    assert len(review.reasoning) <= 240
+    assert len(review.triggers[0]) <= 120
+    assert review.triggers[0].endswith("…")

@@ -55,6 +55,12 @@ _REVIEW_CATEGORIES = ("婚嫁", "桃花", "事业", "财运", "健康", "搬迁"
 _REVIEW_CATEGORY_SET = set(_REVIEW_CATEGORIES)
 _VALID_REVIEW_CATEGORIES = _REVIEW_CATEGORY_SET | {"人际", "状态"}
 _VALID_REVIEW_DIRECTIONS = {"正面", "负面", "中性"}
+_PREDICTION_MAX_CHARS = 120
+_REASONING_MAX_CHARS = 240
+_TRIGGER_MAX_CHARS = 120
+_SENTENCE_ENDINGS = "。！？!?."
+_CLAUSE_ENDINGS = "，,；;、"
+_LLM_TRIGGER_PREFIX = "[LLM推理] "
 
 
 def should_invoke_llm(events: list, year: int, age: int,
@@ -487,6 +493,24 @@ def _coerce_matrix_value(value) -> bool | None:
     return None
 
 
+def _trim_review_text(value, max_chars: int) -> str:
+    """Limit review prose without silently cutting through a complete sentence."""
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+
+    prefix = text[:max_chars]
+    sentence_end = max(prefix.rfind(mark) for mark in _SENTENCE_ENDINGS)
+    if sentence_end >= 0:
+        return prefix[:sentence_end + 1].rstrip()
+
+    hard_prefix = text[:max_chars - 1]
+    clause_end = max(hard_prefix.rfind(mark) for mark in _CLAUSE_ENDINGS)
+    if clause_end >= max_chars // 2:
+        hard_prefix = hard_prefix[:clause_end + 1].rstrip(_CLAUSE_ENDINGS + " ")
+    return hard_prefix.rstrip() + "…"
+
+
 def _parse_positive_review_event(evt: dict, year: int) -> LLMReviewResult | None:
     if not isinstance(evt, dict):
         return None
@@ -510,15 +534,18 @@ def _parse_positive_review_event(evt: dict, year: int) -> LLMReviewResult | None
     if confidence < 0.5:
         return None
 
-    reasoning = str(evt.get("reasoning", ""))[:120]
+    prediction = _trim_review_text(evt.get("prediction", ""), _PREDICTION_MAX_CHARS)
+    reasoning = _trim_review_text(evt.get("reasoning", ""), _REASONING_MAX_CHARS)
+    trigger_budget = _TRIGGER_MAX_CHARS - len(_LLM_TRIGGER_PREFIX)
+    trigger_reasoning = _trim_review_text(reasoning, trigger_budget)
     return LLMReviewResult(
         year=year,
         category=category,
         direction=direction,
         strength=strength,
-        prediction=str(evt.get("prediction", ""))[:60],
+        prediction=prediction,
         reasoning=reasoning,
-        triggers=[f"[LLM推理] {reasoning[:60]}"] if reasoning else [],
+        triggers=[f"{_LLM_TRIGGER_PREFIX}{trigger_reasoning}"] if reasoning else [],
         confidence=confidence,
         source="llm",
         review_status="有信号",
