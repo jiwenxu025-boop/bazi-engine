@@ -14,6 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 APP_JS = ROOT / "frontend" / "app.js"
 INDEX_HTML = ROOT / "frontend" / "index.html"
+CHAT_CSS = ROOT / "frontend" / "chat.css"
 
 
 def extract_css_block(css: str, selector: str) -> str:
@@ -389,7 +390,7 @@ def test_gender_luck_section_omits_whitespace_dayun_and_formula_only_empty_main(
     assert '三天"折一岁' not in html
 
 
-def test_gender_luck_section_normalizes_kinship_and_shows_zero_spirit_score():
+def test_gender_luck_section_normalizes_kinship_without_exposing_spirit_score():
     html = render_gender_luck_section(
         {
             "gender": "男",
@@ -406,7 +407,8 @@ def test_gender_luck_section_normalizes_kinship_and_shows_zero_spirit_score():
 
     assert "<span>妻星</span><b>正财</b>" in html
     assert " / 正财 / " not in html
-    assert "后端不利神煞分：0。" in html
+    assert "孤辰敏感提示" in html
+    assert "后端不利神煞分" not in html
 
 
 def test_gender_luck_section_escapes_dynamic_text_and_hides_without_data():
@@ -647,9 +649,13 @@ def test_annual_ai_review_matrix_summary_and_visibility():
         const clearSummary = sandbox._renderAnnualAiSummary(clearMeta);
         if (!clearSummary.includes('2/2类已完成') || !clearSummary.includes('无额外提示')) throw new Error('all-clear review was hidden');
         const emptySummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]));
-        if (!emptySummary.includes('AI审阅') || !emptySummary.includes('暂无返回结果')) throw new Error('empty review state was hidden');
+        if (emptySummary !== '') throw new Error('empty review state should be hidden');
+        const pendingSummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]), 'pending');
+        if (!pendingSummary.includes('AI审阅') || !pendingSummary.includes('生成中')) throw new Error('pending review state was not visible');
+        const errorSummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]), 'error');
+        if (!errorSummary.includes('AI审阅') || !errorSummary.includes('暂时不可用')) throw new Error('error review state was not visible');
         const emptyDetails = sandbox._renderAnnualAiReviews([]);
-        if (!emptyDetails.includes('AI 辅助审阅') || !emptyDetails.includes('暂无返回结果')) throw new Error('empty review details were hidden');
+        if (emptyDetails !== '') throw new Error('empty review details should be hidden');
         """
     )
 
@@ -662,7 +668,7 @@ def test_annual_ai_review_matrix_summary_and_visibility():
     assert source.count("annual-layer-label>规则判断") == 2
 
 
-def test_flow_refresh_keeps_all_clear_and_pending_years_visible():
+def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
     script = textwrap.dedent(
         f"""
         const fs = require('fs');
@@ -703,7 +709,7 @@ def test_flow_refresh_keeps_all_clear_and_pending_years_visible():
         const cardCount = (eventsSection.innerHTML.match(/class=event-card/g) || []).length;
         if (cardCount !== 2) throw new Error('all-clear or pending years were hidden');
         if (!eventsSection.innerHTML.includes('2/2类已完成 · 无额外提示')) throw new Error('all-clear AI status was not visible');
-        if (!eventsSection.innerHTML.includes('AI审阅</span><span>暂无返回结果')) throw new Error('pending AI status was not visible');
+        if (eventsSection.innerHTML.includes('暂无返回结果')) throw new Error('unstarted AI status was rendered');
         if ((eventsSection.innerHTML.match(/本年规则层没有两星以上显著信号/g) || []).length !== 2) throw new Error('empty rule layers were hidden');
         """
     )
@@ -711,6 +717,24 @@ def test_flow_refresh_keeps_all_clear_and_pending_years_visible():
     result = run_node(script)
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_frontend_does_not_expose_backend_errors_or_raw_annual_tokens():
+    source = APP_JS.read_text(encoding="utf-8")
+    chat_css = CHAT_CSS.read_text(encoding="utf-8")
+
+    assert "大运解读暂时不可用，请稍后重试。" in source
+    assert "esc(msg.message || '未知错误')" not in source
+    assert "请求失败: ' + esc(e.message)" not in source
+    assert "请求失败: ' + e.message" not in source
+    assert "请求暂时失败，请稍后重试。" in source
+    assert "后端不利神煞分" not in source
+    assert "前端不重新计算" not in source
+    assert "llmTokens" not in source
+    assert "updateLlmTokenDisplay(msg.year);" in source
+    assert "textEl.textContent = text" not in source
+    assert "body:not(.has-chart) .chat-toggle{display:none}" in chat_css
+    assert "classList.toggle('has-chart'" in source
 
 
 def test_report_overview_summarizes_chart_for_reading_first_result_page():

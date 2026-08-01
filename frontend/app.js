@@ -271,6 +271,7 @@ let AppState = {
   chart: null,
   currentContext: null,
   streamStatus: 'idle',
+  annualReviewStatus: 'idle',
   lifeStageOverride: null,
   streamControllers: {},
 };
@@ -299,6 +300,9 @@ window.addEventListener('pagehide', function(){
 function setChartData(chart){
   AppState.chart = chart || null;
   AppState.currentContext = AppState.chart && AppState.chart.current_context ? AppState.chart.current_context : null;
+  if (typeof document !== 'undefined' && document.body && document.body.classList){
+    document.body.classList.toggle('has-chart', !!AppState.chart);
+  }
   try { CHAT.chartData = AppState.chart; } catch(e) {}
   if (typeof window !== 'undefined') window._calChart = AppState.chart;
   return AppState.chart;
@@ -318,6 +322,15 @@ function getCurrentContext(){
 function setStreamStatus(status){
   AppState.streamStatus = status || 'idle';
   return AppState.streamStatus;
+}
+
+function setAnnualReviewStatus(status){
+  AppState.annualReviewStatus = status || 'idle';
+  return AppState.annualReviewStatus;
+}
+
+function getAnnualReviewStatus(){
+  return AppState.annualReviewStatus || 'idle';
 }
 
 function mergeAnnualAiReviews(year, signals){
@@ -399,8 +412,14 @@ function _renderAnnualAiHeaderTag(meta){
   return '<span class="header-tag ai-header-tag">AI ' + esc(labels.join('、')) + '</span>';
 }
 
-function _renderAnnualAiSummary(meta){
-  let text = '暂无返回结果';
+function _renderAnnualAiSummary(meta, status){
+  let reviewStatus = status || 'idle';
+  if (!meta || !meta.reviews.length){
+    if (reviewStatus === 'pending') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>生成中...</span></div>';
+    if (reviewStatus === 'error') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>暂时不可用</span></div>';
+    return '';
+  }
+  let text = '辅助提示已返回';
   if (meta && meta.reviews.length && meta.hasExplicitStatuses){
     text = meta.completedCount + '/' + meta.categoryCount + '类已完成';
     if (meta.incompleteCount) text += ' · ' + meta.incompleteCount + '类未完成';
@@ -409,16 +428,15 @@ function _renderAnnualAiSummary(meta){
     } else if (!meta.incompleteCount){
       text += ' · 无额外提示';
     }
-  } else if (meta && meta.reviews.length){
-    text = '辅助提示已返回';
-    if (meta.signalCategories.length) text += ' · 有提示：' + meta.signalCategories.join('、');
+  } else if (meta.signalCategories.length){
+    text += ' · 有提示：' + meta.signalCategories.join('、');
   }
   return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>' + esc(text) + '</span></div>';
 }
 
-function _renderAnnualAiReviews(reviews){
+function _renderAnnualAiReviews(reviews, status){
   if (!Array.isArray(reviews) || !reviews.length){
-    return '<div class="ai-review ai-review-empty"><strong>AI 辅助审阅</strong><span>暂无返回结果</span></div>';
+    return '';
   }
   let meta = _annualAiReviewMeta(reviews);
   let detailLabel = meta.hasExplicitStatuses
@@ -540,6 +558,8 @@ function _validateChartForm(){
 
 async function go(){
   if (!_validateChartForm()) return;
+  setAnnualReviewStatus('idle');
+  setChartData(null);
   let btn = document.getElementById('submitBtn');
   btn.disabled = true; btn.textContent = '计算中...';
   let r = document.getElementById('result');
@@ -568,7 +588,6 @@ async function go(){
     let d = null;           // 完整命盘数据
     let personalityEl = null;
     let personalityText = '';
-    let llmTokens = {};  // v0.11.2: {year: accumulated_text}
 
     while(true){
       let chunk = await streamReader.read();
@@ -587,10 +606,9 @@ async function go(){
             // 连接已建立，更新加载提示
             r.innerHTML = '<div class=loading-state><div class=spinner></div><div>规则引擎计算中...</div></div>';
           } else if (msg.phase === 'llm_token'){
-            // LLM推理逐token——某年的推理文字流式追加
-            if (!llmTokens[msg.year]) llmTokens[msg.year] = '';
-            llmTokens[msg.year] += msg.token;
-            updateLlmTokenDisplay(msg.year, llmTokens[msg.year]);
+            // 年度审阅只显示状态，不把模型原始输出暴露给用户。
+            setAnnualReviewStatus('pending');
+            updateLlmTokenDisplay(msg.year);
           } else if (msg.phase === 'rules_done'){
             // 1. 规则引擎完成，立即渲染
             d = setChartData(msg.chart);
@@ -600,11 +618,15 @@ async function go(){
             }, 80);
           } else if (msg.phase === 'llm_result'){
             // 2. LLM审查某年完成，追加到独立的 AI 审阅区。
+            setAnnualReviewStatus('pending');
             if (d && d.annual_scans){
               d = mergeAnnualAiReviews(msg.year, msg.signals) || d;
               // 局部刷新流年区域
               refreshFlowSection(d);
             }
+          } else if (msg.phase === 'llm_error'){
+            setAnnualReviewStatus('error');
+            if (d) refreshFlowSection(d);
           } else if (msg.phase === 'personality_token'){
             // 3. 性格报告逐token → 渐进markdown渲染
             if (!personalityEl){
@@ -642,7 +664,7 @@ async function go(){
             if (!personalityEl){
               personalityEl = document.querySelector('.personality-text');
             }
-            showPersonalityRawFallback(msg.message || 'fusion error');
+            showPersonalityRawFallback();
             continue;
           } else if (msg.phase === 'dayun_done'){
             // 5. 大运解读完成——更新DOM
@@ -652,11 +674,13 @@ async function go(){
               for (let di = 0; di < dyEls.length; di++) dyEls[di].innerHTML = _buildDayunInterpretations(d);
             }
           } else if (msg.phase === 'dayun_error'){
-            // 5b. 大运解读失败——显示原因
+            // 5b. 大运解读失败——只显示用户可理解的状态
             let dyEls2 = document.querySelectorAll('.dayun-interpretations');
-            for (let de = 0; de < dyEls2.length; de++) dyEls2[de].innerHTML = '<div class=dayun-error>⚠ 大运解读暂不可用：' + esc(msg.message || '未知错误') + '</div>';
+            for (let de = 0; de < dyEls2.length; de++) dyEls2[de].innerHTML = '<div class=dayun-error>⚠ 大运解读暂时不可用，请稍后重试。</div>';
           } else if (msg.phase === 'done'){
-            // 6. 全流程结束——清理LLM推理实时显示区
+            // 6. 全流程结束——清理年度状态区并移除实时状态
+            if (getAnnualReviewStatus() === 'pending') setAnnualReviewStatus('complete');
+            if (d) refreshFlowSection(d);
             let liveEl = document.querySelector('.llm-live-section');
             if (liveEl) liveEl.remove();
           }
@@ -665,7 +689,7 @@ async function go(){
     }
   } catch(e) {
     if (e.name === 'AbortError') return;
-    r.innerHTML = '<div class=error-state>请求失败: ' + esc(e.message) + '<br><small style="color:' + (document.documentElement.classList.contains('dark') ? '#a0a0b0' : '#78716c') + '">请确认 API 地址可访问</small></div>';
+    r.innerHTML = '<div class=error-state>请求暂时失败，请稍后重试。</div>';
   } finally {
     endStreamRequest('chart', controller);
   }
@@ -863,7 +887,7 @@ function setPersonalityMode(mode){
   }
 }
 
-function showPersonalityRawFallback(message){
+function showPersonalityRawFallback(){
   let body = document.getElementById('personalityBody');
   let text = document.querySelector('.personality-text');
   if (text){
@@ -871,7 +895,7 @@ function showPersonalityRawFallback(message){
     text.innerHTML = '';
   }
   if (body){
-    if (message) body.dataset.fusionError = message;
+    delete body.dataset.fusionError;
     body.dataset.fusionFailed = 'true';
   }
   setPersonalityMode('raw');
@@ -1181,7 +1205,7 @@ function _buildGenderLuckSection(d){
   let h = '';
 
   h += '<section id=section-gender-luck class="report-section gender-luck-section">';
-  h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div><p>本节只展示后端返回的规则事实，前端不重新计算顺逆排、起运或六亲规则。</p></div>';
+  h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div><p>本节展示排运、起运和六亲相关的传统规则依据。</p></div>';
   h += '<div class=gender-luck-panel>';
   if (direction) summaryRows += '<div class=gender-luck-summary-row><span>排运方向</span><b>' + esc(direction) + '</b></div>';
 
@@ -1234,9 +1258,7 @@ function _buildGenderLuckSection(d){
     }
   }
   if (sensitiveSpirit){
-    let unfavorable = d.spirit_score && d.spirit_score.unfavorable;
     h += '<div class=gender-luck-sensitive-note><b>' + esc(sensitiveSpirit.name) + '敏感提示</b><p>传统规则将此作为关系议题的敏感信号，不代表确定结果。';
-    if (unfavorable !== undefined && unfavorable !== null) h += ' 后端不利神煞分：' + esc(unfavorable) + '。';
     h += '</p></div>';
   }
 
@@ -1573,6 +1595,7 @@ function render(d){
     }
 
     h += '<div class=events-section>';
+    let annualReviewStatus = typeof getAnnualReviewStatus === 'function' ? getAnnualReviewStatus() : 'idle';
     let hasAny = false;
     for (let s = 0; s < d.annual_scans.length; s++){
       let scan = d.annual_scans[s];
@@ -1602,7 +1625,7 @@ function render(d){
       h += '</div>';
       let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
       h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
-      h += _renderAnnualAiSummary(aiMeta);
+      h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
       // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
       h += '<div class=event-body>';
       h += '<div class=annual-layer-title>规则判断</div>';
@@ -1638,7 +1661,7 @@ function render(d){
         }
         h += '</div>';
       }
-      h += _renderAnnualAiReviews(aiReviews);
+      h += _renderAnnualAiReviews(aiReviews, annualReviewStatus);
       h += '</div></div>'; // /event-body + /event-card
     }
     if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
@@ -1783,7 +1806,7 @@ document.addEventListener('click', function(e){
   }
 });
 
-/* ── LLM推理逐字显示 ── */
+/* ── 年度审阅状态显示 ── */
 function _buildDayunInterpretations(d){
   let h = '';
   if (d.dayun.interpretations && d.dayun.interpretations.length){
@@ -1803,7 +1826,7 @@ function _buildDayunInterpretations(d){
   return h;
 }
 
-function updateLlmTokenDisplay(year, text){
+function updateLlmTokenDisplay(year){
   let el = document.querySelector('.llm-live-section');
   if (!el){
     // 在流年区域前插入实时显示区
@@ -1811,7 +1834,7 @@ function updateLlmTokenDisplay(year, text){
     if (!flowEl) return;
     el = document.createElement('div');
     el.className = 'llm-live-section';
-    el.innerHTML = '<div class=section-title>AI 分析中...</div>';
+    el.innerHTML = '<div class=section-title>AI审阅生成中...</div>';
     flowEl.parentNode.insertBefore(el, flowEl);
   }
   let yearEl = el.querySelector('[data-llm-year="' + year + '"]');
@@ -1823,7 +1846,7 @@ function updateLlmTokenDisplay(year, text){
     el.appendChild(yearEl);
   }
   let textEl = yearEl.querySelector('.llm-year-text');
-  if (textEl) textEl.textContent = text;
+  if (textEl) textEl.textContent = '正在分析';
   // 自动滚动到最新
   el.scrollTop = el.scrollHeight;
 }
@@ -1834,6 +1857,7 @@ function refreshFlowSection(d){
   let el = document.querySelector('.events-section');
   if (!el) return;
   let h = '';
+  let annualReviewStatus = typeof getAnnualReviewStatus === 'function' ? getAnnualReviewStatus() : 'idle';
   let hasAny = false;
   for (let s = 0; s < d.annual_scans.length; s++){
     let scan = d.annual_scans[s];
@@ -1859,7 +1883,7 @@ function refreshFlowSection(d){
     h += '</div>';
     let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
     h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
-    h += _renderAnnualAiSummary(aiMeta);
+    h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
     h += '<div class=event-body>';
     h += '<div class=annual-layer-title>规则判断</div>';
     if (!significant.length) h += '<div class=event-layer-empty>本年规则层没有两星以上显著信号</div>';
@@ -1892,7 +1916,7 @@ function refreshFlowSection(d){
       }
       h += '</div>';
     }
-    h += _renderAnnualAiReviews(aiReviews);
+    h += _renderAnnualAiReviews(aiReviews, annualReviewStatus);
     h += '</div></div>';
   }
   if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
@@ -2535,7 +2559,7 @@ async function sendChat(){
     }
   }catch(e){
     removeTyping();
-    if (e.name !== 'AbortError') appendBubble('请求失败: ' + e.message, 'ai');
+    if (e.name !== 'AbortError') appendBubble('请求暂时失败，请稍后重试。', 'ai');
   }finally{
     endStreamRequest('chat', controller);
   }

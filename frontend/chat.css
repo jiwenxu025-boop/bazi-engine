@@ -368,3 +368,6 @@ body .chat-empty>div:first-child{font-family:"Noto Serif SC","Songti SC",serif;f
   body .chat-toggle{bottom:18px;right:18px;width:48px;height:48px}
   body .chat-panel{width:100vw}
 }
+
+/* AI 追问需要命盘上下文，生成命盘前不占用输入区 */
+body:not(.has-chart) .chat-toggle{display:none}
