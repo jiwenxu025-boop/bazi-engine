@@ -169,6 +169,8 @@ class ScanConfig:
     chart_data: dict | None = None
     on_llm_result=None
     on_llm_token=None
+    defer_llm: bool = False
+    llm_tasks_out: list[tuple[int, dict]] | None = None
 
 
 def scan_years_from_config(config: ScanConfig) -> list[AnnualScan]:
@@ -193,6 +195,8 @@ def scan_years_from_config(config: ScanConfig) -> list[AnnualScan]:
         chart_data=config.chart_data,
         on_llm_result=config.on_llm_result,
         on_llm_token=config.on_llm_token,
+        defer_llm=config.defer_llm,
+        llm_tasks_out=config.llm_tasks_out,
         start_age_exact=config.start_age_exact,
     )
 
@@ -225,6 +229,8 @@ def scan_years(
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, llm_events)
     on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
     start_age_exact: float | None = None,
+    defer_llm: bool = False,
+    llm_tasks_out: list[tuple[int, dict]] | None = None,
 ) -> list[AnnualScan]:
     """逐年扫描，返回每年所有事件信号
 
@@ -639,7 +645,11 @@ def scan_years(
                 relationship_state = "single"
 
     # ── v0.11.1: LLM审查并行执行（循环中收集，此处并行发射）──
-    if llm_tasks:
+    if llm_tasks and defer_llm:
+        if llm_tasks_out is not None:
+            llm_tasks_out.extend(llm_tasks)
+        logger.debug("deferred llm reviews count=%s", len(llm_tasks))
+    elif llm_tasks:
         logger.debug("executing llm reviews count=%s", len(llm_tasks))
         if on_llm_result is not None:
             # 流式模式：逐个回调（含token级逐字推送）

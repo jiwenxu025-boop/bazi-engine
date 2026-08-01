@@ -60,6 +60,7 @@ _ALLOW_LEGACY_CHART_GET = os.getenv("BAZI_ALLOW_LEGACY_CHART_GET", "0").lower() 
 _FUSION_STREAM_TOTAL_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_TOTAL_TIMEOUT", "150"))
 _FUSION_STREAM_IDLE_TIMEOUT = float(os.getenv("BAZI_FUSION_STREAM_IDLE_TIMEOUT", "45"))
 _STREAM_HEARTBEAT_INTERVAL = float(os.getenv("BAZI_STREAM_HEARTBEAT_INTERVAL", "15"))
+_CHART_AI_TOTAL_TIMEOUT = float(os.getenv("BAZI_CHART_AI_TOTAL_TIMEOUT", "150"))
 _MAX_LIUNIAN_SPAN = 30
 _CORS_ORIGINS = [
     origin.strip()
@@ -300,36 +301,47 @@ def chart_api(
     return JSONResponse(content=result)
 
 
-async def stream_chart(    name, gender, year, month, day, hour, minute,
+async def stream_chart(
+    name, gender, year, month, day, hour, minute,
     city_id, longitude, timezone_offset_minutes, requested_time_mode, time_accuracy,
     ln_range, fav_set, life_stage, hour_confirmed, practical,
 ):
-    queue: asyncio.Queue = asyncio.Queue()
-    loop = asyncio.get_event_loop()
+    """Stream deterministic chart data first, then run optional AI work in parallel."""
+    loop = asyncio.get_running_loop()
+    events = StreamEventQueue(loop, name="chart-stream")
+    cancel_event = threading.Event()
+    request_id = uuid.uuid4().hex[:12]
+    request_started_at = time.monotonic()
+    futures = []
 
-    def on_llm(year_val: int, signals: list[dict]):
-        """LLM审查完成回调：推入队列"""
-        loop.call_soon_threadsafe(
-            queue.put_nowait,
-            ("llm", {"phase": "llm_result", "year": year_val, "signals": signals})
+    def publish(event_type: str, payload=None) -> None:
+        if not cancel_event.is_set():
+            events.publish(event_type, payload)
+
+    def finish_worker(component: str, started_at: float) -> None:
+        duration_ms = round((time.monotonic() - started_at) * 1000)
+        logger.info(
+            "chart stream stage=%s_done request_id=%s duration_ms=%s cancelled=%s",
+            component,
+            request_id,
+            duration_ms,
+            cancel_event.is_set(),
         )
+        publish("worker_done", component)
 
-    def on_llm_tok(year_val: int, token: str):
-        """LLM审查逐token回调"""
-        loop.call_soon_threadsafe(
-            queue.put_nowait,
-            ("llm_token", {"phase": "llm_token", "year": year_val, "token": token})
-        )
-
-    # 用可变容器把 BaziChart 对象从线程传出来，供大运解读等后续步骤使用
-    chart_obj_ref: list = []
-
-    def run_build():
-        """在线程中执行完整的 build_chart（含LLM审查）"""
+    def run_build() -> None:
+        build_started_at = time.monotonic()
         try:
-            c = build_chart(
-                name=name or "未知", gender=gender,
-                year=year, month=month, day=day, hour=hour, minute=minute,
+            if cancel_event.is_set():
+                return
+            chart = build_chart(
+                name=name or "未知",
+                gender=gender,
+                year=year,
+                month=month,
+                day=day,
+                hour=hour,
+                minute=minute,
                 liunian_range=ln_range,
                 favorable=fav_set,
                 calibrate=False,
@@ -340,209 +352,106 @@ async def stream_chart(    name, gender, year, month, day, hour, minute,
                 timezone_offset_minutes=timezone_offset_minutes,
                 requested_time_mode=requested_time_mode,
                 time_accuracy=time_accuracy,
-                on_llm_result=on_llm,
-                on_llm_token=on_llm_tok,
+                defer_llm=True,
             )
-            chart_obj_ref.append(c)
-            result = _prepare_chart_response(c.to_dict(), practical)
-            loop.call_soon_threadsafe(queue.put_nowait, ("chart", result))
+            if cancel_event.is_set():
+                return
+            chart_data = _prepare_chart_response(chart.to_dict(), practical)
+            publish("chart", (chart, chart_data))
+            logger.info(
+                "chart stream stage=rules_done request_id=%s duration_ms=%s pending_reviews=%s",
+                request_id,
+                round((time.monotonic() - build_started_at) * 1000),
+                len(chart._pending_llm_tasks),
+            )
         except Exception as error:
-            logger.exception("chart stream build failed type=%s", type(error).__name__)
-            loop.call_soon_threadsafe(queue.put_nowait, ("error", "排盘暂时不可用，请稍后重试"))
+            logger.exception(
+                "chart stream build failed request_id=%s type=%s",
+                request_id,
+                type(error).__name__,
+            )
+            publish("fatal_error", "排盘暂时不可用，请稍后重试")
 
-    # 立即告知前端连接已建立
     yield f"data: {json.dumps({'phase': 'started', 'message': '规则引擎计算中...'})}\n\n"
+    futures.append(submit_blocking(loop, run_build))
 
-    submit_blocking(loop, run_build)
+    chart = None
+    chart_data = None
+    try:
+        while chart is None:
+            try:
+                msg_type, msg_data = await events.get(_STREAM_HEARTBEAT_INTERVAL)
+            except TimeoutError:
+                if events.overflowed:
+                    yield f"data: {json.dumps({'phase': 'error', 'message': '排盘事件过多，请稍后重试'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
+                continue
+            if msg_type == "fatal_error":
+                yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            if msg_type == "chart":
+                chart, chart_data = msg_data
 
-    # 缓冲LLM结果和token（它们在build_chart线程中先到达，前端应先看到rules_done）
-    buffered_llm: list[dict] = []
-    buffered_llm_tokens: list[dict] = []
-    # SSE 心跳：Railway 代理超时通常 30s，每 15s 发一次保活
-    _HEARTBEAT_INTERVAL = 15.0
+        yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
 
-    while True:
-        try:
-            msg_type, msg_data = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL)
-        except TimeoutError:
-            yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
-            continue
-        if msg_type == "error":
-            yield f"data: {json.dumps({'phase': 'error', 'message': msg_data})}\n\n"
-            yield "data: [DONE]\n\n"
-            return
-        elif msg_type == "llm_token":
-            buffered_llm_tokens.append(msg_data)
-        elif msg_type == "llm":
-            buffered_llm.append(msg_data)
-        elif msg_type == "chart":
-            chart_data = msg_data
-            # 1. 先发规则引擎结果
-            yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
+        def on_llm(year_val: int, signals: list[dict]) -> None:
+            publish(
+                "llm_result",
+                {"phase": "llm_result", "year": year_val, "signals": signals},
+            )
 
-            # 2. 刷新缓冲的LLM token（逐字推理过程）
-            for tok_msg in buffered_llm_tokens:
-                yield f"data: {json.dumps(tok_msg)}\n\n"
+        def on_llm_token(year_val: int, token: str) -> None:
+            publish(
+                "llm_token",
+                {"phase": "llm_token", "year": year_val, "token": token},
+            )
 
-            # 3. 刷新缓冲的LLM结果
-            for llm_msg in buffered_llm:
-                yield f"data: {json.dumps(llm_msg)}\n\n"
+        def run_annual_reviews() -> None:
+            worker_started_at = time.monotonic()
+            try:
+                if chart._pending_llm_tasks and not cancel_event.is_set():
+                    from .liunian.llm_bridge import _execute_llm_reviews_streaming
 
-            # 3. 性格融合报告逐token流式输出（仅融合实际启用时进入）
-            chart = chart_obj_ref[0] if chart_obj_ref else None
+                    _execute_llm_reviews_streaming(
+                        chart.annual_scans,
+                        chart._pending_llm_tasks,
+                        on_llm,
+                        on_llm_token,
+                        cancel_event=cancel_event,
+                    )
+            except Exception as error:
+                logger.exception(
+                    "annual reviews failed request_id=%s type=%s",
+                    request_id,
+                    type(error).__name__,
+                )
+                publish("llm_error", "流年审阅暂不可用")
+            finally:
+                finish_worker("annual", worker_started_at)
+
+        def run_fusion() -> None:
+            worker_started_at = time.monotonic()
             fusion_enabled = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
             fusion_key = os.getenv("DEEPSEEK_API_KEY", "")
-            if fusion_enabled and fusion_key and chart_data.get("personality"):
-                fusion_generation_id = uuid.uuid4().hex
-                fusion_started_at = time.monotonic()
-                fusion_meta: dict = {"generation_id": fusion_generation_id}
-                try:
-                    from datetime import date
+            fusion_generation_id = uuid.uuid4().hex
+            fusion_meta: dict = {"generation_id": fusion_generation_id}
+            generation_recorded = threading.Event()
 
-                    from .personality_fusion import build_fusion_data_package, generate_fusion_report
-                    age_info = None
-                    if chart and hasattr(chart, 'birth_dt'):
-                        today = date.today()
-                        age = today.year - chart.birth_dt.year
-                        if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
-                            age -= 1
-                        dm = chart_data.get("day_master", {})
-                        age_info = {
-                            "年龄": age,
-                            "日干": dm.get("stem", ""),
-                            "五行": dm.get("wuxing", ""),
-                            "阴阳": dm.get("yinyang", ""),
-                        }
-                    personality_source = (
-                        chart.personality_result
-                        if chart and getattr(chart, "personality_result", None)
-                        else chart_data.get("personality", {})
-                    )
-                    family_source = (
-                        chart.family_result
-                        if chart and getattr(chart, "family_result", None)
-                        else chart_data.get("family")
-                    )
-                    pkg = build_fusion_data_package(
-                        personality_source,
-                        family_source,
-                        chart_data.get("life_stage", ""),
-                        age_info=age_info,
-                    )
-                    fusion_events = StreamEventQueue(loop, name="chart-fusion")
-
-                    def on_token(tok: str, _fusion_events=fusion_events):
-                        _fusion_events.publish("token", tok)
-
-                    fusion_done_flag = {"done": False}
-
-                    def run_fusion(
-                        _fusion_key=fusion_key,
-                        _fusion_events=fusion_events,
-                        _pkg=pkg,
-                        _fusion_done_flag=fusion_done_flag,
-                        _fusion_meta=fusion_meta,
-                        _fusion_started_at=fusion_started_at,
-                    ):
-                        try:
-                            if not _fusion_key:
-                                _fusion_events.publish("fusion_error", "DEEPSEEK_API_KEY未设置")
-                                return
-                            full = generate_fusion_report(
-                                _pkg,
-                                on_chunk=on_token,
-                                result_metadata=_fusion_meta,
-                            )
-                            if _fusion_events.closed:
-                                _record_fusion_generation(
-                                    _fusion_meta["generation_id"],
-                                    _fusion_started_at,
-                                    "cancelled",
-                                    _fusion_meta,
-                                    "stream_closed",
-                                )
-                                return
-                            if full:
-                                _record_fusion_generation(
-                                    _fusion_meta["generation_id"],
-                                    _fusion_started_at,
-                                    "success",
-                                    _fusion_meta,
-                                )
-                                _fusion_events.publish("fusion_done", full)
-                            else:
-                                _record_fusion_generation(
-                                    _fusion_meta["generation_id"],
-                                    _fusion_started_at,
-                                    "failure",
-                                    _fusion_meta,
-                                    "empty_response",
-                                )
-                                _fusion_events.publish("fusion_error", "融合报告暂时不可用，请稍后重试")
-                            _fusion_done_flag["done"] = True
-                        except Exception as error:
-                            error_class = _fusion_error_class(error)
-                            _record_fusion_generation(
-                                _fusion_meta["generation_id"],
-                                _fusion_started_at,
-                                "failure",
-                                _fusion_meta,
-                                error_class,
-                            )
-                            logger.warning(
-                                "fusion generation failed id=%s class=%s type=%s",
-                                _fusion_meta["generation_id"], error_class, type(error).__name__,
-                            )
-                            _fusion_events.publish("fusion_error", "融合报告暂时不可用，请稍后重试")
-                            _fusion_done_flag["done"] = True
-
-                    submit_blocking(loop, run_fusion)
-
-                    _fusion_last_activity_at = loop.time()
-                    while True:
-                        try:
-                            ft, fd = await fusion_events.get(_STREAM_HEARTBEAT_INTERVAL)
-                        except TimeoutError:
-                            if fusion_done_flag["done"]:
-                                break  # thread finished but queue empty
-                            total_elapsed = loop.time() - fusion_started_at
-                            idle_elapsed = loop.time() - _fusion_last_activity_at
-                            if total_elapsed > _FUSION_STREAM_TOTAL_TIMEOUT:
-                                fusion_events.close()
-                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告超时，请稍后重试'})}\n\n"
-                                break
-                            if idle_elapsed > _FUSION_STREAM_IDLE_TIMEOUT or fusion_events.overflowed:
-                                fusion_events.close()
-                                yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告响应超时，请稍后重试'})}\n\n"
-                                break
-                            yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
-                            continue
-                        if ft == "token":
-                            yield f"data: {json.dumps({'phase': 'personality_token', 'token': fd})}\n\n"
-                            _fusion_last_activity_at = loop.time()
-                        elif ft == "fusion_done":
-                            if fd:
-                                yield f"data: {json.dumps({'phase': 'personality_done', 'full': fd, 'meta': fusion_meta})}\n\n"
-                            break
-                        elif ft == "fusion_error":
-                            yield f"data: {json.dumps({'phase': 'personality_error', 'message': fd})}\n\n"
-                            break
-                    fusion_events.close()
-                except Exception as error:
-                    error_class = _fusion_error_class(error)
+            def record_once(outcome, error_class=None) -> None:
+                if not generation_recorded.is_set():
+                    generation_recorded.set()
                     _record_fusion_generation(
                         fusion_generation_id,
-                        fusion_started_at,
-                        "failure",
+                        worker_started_at,
+                        outcome,
                         fusion_meta,
                         error_class,
                     )
-                    logger.warning(
-                        "fusion generation failed id=%s class=%s type=%s",
-                        fusion_generation_id, error_class, type(error).__name__,
-                    )
-                    yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告暂时不可用，请稍后重试'})}\n\n"
-            else:
+
+            try:
                 detail = []
                 if not fusion_enabled:
                     detail.append("BAZI_FUSION_ENGINE未设为1")
@@ -550,55 +459,186 @@ async def stream_chart(    name, gender, year, month, day, hour, minute,
                     detail.append("DEEPSEEK_API_KEY未设置")
                 if not chart_data.get("personality"):
                     detail.append("性格数据为空")
-                yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合跳过: ' + '; '.join(detail)})}\n\n"
+                if detail:
+                    publish("personality_error", "融合跳过: " + "; ".join(detail))
+                    return
+                if cancel_event.is_set():
+                    return
 
-            # 4. 大运 LLM 解读（v0.14.0: 单次调用，非流式）
-            try:
-                from .llm_review import DEEPSEEK_KEY, LLM_REVIEW_ENABLED, enrich_dayun_interpretations
-                loop_dy = asyncio.get_running_loop()
-                dy_queue: asyncio.Queue = asyncio.Queue()
-                dy_error: list = []
+                from datetime import date
+                from inspect import signature
 
-                def _run_dayun(
-                    _chart=chart,
-                    _loop_dy=loop_dy,
-                    _dy_queue=dy_queue,
-                    _dy_error=dy_error,
-                ):
-                    try:
-                        result = enrich_dayun_interpretations(_chart) if _chart else []
-                        _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, result)
-                    except Exception as error:
-                        logger.exception("dayun interpretation failed type=%s", type(error).__name__)
-                        _dy_error.append("大运解读暂不可用")
-                        _loop_dy.call_soon_threadsafe(_dy_queue.put_nowait, [])
+                from .personality_fusion import (
+                    build_fusion_data_package,
+                    generate_fusion_report,
+                )
 
-                submit_blocking(loop_dy, _run_dayun)
-                while True:
-                    try:
-                        dayun_result = await asyncio.wait_for(dy_queue.get(), timeout=_HEARTBEAT_INTERVAL)
-                        break
-                    except TimeoutError:
-                        yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
-                        continue
-                if dayun_result:
-                    chart.dayun_interpretations = dayun_result
-                    yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': dayun_result})}\n\n"
-                elif dy_error:
-                    yield f"data: {json.dumps({'phase': 'dayun_error', 'message': dy_error[0]})}\n\n"
+                age_info = None
+                if hasattr(chart, "birth_dt"):
+                    today = date.today()
+                    age = today.year - chart.birth_dt.year
+                    if (today.month, today.day) < (chart.birth_dt.month, chart.birth_dt.day):
+                        age -= 1
+                    day_master = chart_data.get("day_master", {})
+                    age_info = {
+                        "年龄": age,
+                        "日干": day_master.get("stem", ""),
+                        "五行": day_master.get("wuxing", ""),
+                        "阴阳": day_master.get("yinyang", ""),
+                    }
+                personality_source = (
+                    chart.personality_result
+                    if getattr(chart, "personality_result", None)
+                    else chart_data.get("personality", {})
+                )
+                family_source = (
+                    chart.family_result
+                    if getattr(chart, "family_result", None)
+                    else chart_data.get("family")
+                )
+                package = build_fusion_data_package(
+                    personality_source,
+                    family_source,
+                    chart_data.get("life_stage", ""),
+                    age_info=age_info,
+                )
+
+                def on_token(token: str) -> None:
+                    publish("personality_token", token)
+
+                kwargs = {
+                    "on_chunk": on_token,
+                    "result_metadata": fusion_meta,
+                }
+                if "cancel_event" in signature(generate_fusion_report).parameters:
+                    kwargs["cancel_event"] = cancel_event
+                full = generate_fusion_report(package, **kwargs)
+                if cancel_event.is_set():
+                    record_once("cancelled", "client_disconnected")
+                    return
+                if full:
+                    record_once("success")
+                    publish("personality_done", {"full": full, "meta": fusion_meta})
                 else:
-                    detail = "dayun_modulations为空" if (chart and not getattr(chart, 'dayun_modulations', None)) else (
-                        "LLM开关未启用" if not LLM_REVIEW_ENABLED else (
-                        "DEEPSEEK_API_KEY未设置" if not DEEPSEEK_KEY else "LLM返回空"))
-                    yield f"data: {json.dumps({'phase': 'dayun_error', 'message': detail})}\n\n"
+                    record_once("failure", "empty_response")
+                    publish("personality_error", "融合报告暂时不可用，请稍后重试")
             except Exception as error:
-                logger.exception("dayun stream failed type=%s", type(error).__name__)
-                yield f"data: {json.dumps({'phase': 'dayun_error', 'message': '大运解读暂不可用'})}\n\n"
+                error_class = _fusion_error_class(error)
+                record_once("failure", error_class)
+                logger.warning(
+                    "fusion generation failed id=%s class=%s type=%s",
+                    fusion_generation_id,
+                    error_class,
+                    type(error).__name__,
+                )
+                publish("personality_error", "融合报告暂时不可用，请稍后重试")
+            finally:
+                if cancel_event.is_set() and fusion_enabled and fusion_key:
+                    record_once("cancelled", "client_disconnected")
+                finish_worker("fusion", worker_started_at)
 
-            # 5. 结束
-            yield f"data: {json.dumps({'phase': 'done'})}\n\n"
-            yield "data: [DONE]\n\n"
-            return
+        def run_dayun() -> None:
+            worker_started_at = time.monotonic()
+            try:
+                from .llm_review import (
+                    DEEPSEEK_KEY,
+                    LLM_REVIEW_ENABLED,
+                    enrich_dayun_interpretations,
+                )
+
+                if cancel_event.is_set():
+                    return
+                result = enrich_dayun_interpretations(chart)
+                if cancel_event.is_set():
+                    return
+                if result:
+                    chart.dayun_interpretations = result
+                    publish("dayun_done", result)
+                    return
+                detail = (
+                    "dayun_modulations为空"
+                    if not getattr(chart, "dayun_modulations", None)
+                    else (
+                        "LLM开关未启用"
+                        if not LLM_REVIEW_ENABLED
+                        else "DEEPSEEK_API_KEY未设置" if not DEEPSEEK_KEY else "LLM返回空"
+                    )
+                )
+                publish("dayun_error", detail)
+            except Exception as error:
+                logger.exception(
+                    "dayun interpretation failed request_id=%s type=%s",
+                    request_id,
+                    type(error).__name__,
+                )
+                publish("dayun_error", "大运解读暂不可用")
+            finally:
+                finish_worker("dayun", worker_started_at)
+
+        ai_started_at = time.monotonic()
+        futures.extend([
+            submit_blocking(loop, run_annual_reviews),
+            submit_blocking(loop, run_fusion),
+            submit_blocking(loop, run_dayun),
+        ])
+        remaining_workers = {"annual", "fusion", "dayun"}
+
+        while remaining_workers:
+            try:
+                msg_type, msg_data = await events.get(_STREAM_HEARTBEAT_INTERVAL)
+            except TimeoutError:
+                elapsed = time.monotonic() - ai_started_at
+                if events.overflowed:
+                    cancel_event.set()
+                    yield f"data: {json.dumps({'phase': 'error', 'message': 'AI事件过多，已停止后续生成'})}\n\n"
+                    break
+                if elapsed >= _CHART_AI_TOTAL_TIMEOUT:
+                    cancel_event.set()
+                    logger.warning(
+                        "chart stream AI timeout request_id=%s remaining=%s duration_ms=%s",
+                        request_id,
+                        sorted(remaining_workers),
+                        round(elapsed * 1000),
+                    )
+                    if "annual" in remaining_workers:
+                        yield f"data: {json.dumps({'phase': 'llm_error', 'message': '流年审阅超时'})}\n\n"
+                    if "fusion" in remaining_workers:
+                        yield f"data: {json.dumps({'phase': 'personality_error', 'message': '融合报告超时，请稍后重试'})}\n\n"
+                    if "dayun" in remaining_workers:
+                        yield f"data: {json.dumps({'phase': 'dayun_error', 'message': '大运解读超时，请稍后重试'})}\n\n"
+                    break
+                yield f"data: {json.dumps({'phase': 'heartbeat'})}\n\n"
+                continue
+
+            if msg_type in {"llm_result", "llm_token"}:
+                yield f"data: {json.dumps(msg_data)}\n\n"
+            elif msg_type == "llm_error":
+                yield f"data: {json.dumps({'phase': 'llm_error', 'message': msg_data})}\n\n"
+            elif msg_type == "personality_token":
+                yield f"data: {json.dumps({'phase': 'personality_token', 'token': msg_data})}\n\n"
+            elif msg_type == "personality_done":
+                yield f"data: {json.dumps({'phase': 'personality_done', **msg_data})}\n\n"
+            elif msg_type == "personality_error":
+                yield f"data: {json.dumps({'phase': 'personality_error', 'message': msg_data})}\n\n"
+            elif msg_type == "dayun_done":
+                yield f"data: {json.dumps({'phase': 'dayun_done', 'interpretations': msg_data})}\n\n"
+            elif msg_type == "dayun_error":
+                yield f"data: {json.dumps({'phase': 'dayun_error', 'message': msg_data})}\n\n"
+            elif msg_type == "worker_done":
+                remaining_workers.discard(msg_data)
+
+        yield f"data: {json.dumps({'phase': 'done'})}\n\n"
+        yield "data: [DONE]\n\n"
+    finally:
+        cancel_event.set()
+        events.close()
+        for future in futures:
+            future.cancel()
+        logger.info(
+            "chart stream stage=complete request_id=%s duration_ms=%s",
+            request_id,
+            round((time.monotonic() - request_started_at) * 1000),
+        )
 
 @app.get("/api/chart/stream")
 async def chart_stream(

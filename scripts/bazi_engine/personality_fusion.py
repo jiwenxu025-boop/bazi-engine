@@ -15,6 +15,7 @@
 import json
 import os
 import re
+import threading
 from contextlib import suppress
 
 from ._deepseek_config import (
@@ -326,8 +327,11 @@ def _repair_fusion_report(
     text: str,
     issues: list[str],
     data_package: dict | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> str | None:
     """对明显不合格的报告做一次低温修订；失败时由调用方保留原文。"""
+    if cancel_event and cancel_event.is_set():
+        return None
     six_domain_signals = (data_package or {}).get("六维度信号", {})
     signals_text = json.dumps(six_domain_signals, ensure_ascii=False, indent=2)
     messages = [
@@ -371,6 +375,8 @@ def _repair_fusion_report(
     }
 
     try:
+        if cancel_event and cancel_event.is_set():
+            return None
         _timeout = 90.0 if "v4" in DEEPSEEK_MODEL.lower() else 45.0
         with shared_client(_timeout) as client:
             resp = client.post(DEEPSEEK_API_URL, json=payload, headers=headers)
@@ -387,6 +393,7 @@ def _finalize_fusion_report(
     text: str,
     result_metadata: dict | None = None,
     data_package: dict | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     """清洗报告，并在严重结构问题出现时最多修订一次。"""
     cleaned = sanitize_fusion_report(text)
@@ -401,11 +408,20 @@ def _finalize_fusion_report(
                 "repaired": repaired,
             })
 
-    if not issues or os.getenv("BAZI_FUSION_REPAIR", "1") != "1":
+    if (
+        not issues
+        or os.getenv("BAZI_FUSION_REPAIR", "1") != "1"
+        or (cancel_event and cancel_event.is_set())
+    ):
         record_metadata(False)
         return cleaned
 
-    repaired = _repair_fusion_report(cleaned, issues, data_package)
+    if cancel_event is None:
+        repaired = _repair_fusion_report(cleaned, issues, data_package)
+    else:
+        repaired = _repair_fusion_report(
+            cleaned, issues, data_package, cancel_event=cancel_event,
+        )
     if not repaired:
         record_metadata(False)
         return cleaned
@@ -650,6 +666,7 @@ def generate_fusion_report(
     data_package: dict,
     on_chunk=None,
     result_metadata: dict | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> str | None:
     """流式调用 DeepSeek API，生成融合报告。
 
@@ -662,6 +679,8 @@ def generate_fusion_report(
     """
     if not DEEPSEEK_KEY:
         raise RuntimeError("DEEPSEEK_API_KEY未设置")
+    if cancel_event and cancel_event.is_set():
+        return None
 
     user_prompt = build_fusion_user_prompt(data_package)
     messages = [
@@ -691,6 +710,8 @@ def generate_fusion_report(
     full_text_parts: list[str] = []
 
     try:
+        if cancel_event and cancel_event.is_set():
+            return None
         _timeout = 120.0
         with (
             shared_client(_timeout) as client,
@@ -703,6 +724,8 @@ def generate_fusion_report(
                 raise RuntimeError(f"API返回{resp.status_code}: {body}")
 
             for line in resp.iter_lines():
+                if cancel_event and cancel_event.is_set():
+                    return None
                 line = line.strip()
                 if not line or not line.startswith("data: "):
                     continue
@@ -717,7 +740,7 @@ def generate_fusion_report(
                         content = delta.get("content", "")
                         if content:
                             full_text_parts.append(content)
-                            if on_chunk:
+                            if on_chunk and not (cancel_event and cancel_event.is_set()):
                                 on_chunk(content)
                 except json.JSONDecodeError:
                     continue
@@ -726,6 +749,7 @@ def generate_fusion_report(
             "".join(full_text_parts),
             result_metadata,
             data_package,
+            cancel_event=cancel_event,
         )
         if not text:
             raise RuntimeError("流式响应已完成但未收到任何内容")

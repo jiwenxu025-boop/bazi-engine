@@ -1,5 +1,7 @@
 """LLM review results must not alter rule-engine signals."""
 
+import pytest
+
 from bazi_engine.chart import build_chart
 from bazi_engine.enums import Dizhi, Tiangan
 from bazi_engine.liunian.llm_bridge import (
@@ -82,10 +84,10 @@ def test_no_signal_ai_review_serializes_status_without_rule_event(monkeypatch):
     ]
 
 
-def test_multi_year_batch_is_chunked_and_empty_results_fall_back(monkeypatch):
+def test_multi_year_batch_is_chunked_and_retries_at_most_one_missing_year(monkeypatch):
     import bazi_engine.llm_review as llm_review
 
-    years = list(range(2023, 2028))
+    years = list(range(2023, 2027))
     scans = [AnnualScan(year, Tiangan("甲"), Dizhi("子")) for year in years]
     contexts = [{"year": year} for year in years]
     batch_sizes = []
@@ -122,7 +124,52 @@ def test_multi_year_batch_is_chunked_and_empty_results_fall_back(monkeypatch):
     )
 
     assert sorted(batch_sizes) == [2, 2]
-    assert sorted(single_years) == years
-    assert all(len(scan.ai_reviews) == 1 for scan in scans)
-    assert sorted(year for year, _signals in streamed_results) == years
-    assert sorted(streamed_tokens) == [(year, "ok") for year in years]
+    assert len(single_years) == 1
+    assert single_years[0] in years
+    assert sum(len(scan.ai_reviews) for scan in scans) == 1
+    assert sorted(year for year, _signals in streamed_results) == single_years
+    assert sorted(streamed_tokens) == [(single_years[0], "ok")]
+
+
+def test_annual_review_requires_multiple_weak_signals(monkeypatch):
+    import bazi_engine.llm_review as llm_review
+
+    monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
+    monkeypatch.setattr(llm_review, "DEEPSEEK_KEY", "test-key")
+    one_weak = [EventSignal(category="事业", direction="中性", strength=1)]
+    two_weak = [*one_weak, EventSignal(category="财运", direction="中性", strength=1)]
+
+    assert not llm_review.should_invoke_llm(one_weak, 2026, 30)
+    assert llm_review.should_invoke_llm(two_weak, 2026, 30)
+
+
+def test_build_chart_can_defer_annual_reviews_without_calling_provider(monkeypatch):
+    import bazi_engine.liunian.scanner as scanner
+    import bazi_engine.llm_review as llm_review
+
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "1")
+    monkeypatch.setattr(llm_review, "should_invoke_llm", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        scanner,
+        "_execute_llm_reviews_streaming",
+        lambda *_args, **_kwargs: pytest.fail("deferred build called streaming review"),
+    )
+    monkeypatch.setattr(
+        scanner,
+        "_execute_llm_reviews_parallel",
+        lambda *_args, **_kwargs: pytest.fail("deferred build called parallel review"),
+    )
+
+    chart = build_chart(
+        "测试",
+        "男",
+        2007,
+        8,
+        26,
+        20,
+        liunian_range=(2025, 2026),
+        defer_llm=True,
+    )
+
+    assert len(chart._pending_llm_tasks) == 2
+    assert all(not scan.ai_reviews for scan in chart.annual_scans)

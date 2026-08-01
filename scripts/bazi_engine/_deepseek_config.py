@@ -5,12 +5,14 @@ import os
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+DEEPSEEK_REVIEW_MODEL = os.getenv("BAZI_LLM_REVIEW_MODEL", "deepseek-chat")
 LLM_REVIEW_ENABLED = os.getenv("BAZI_LLM_REVIEW", "0") == "1"
 FUSION_ENABLED = os.getenv("BAZI_FUSION_ENGINE", "0") == "1"
 
 # 超时配置（v4-pro 超大型模型需要更长时间）
-def get_timeout() -> float:
-    return 90.0 if "v4" in DEEPSEEK_MODEL.lower() else 30.0
+def get_timeout(model: str | None = None) -> float:
+    selected_model = model or DEEPSEEK_MODEL
+    return 90.0 if "v4" in selected_model.lower() else 30.0
 
 
 def is_available() -> bool:

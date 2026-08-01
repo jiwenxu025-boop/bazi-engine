@@ -115,6 +115,9 @@ class BaziChart:
 
     # 流年扫描
     annual_scans: list[AnnualScan] = field(default_factory=list)
+    # Deferred annual LLM review contexts used by the streaming API.  These
+    # are intentionally kept out of the serialized chart contract.
+    _pending_llm_tasks: list[tuple[int, dict]] = field(default_factory=list, repr=False)
 
     # 喜用
     favorable_tags: set[str] = field(default_factory=set)
@@ -410,6 +413,8 @@ def _init_chart_shell(
     chart._life_stage_override = life_stage_override  # 供 scan_years 内部使用
     chart.family_context = family_context
     chart.family_result = None
+    chart.annual_scans = []
+    chart._pending_llm_tasks = []
     chart.nayin_relations = []
     chart.palace_star_result = None
     chart.body_use_result = None
@@ -728,6 +733,7 @@ def _compute_liunian_stage(
     favorable: set[str] | None,
     on_llm_result=None,
     on_llm_token=None,
+    defer_llm: bool = False,
 ) -> None:
     # 构建性格上下文供流年个性化
     p_ctx = None
@@ -775,6 +781,8 @@ def _compute_liunian_stage(
         chart_data=_build_llm_context(chart) if os.getenv("BAZI_LLM_REVIEW", "0") == "1" else None,
         on_llm_result=on_llm_result,
         on_llm_token=on_llm_token,
+        defer_llm=defer_llm,
+        llm_tasks_out=chart._pending_llm_tasks,
         start_age_exact=chart.start_age_exact,
     )
 
@@ -958,6 +966,7 @@ def build_chart(
     time_accuracy: str = "minute",
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, signals)
     on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
+    defer_llm: bool = False,
 ) -> BaziChart:
     """一站式八字排盘
 
@@ -1063,6 +1072,7 @@ def build_chart(
             favorable=favorable,
             on_llm_result=on_llm_result,
             on_llm_token=on_llm_token,
+            defer_llm=defer_llm,
         )
 
     # ── 11b. 十二长生参断 ──

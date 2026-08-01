@@ -11,7 +11,9 @@
 
 import json
 import logging
+import os
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,6 +23,7 @@ from ._deepseek_config import (
     DEEPSEEK_API_URL,
     DEEPSEEK_KEY,
     DEEPSEEK_MODEL,
+    DEEPSEEK_REVIEW_MODEL,
     LLM_REVIEW_ENABLED,
     get_timeout,
     is_available,
@@ -61,16 +64,21 @@ _TRIGGER_MAX_CHARS = 120
 _SENTENCE_ENDINGS = "。！？!?."
 _CLAUSE_ENDINGS = "，,；;、"
 _LLM_TRIGGER_PREFIX = "[LLM推理] "
+_ANNUAL_REVIEW_MAX_OUTPUT_TOKENS = max(
+    512, int(os.getenv("BAZI_LLM_REVIEW_MAX_OUTPUT_TOKENS", "2048"))
+)
+_ANNUAL_BATCH_MAX_OUTPUT_TOKENS = max(
+    _ANNUAL_REVIEW_MAX_OUTPUT_TOKENS,
+    int(os.getenv("BAZI_LLM_BATCH_MAX_OUTPUT_TOKENS", "3072")),
+)
 
 
 def should_invoke_llm(events: list, year: int, age: int,
                        target_categories: set[str] | None = None) -> bool:
     """判断某一年是否需要 LLM 二次判断。
 
-    条件：
-    1. 目标类别中没有任何 ≥2★ 的信号
-    2. 年龄在合理范围内
-    3. 或检测到多个 1★ 弱信号需要叠加判断
+    条件：年龄在合理范围内，且目标类别中至少有两个 1★ 弱信号
+    需要做叠加判断。单一弱信号或单纯缺少某类规则信号都不触发。
 
     如果 target_categories 为 None，默认检查所有关键类别。
     """
@@ -84,23 +92,22 @@ def should_invoke_llm(events: list, year: int, age: int,
     if target_categories is None:
         target_categories = {"婚嫁", "桃花", "事业", "财运", "健康"}
 
-    # 检查目标类别中哪些有 ≥2★
+    # 检查目标类别中哪些有 ≥2★。单一弱信号不再触发昂贵的
+    # 二次审阅；只有多弱信号叠加的边界年份才交给 LLM。
     strong_in_target = set()
-    weak_in_target = set()
+    weak_events = []
     for e in events:
         if e.category in target_categories:
             if e.strength >= 2:
                 strong_in_target.add(e.category)
             elif e.strength == 1:
-                weak_in_target.add(e.category)
+                weak_events.append(e)
 
     # 如果目标类别全部都有 ≥2★ 信号，不需要 LLM
     if strong_in_target >= target_categories:
         return False
 
-    # 至少有一个目标类别完全无信号，或只有弱信号 → 触发 LLM
-    missing_or_weak = target_categories - strong_in_target
-    return len(missing_or_weak) > 0
+    return len(weak_events) >= 2
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -378,7 +385,11 @@ def build_review_prompt(ctx: dict) -> str:
 # LLM 调用
 # ═══════════════════════════════════════════════════════════════
 
-def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
+def call_llm_review(
+    ctx: dict,
+    on_token=None,
+    cancel_event: threading.Event | None = None,
+) -> list[LLMReviewResult]:
     """调用 DeepSeek API（流式），解析响应。
 
     v0.11.1: 改用流式 API（stream=True），边收token边攒，首token延迟更低。
@@ -387,7 +398,7 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
     Returns:
         LLMReviewResult 列表。API 失败或 LLM 无发现时返回空列表。
     """
-    if not DEEPSEEK_KEY:
+    if not DEEPSEEK_KEY or _cancelled(cancel_event):
         return []
 
     prompt = build_review_prompt(ctx)
@@ -396,10 +407,10 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
         {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
         {"role": "user", "content": prompt},
     ]
-    max_output_tokens = 4096
+    max_output_tokens = _ANNUAL_REVIEW_MAX_OUTPUT_TOKENS
     messages = prepare_messages_for_request(
         messages,
-        DEEPSEEK_MODEL,
+        DEEPSEEK_REVIEW_MODEL,
         max_output_tokens,
         operation="liunian_review",
     )
@@ -409,7 +420,7 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": DEEPSEEK_REVIEW_MODEL,
         "messages": messages,
         "stream": True,
         "temperature": 0.3,
@@ -417,8 +428,11 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
     }
 
     try:
-        _timeout = get_timeout()
+        if _cancelled(cancel_event):
+            return []
+        _timeout = get_timeout(DEEPSEEK_REVIEW_MODEL)
         full_text_parts: list[str] = []
+        finish_reason = None
         with (
             shared_client(_timeout) as client,
             client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
@@ -427,6 +441,8 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
                 return []
 
             for line in resp.iter_lines():
+                if _cancelled(cancel_event):
+                    return []
                 line = line.strip()
                 if not line or not line.startswith("data: "):
                     continue
@@ -437,17 +453,30 @@ def call_llm_review(ctx: dict, on_token=None) -> list[LLMReviewResult]:
                     chunk = json.loads(data_str)
                     choices = chunk.get("choices", [])
                     if choices:
+                        finish_reason = choices[0].get("finish_reason") or finish_reason
                         delta = choices[0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
                             full_text_parts.append(content)
-                            if on_token:
+                            if on_token and not _cancelled(cancel_event):
                                 on_token(content)
                 except json.JSONDecodeError:
                     continue
 
         content = "".join(full_text_parts)
-        if not content:
+        logger.info(
+            "LLM annual review completed year=%s model=%s finish_reason=%s content_length=%s",
+            ctx.get("liunian", {}).get("year"),
+            DEEPSEEK_REVIEW_MODEL,
+            finish_reason or "unknown",
+            len(content),
+        )
+        if finish_reason == "length":
+            logger.warning(
+                "LLM annual review hit output limit year=%s",
+                ctx.get("liunian", {}).get("year"),
+            )
+        if not content or _cancelled(cancel_event):
             return []
 
         return _parse_review_response(content, ctx["liunian"]["year"])
@@ -884,7 +913,11 @@ def _parse_dayun_response(content: str, expected_count: int) -> list[dict]:
 # 批量多年审查（v0.15.1: 节省 60% 重复 boilerplate）
 # ═══════════════════════════════════════════════════════════════
 
-def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMReviewResult]]:
+def call_llm_batch_review(
+    ctxs: list[dict],
+    on_token=None,
+    cancel_event: threading.Event | None = None,
+) -> list[list[LLMReviewResult]]:
     """小批量合并 API 调用，共享原局/大运上下文。
 
     Args:
@@ -894,7 +927,7 @@ def call_llm_batch_review(ctxs: list[dict], on_token=None) -> list[list[LLMRevie
     Returns:
         [[results for year_1], [results for year_2], ...]
     """
-    if not ctxs or not is_available():
+    if not ctxs or not is_available() or _cancelled(cancel_event):
         return [[] for _ in ctxs]
 
     # 共享上下文从第一份 ctx 里提取原局/大运
@@ -991,10 +1024,10 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
         {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
         {"role": "user", "content": prompt},
     ]
-    max_output_tokens = 4096
+    max_output_tokens = _ANNUAL_BATCH_MAX_OUTPUT_TOKENS
     messages = prepare_messages_for_request(
         messages,
-        DEEPSEEK_MODEL,
+        DEEPSEEK_REVIEW_MODEL,
         max_output_tokens,
         operation="liunian_batch_review",
     )
@@ -1004,7 +1037,7 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
         "Content-Type": "application/json",
     }
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": DEEPSEEK_REVIEW_MODEL,
         "messages": messages,
         "stream": True,
         "temperature": 0.3,
@@ -1012,8 +1045,11 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
     }
 
     try:
-        _timeout = get_timeout() * 2  # 多年批量调用给更多时间
+        if _cancelled(cancel_event):
+            return [[] for _ in ctxs]
+        _timeout = get_timeout(DEEPSEEK_REVIEW_MODEL) * 2
         full_text_parts: list[str] = []
+        finish_reason = None
         with (
             shared_client(_timeout) as client,
             client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers) as resp,
@@ -1026,6 +1062,8 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
                 )
                 return [[] for _ in ctxs]
             for line in resp.iter_lines():
+                if _cancelled(cancel_event):
+                    return [[] for _ in ctxs]
                 line = line.strip()
                 if not line or not line.startswith("data: "):
                     continue
@@ -1036,17 +1074,30 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
                     chunk = json.loads(data_str)
                     choices = chunk.get("choices", [])
                     if choices:
+                        finish_reason = choices[0].get("finish_reason") or finish_reason
                         delta = choices[0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
                             full_text_parts.append(content)
-                            if on_token:
+                            if on_token and not _cancelled(cancel_event):
                                 on_token(content)
                 except json.JSONDecodeError:
                     continue
 
         content = "".join(full_text_parts)
-        if not content:
+        logger.info(
+            "LLM batch review completed years=%s model=%s finish_reason=%s content_length=%s",
+            [ctx["liunian"]["year"] for ctx in ctxs],
+            DEEPSEEK_REVIEW_MODEL,
+            finish_reason or "unknown",
+            len(content),
+        )
+        if finish_reason == "length":
+            logger.warning(
+                "LLM batch review hit output limit years=%s",
+                [ctx["liunian"]["year"] for ctx in ctxs],
+            )
+        if not content or _cancelled(cancel_event):
             logger.warning("LLM batch review returned empty content years=%s", len(ctxs))
             return [[] for _ in ctxs]
 
@@ -1071,6 +1122,10 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
             type(error).__name__,
         )
         return [[] for _ in ctxs]
+
+
+def _cancelled(cancel_event: threading.Event | None) -> bool:
+    return bool(cancel_event and cancel_event.is_set())
 
 
 def _parse_batch_response(content: str, ctxs: list[dict]) -> list[list[LLMReviewResult]]:
