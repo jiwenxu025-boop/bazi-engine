@@ -46,7 +46,7 @@
 - **主题加权** — 大运十神主题与流年类别共振加权
 
 ### LLM 推理层（v0.9.0）
-- **Hybrid 模式** — 规则引擎主跑，LLM 仅介入至少两个 1★ 弱信号叠加的边界年份
+- **Hybrid 模式** — 规则引擎主跑，LLM 介入目标类别尚未被规则强信号完整覆盖的边界年份
 - **流年近失特征** — 十神/神煞/冲合/空亡等规则引擎内算但未触发的特征传给 LLM
 - **DeepSeek 集成** — 支持 `deepseek-chat`/`deepseek-v4-pro`/`deepseek-v4-flash`；年度审阅可通过 `BAZI_LLM_REVIEW_MODEL` 独立选择低延迟模型
 - **开关控制** — `BAZI_LLM_REVIEW=1` 启用，默认关闭
