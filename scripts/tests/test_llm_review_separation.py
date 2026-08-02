@@ -131,16 +131,21 @@ def test_multi_year_batch_is_chunked_and_retries_at_most_one_missing_year(monkey
     assert sorted(streamed_tokens) == [(single_years[0], "ok")]
 
 
-def test_annual_review_requires_multiple_weak_signals(monkeypatch):
+def test_annual_review_triggers_when_rule_categories_are_incomplete(monkeypatch):
     import bazi_engine.llm_review as llm_review
 
     monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
     monkeypatch.setattr(llm_review, "DEEPSEEK_KEY", "test-key")
     one_weak = [EventSignal(category="事业", direction="中性", strength=1)]
     two_weak = [*one_weak, EventSignal(category="财运", direction="中性", strength=1)]
+    all_strong = [
+        EventSignal(category=category, direction="正面", strength=2)
+        for category in ("婚嫁", "桃花", "事业", "财运", "健康")
+    ]
 
-    assert not llm_review.should_invoke_llm(one_weak, 2026, 30)
+    assert llm_review.should_invoke_llm(one_weak, 2026, 30)
     assert llm_review.should_invoke_llm(two_weak, 2026, 30)
+    assert not llm_review.should_invoke_llm(all_strong, 2026, 30)
 
 
 def test_build_chart_can_defer_annual_reviews_without_calling_provider(monkeypatch):

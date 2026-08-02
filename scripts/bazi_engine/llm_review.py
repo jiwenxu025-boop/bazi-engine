@@ -77,8 +77,9 @@ def should_invoke_llm(events: list, year: int, age: int,
                        target_categories: set[str] | None = None) -> bool:
     """判断某一年是否需要 LLM 二次判断。
 
-    条件：年龄在合理范围内，且目标类别中至少有两个 1★ 弱信号
-    需要做叠加判断。单一弱信号或单纯缺少某类规则信号都不触发。
+    条件：年龄在合理范围内，且目标类别中仍有规则层未覆盖的类别。
+    规则层只覆盖部分类别时，交给 LLM 做跨类别的补充审阅；当所有
+    目标类别都已有 ≥2★ 规则信号时，规则结果已经足够，不再重复调用。
 
     如果 target_categories 为 None，默认检查所有关键类别。
     """
@@ -92,22 +93,16 @@ def should_invoke_llm(events: list, year: int, age: int,
     if target_categories is None:
         target_categories = {"婚嫁", "桃花", "事业", "财运", "健康"}
 
-    # 检查目标类别中哪些有 ≥2★。单一弱信号不再触发昂贵的
-    # 二次审阅；只有多弱信号叠加的边界年份才交给 LLM。
+    # 检查目标类别中哪些有 ≥2★。类别覆盖不足本身就是边界信号，不能
+    # 只统计 1★ 事件：同类事件在后续合并前，弱信号可能暂时还未出现。
     strong_in_target = set()
-    weak_events = []
     for e in events:
-        if e.category in target_categories:
-            if e.strength >= 2:
-                strong_in_target.add(e.category)
-            elif e.strength == 1:
-                weak_events.append(e)
+        if e.category in target_categories and e.strength >= 2:
+            strong_in_target.add(e.category)
 
-    # 如果目标类别全部都有 ≥2★ 信号，不需要 LLM
-    if strong_in_target >= target_categories:
-        return False
-
-    return len(weak_events) >= 2
+    # 如果目标类别全部都有 ≥2★ 信号，不需要 LLM；否则让 LLM 补充
+    # 规则层没有覆盖或仅有弱信号的类别。
+    return not strong_in_target >= target_categories
 
 
 # ═══════════════════════════════════════════════════════════════
