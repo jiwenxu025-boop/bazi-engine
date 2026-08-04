@@ -1,5 +1,6 @@
 """流年事件检测核心测试 — ScoreAccumulator / 婚嫁 / 桃花 / 穿害 / 岁运交战"""
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -8,10 +9,15 @@ from bazi_engine.chart import build_chart
 from bazi_engine.enums import Dizhi, Tiangan
 from bazi_engine.liunian import (
     EventSignal,
+    EvidenceItem,
     ScoreAccumulator,
     _has_branch_interaction,
+    _has_sanhe_with_dizhi,
+    _is_in_same_sanhe,
     _process_suiyun_clash,
     detect_hunjia_signals,
+    detect_jiankang_signals,
+    detect_renji_signals,
     detect_taohua_signals,
 )
 
@@ -155,12 +161,86 @@ def test_has_branch_interaction_xianghai():
 
 def test_has_branch_interaction_sanhe():
     """三合检测: 申子辰合水"""
-    # 申+子 = 同在三合局
+    # 只有完整三合才属于“三合”；两支属于半合，应由半合表单独判断。
     assert _has_branch_interaction(Dizhi.申, Dizhi.子, "三合")
     assert _has_branch_interaction(Dizhi.子, Dizhi.辰, "三合")
-    assert _has_branch_interaction(Dizhi.申, Dizhi.辰, "三合")
+    assert not _has_branch_interaction(Dizhi.申, Dizhi.辰, "三合")
     # 申+卯 = 不在同一三合局
     assert not _has_branch_interaction(Dizhi.申, Dizhi.卯, "三合")
+
+
+def test_banhe_pairs_are_explicit_and_complete():
+    """半合关系必须是稳定的八组标准配对，不能依赖集合迭代顺序。"""
+    from bazi_engine._constants import DIZHI_BANHE
+
+    expected = {
+        frozenset({Dizhi.申, Dizhi.子}),
+        frozenset({Dizhi.子, Dizhi.辰}),
+        frozenset({Dizhi.亥, Dizhi.卯}),
+        frozenset({Dizhi.卯, Dizhi.未}),
+        frozenset({Dizhi.寅, Dizhi.午}),
+        frozenset({Dizhi.午, Dizhi.戌}),
+        frozenset({Dizhi.巳, Dizhi.酉}),
+        frozenset({Dizhi.酉, Dizhi.丑}),
+    }
+    assert set(DIZHI_BANHE) == expected
+
+
+def test_banhe_mapping_is_deterministic_across_python_hash_seeds():
+    script = (
+        "from bazi_engine._constants import DIZHI_BANHE; "
+        "print(sorted(tuple(sorted(branch.index for branch in pair)) "
+        "for pair in DIZHI_BANHE))"
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.join(os.path.dirname(__file__), "..")
+    outputs = []
+    for seed in ("1", "2", "3"):
+        env["PYTHONHASHSEED"] = seed
+        outputs.append(subprocess.check_output(
+            [sys.executable, "-c", script], env=env, text=True,
+        ).strip())
+
+    assert len(set(outputs)) == 1
+
+
+def test_sanhe_helpers_distinguish_half_and_full_combinations():
+    """关系辅助函数不应把申辰等半合误报为完整三合。"""
+    assert _has_sanhe_with_dizhi(Dizhi.申, Dizhi.子, [Dizhi.申, Dizhi.子])
+    assert not _has_sanhe_with_dizhi(Dizhi.申, Dizhi.辰, [Dizhi.申, Dizhi.辰])
+    assert _is_in_same_sanhe(Dizhi.申, Dizhi.子)
+    assert not _is_in_same_sanhe(Dizhi.申, Dizhi.辰)
+
+
+def test_renji_does_not_relabel_natal_sanxing_as_liunian_activation():
+    """原局已经成三刑时，流年无相关地支不应标成流年引动。"""
+    events = detect_renji_signals(
+        Tiangan("甲"), Dizhi("辰"),
+        Dizhi("子"), Tiangan("壬"),
+        Dizhi("辰"), Dizhi("卯"), Dizhi("申"),
+        (Dizhi("寅"), Dizhi("巳"), Dizhi("申"), Dizhi("子")),
+    )
+
+    assert not any("三刑" in trigger for event in events for trigger in event.triggers)
+
+
+def test_jiankang_sanhe_evidence_keeps_branch_sources():
+    """官杀三合证据应区分原局、大运和流年来源。"""
+    events = detect_jiankang_signals(
+        Tiangan("丙"), Dizhi("辰"), Dizhi("子"), Tiangan("壬"), Dizhi("卯"),
+        dayun_stem=Tiangan("甲"), dayun_branch=Dizhi("戌"),
+        all_branches=(Dizhi("寅"), Dizhi("午"), Dizhi("子"), Dizhi("卯")),
+    )
+
+    sanhe_events = [
+        event for event in events
+        if any("三合官杀局" in trigger for trigger in event.triggers)
+    ]
+    assert sanhe_events
+    evidence = sanhe_events[0].evidence
+    assert evidence
+    assert {layer for item in evidence for layer in item.layers} >= {"原局", "大运"}
+    assert "流年" not in {layer for item in evidence for layer in item.layers}
 
 
 def test_has_branch_interaction_xiangxing():
@@ -211,6 +291,53 @@ def test_hunjia_xujiwen_2025():
     for sig in signals:
         assert sig.category == "桃花", f"学生婚嫁应降级为桃花, 实际: {sig.category}"
         assert sig.strength < 3, "学生不应有3★婚嫁"
+
+
+def test_hunjia_distinguishes_primary_and_secondary_spouse_stars():
+    """丙午流年对壬日男命是偏财透、午藏正财，不能写成正财透干。"""
+    signals = detect_hunjia_signals(
+        ln_stem=Tiangan.丙, ln_branch=Dizhi.午,
+        day_branch=Dizhi.辰, day_master=Tiangan.壬,
+        year_branch=Dizhi.亥, gender="男", age=19,
+        all_branches=(Dizhi.亥, Dizhi.申, Dizhi.辰, Dizhi.戌),
+    )
+    triggers = [trigger for signal in signals for trigger in signal.triggers]
+
+    assert any("偏财" in trigger and "正财" in trigger for trigger in triggers)
+    assert not any("干支皆见正财(配偶星透+藏)" in trigger for trigger in triggers)
+
+
+def test_annual_rule_events_include_traceable_evidence_summary():
+    """年度规则事件至少应能回指流年层和触发摘要。"""
+    chart = build_chart(
+        name="证据回指", gender="男",
+        year=2007, month=8, day=26, hour=20,
+        liunian_range=(2026, 2026),
+    )
+    event_data = chart.to_dict()["annual_scans"][0]["events"]
+
+    assert event_data
+    assert all(event.get("evidence") for event in event_data)
+    assert all(
+        {"流年", "大运"} & set(item["layers"])
+        for event in event_data for item in event["evidence"]
+    )
+
+
+def test_student_career_signals_are_rewritten_as_academic_language():
+    chart = build_chart(
+        name="学生语义", gender="男",
+        year=2007, month=8, day=26, hour=20,
+        liunian_range=(2025, 2025),
+    )
+    academic_events = [
+        event for event in chart.to_dict()["annual_scans"][0]["events"]
+        if event["category"] == "学业"
+    ]
+
+    assert academic_events
+    text = str(academic_events)
+    assert all(word not in text for word in ("跳槽", "创业", "离职"))
 
 
 def test_hunjia_chuanhai_day_branch():
@@ -390,6 +517,32 @@ def test_event_signal_defaults():
     assert sig.strength == 2
     assert sig.direction == "正面"
     assert sig.prediction == "test"
+
+
+def test_event_signal_evidence_is_structured_and_serialized():
+    evidence = EvidenceItem(
+        rule="sanhe_health",
+        layers=("原局", "大运", "流年"),
+        pillars=("月柱", "大运", "流年"),
+        relation="三合",
+        detail="申子辰水局完整",
+    )
+    sig = EventSignal(
+        category="健康", direction="负面", strength=2,
+        evidence=[evidence], conflicts=["调候支持尚未裁决"],
+    )
+
+    data = sig.to_dict()
+
+    assert data["evidence"] == [{
+        "rule": "sanhe_health",
+        "layers": ["原局", "大运", "流年"],
+        "pillars": ["月柱", "大运", "流年"],
+        "relation": "三合",
+        "detail": "申子辰水局完整",
+        "effect": "support",
+    }]
+    assert data["conflicts"] == ["调候支持尚未裁决"]
 
 
 # ═══════════════════════════════════════════════════════════════

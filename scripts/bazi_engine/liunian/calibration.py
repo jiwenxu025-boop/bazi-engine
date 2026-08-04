@@ -156,6 +156,21 @@ def _merge_same_category_events(events: list[EventSignal]) -> list[EventSignal]:
                     all_cal_refs.append(c)
                     seen_c.add(c)
 
+        all_evidence = []
+        seen_evidence = set()
+        all_conflicts: list[str] = []
+        seen_conflicts = set()
+        for s in sigs:
+            for item in s.evidence:
+                key = repr(item.to_dict() if hasattr(item, "to_dict") else item)
+                if key not in seen_evidence:
+                    all_evidence.append(item)
+                    seen_evidence.add(key)
+            for conflict in s.conflicts:
+                if conflict not in seen_conflicts:
+                    all_conflicts.append(conflict)
+                    seen_conflicts.add(conflict)
+
         merged.append(EventSignal(
             category=cat,
             direction=best.direction,
@@ -167,6 +182,8 @@ def _merge_same_category_events(events: list[EventSignal]) -> list[EventSignal]:
             calibration_refs=all_cal_refs,
             personality_note=best.personality_note,
             magnitude=best.magnitude,
+            evidence=all_evidence,
+            conflicts=all_conflicts,
         ))
     return merged
 
@@ -211,6 +228,9 @@ def _check_event_conflicts(events: list[EventSignal],
             hj.direction = "中性"
             hj.strength = max(1, hj.strength - 1)
             hj.notes.append("桃花负面(分手型)+婚嫁正面矛盾→婚期信号存疑")
+            conflict = "桃花负面与婚嫁正面同年，且桃花含明确穿害结构；婚嫁方向降为中性"
+            hj.conflicts.append(conflict)
+            th.conflicts.append(conflict)
 
 def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
     """婚嫁与桃花共享触发空间（合冲、配偶星、天喜红鸾），一侧≥2★时应补足另一侧。

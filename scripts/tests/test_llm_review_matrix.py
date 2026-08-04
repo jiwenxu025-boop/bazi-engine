@@ -2,9 +2,12 @@
 
 import json
 
+from bazi_engine.chart import build_chart
+from bazi_engine.liunian.signal import EventSignal, EvidenceItem
 from bazi_engine.llm_review import (
     _parse_batch_response,
     _parse_review_response,
+    build_review_context,
     build_review_prompt,
 )
 
@@ -54,6 +57,32 @@ def test_review_prompt_requires_complete_compact_category_matrix():
     assert '"category_matrix"' in prompt
     for category in ("婚嫁", "桃花", "事业", "财运", "健康", "搬迁"):
         assert f'"{category}"' in prompt
+
+
+def test_review_context_carries_decision_policy_and_rule_evidence():
+    chart = build_chart(
+        name="LLM上下文", gender="男",
+        year=2007, month=8, day=26, hour=20,
+    )
+    signal = EventSignal(
+        category="财运", direction="正面", strength=1,
+        evidence=[EvidenceItem(
+            rule="wealth_rule", layers=("原局", "流年"),
+            pillars=("日柱", "流年"), relation="生克", detail="财星透干",
+        )],
+        conflicts=["调候与扶抑未完全一致"],
+    )
+
+    ctx = build_review_context(
+        chart.to_dict(), 2026, 19, "丙", "午", None, None,
+        [signal], year_features={"关系星透干": "偏财"},
+    )
+    prompt = build_review_prompt(ctx)
+
+    assert ctx["natal"]["decision_policy"]["precedence"]
+    assert ctx["rule_signals"][0]["evidence"][0]["pillars"] == ["日柱", "流年"]
+    assert ctx["rule_signals"][0]["conflicts"]
+    assert "不得自行重算三合、藏干、强弱或喜忌" in prompt
 
 
 def test_single_response_keeps_positive_and_explicit_no_signal_states():

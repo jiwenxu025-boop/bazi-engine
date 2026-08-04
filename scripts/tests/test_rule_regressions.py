@@ -131,6 +131,22 @@ def test_tiaohou_is_supplementary_and_autumn_wood_lists_fire_before_water():
     assert "不据此否定格局" in tiaohou.priority_note
 
 
+def test_yongshen_exposes_one_decision_policy_without_erasing_legacy_fields():
+    result = recommend_yongshen(
+        Tiangan.甲, Dizhi.酉,
+        [Tiangan.庚, Tiangan.辛, Tiangan.甲, Tiangan.戊],
+        [Dizhi.申, Dizhi.酉, Dizhi.卯, Dizhi.戌],
+        pattern="正官格",
+    )
+
+    policy = result["decision_policy"]
+    assert policy["precedence"] == ["扶抑/从格", "格局维护", "调候"]
+    assert policy["effective"]["favorable"] == result["favorable"]
+    assert policy["effective"]["harmful"] == result["harmful"]
+    assert policy["pattern"]["needs"]
+    assert policy["tiaohou"]["role"] == "supplement"
+
+
 def test_chart_output_excludes_diagnostic_and_deterministic_harm_language():
     chart = build_chart(
         name="safety", gender="男", year=2007, month=8, day=26, hour=20,

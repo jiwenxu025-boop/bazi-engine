@@ -1,5 +1,5 @@
 """流年近失特征提取 — 供 LLM 多因子综合推理。"""
-from .._constants import HONGLUAN, TAOHUA, TIANXI, YIMA
+from .._constants import DIZHI_CANGGAN, HONGLUAN, TAOHUA, TIANXI, YIMA
 from ..enums import Shishen
 from ..ten_gods import get_ten_god
 from .utils import (
@@ -66,8 +66,24 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
 
     # 4. 配偶星
     spouse_star = Shishen.正财 if gender == "男" else Shishen.正官
+    second_star = Shishen.偏财 if gender == "男" else Shishen.偏官
     if ln_shishen == spouse_star:
         features["配偶星透干"] = f"流年{ln_stem.value}={spouse_star.value}透干(正配偶星)"
+    elif ln_shishen == second_star:
+        features["关系星透干"] = f"流年{ln_stem.value}={second_star.value}透干(次级关系星)"
+    hidden_stars = [
+        get_ten_god(day_master, hidden.stem)
+        for hidden in DIZHI_CANGGAN.get(ln_branch, [])
+    ]
+    hidden_names = [
+        star.value for star in hidden_stars
+        if star in (spouse_star, second_star)
+    ]
+    if hidden_names:
+        features["关系星藏干"] = (
+            f"流年{ln_branch.value}藏{'/'.join(dict.fromkeys(hidden_names))}"
+            "（区分正配偶星与次级关系星）"
+        )
 
     # 5. 天干五合（流年合日主）
     he_pair = HEAVENLY_HE.get(day_master)

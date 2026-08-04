@@ -550,6 +550,10 @@ def _compute_yongshen_stage(
         # 若用户提供了喜用神，合并覆盖自动推荐
         if favorable:
             chart._yongshen_result["favorable"] = sorted(favorable)
+            from .yongshen import build_decision_policy
+            chart._yongshen_result["decision_policy"] = build_decision_policy(
+                chart._yongshen_result
+            )
     except Exception as error:
         _warn_stage_failure(chart, "用神推荐", error)
 
@@ -611,8 +615,11 @@ def _compute_pattern_stage(chart: BaziChart) -> list[Tiangan]:
         try:
             from .yongshen import _get_pattern_yongshen
             pys = _get_pattern_yongshen(chart.pattern, chart.day_master)
-            if pys:
-                chart._yongshen_result["pattern_yongshen"] = pys
+            chart._yongshen_result["pattern_yongshen"] = pys
+            from .yongshen import build_decision_policy
+            chart._yongshen_result["decision_policy"] = build_decision_policy(
+                chart._yongshen_result
+            )
         except Exception as error:
             _warn_stage_failure(chart, "格局用神补充", error)
 
@@ -753,6 +760,11 @@ def _compute_liunian_stage(
         logger.exception("personality context failed type=%s", type(error).__name__)
         chart.warnings.append("性格上下文构建失败，流年将无个性化备注")
 
+    yongshen_result = chart._yongshen_result or {}
+    decision_policy = yongshen_result.get("decision_policy", {}).get("effective", {})
+    effective_favorable = set(
+        decision_policy.get("favorable", yongshen_result.get("favorable", []))
+    )
     chart.annual_scans = scan_years(
         chart.day_master,
         chart.year.branch,
@@ -766,7 +778,7 @@ def _compute_liunian_stage(
         liunian_range[0],
         liunian_range[1],
         known_events,
-        favorable or (set(chart._yongshen_result.get("favorable", [])) if chart._yongshen_result else None),
+        favorable or effective_favorable or None,
         personality_ctx=p_ctx,
         life_stage_override=getattr(chart, '_life_stage_override', ''),
         chart_pattern=chart.pattern,

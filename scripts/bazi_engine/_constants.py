@@ -86,12 +86,22 @@ DIZHI_SANHE: dict[frozenset[Dizhi], Wuxing] = {
     frozenset({Dizhi.巳, Dizhi.酉, Dizhi.丑}): Wuxing.金,
 }
 
-# 三合半合映射：前两字或后两字的半合
-DIZHI_BANHE: dict[frozenset[Dizhi], Wuxing] = {}
-for sanhe_set, wx in DIZHI_SANHE.items():
-    items = list(sanhe_set)
-    DIZHI_BANHE[frozenset({items[0], items[1]})] = wx  # 前半合
-    DIZHI_BANHE[frozenset({items[1], items[2]})] = wx  # 后半合
+# 三合半合映射。顺序必须显式固定：frozenset 的迭代顺序会随进程
+# hash seed 变化，不能用 ``list(sanhe_set)`` 推导半合组合。
+DIZHI_BANHE: dict[frozenset[Dizhi], Wuxing] = {
+    # 申子辰水局
+    frozenset({Dizhi.申, Dizhi.子}): Wuxing.水,
+    frozenset({Dizhi.子, Dizhi.辰}): Wuxing.水,
+    # 亥卯未木局
+    frozenset({Dizhi.亥, Dizhi.卯}): Wuxing.木,
+    frozenset({Dizhi.卯, Dizhi.未}): Wuxing.木,
+    # 寅午戌火局
+    frozenset({Dizhi.寅, Dizhi.午}): Wuxing.火,
+    frozenset({Dizhi.午, Dizhi.戌}): Wuxing.火,
+    # 巳酉丑金局
+    frozenset({Dizhi.巳, Dizhi.酉}): Wuxing.金,
+    frozenset({Dizhi.酉, Dizhi.丑}): Wuxing.金,
+}
 
 # ═══════════════════════════════════════════════════════════════
 # 地支三会局

@@ -1,5 +1,6 @@
 """Helper functions for liunian event detection."""
 from .._constants import (
+    DIZHI_BANHE,
     DIZHI_CANGGAN,
     DIZHI_LIUCHONG,
     DIZHI_LIUHE,
@@ -127,21 +128,19 @@ def _has_branch_interaction(target: Dizhi, ref_branch: Dizhi, interaction_type: 
     if interaction_type == "相刑":
         return (target, ref_branch) in DIZHI_XIANGXING
     if interaction_type == "三合":
-        for trio in DIZHI_SANHE:
-            trio_dz = list(trio)
-            if target in trio_dz and ref_branch in trio_dz:
-                return True
-        return False
+        # 事件层的二支关系只表示标准半合；不能把同一三合组中
+        # 的任意两支（如申辰、寅戌）都当成半合。
+        return frozenset({target, ref_branch}) in DIZHI_BANHE
     return False
 
 def _has_sanhe_with_dizhi(target: Dizhi, year_branch: Dizhi,
                           all_branches: list[Dizhi]) -> bool:
-    """检查年支与目标地支是否在同一三合局中（半合及以上）"""
-    for trio in DIZHI_SANHE:
-        trio_dz = list(trio)
-        if target in trio_dz and year_branch in trio_dz:
-            return True
-    return False
+    """检查年支与目标地支是否形成标准半合或完整三合。"""
+    pair = frozenset({target, year_branch})
+    if pair in DIZHI_BANHE:
+        return True
+    available = set(all_branches) | {target, year_branch}
+    return any(trio <= available for trio in DIZHI_SANHE)
 
 def _has_tiangan_wuhe(a: Tiangan, b: Tiangan) -> bool:
     """检查两个天干是否组成五合"""
@@ -152,8 +151,8 @@ def _changsheng_status(day_master: Tiangan, branch: Dizhi) -> str:
     return SHIER_CHANGSHENG.get(day_master, {}).get(branch, "")
 
 def _is_in_same_sanhe(a: Dizhi, b: Dizhi) -> bool:
-    """检查两个地支是否在同一三合局中（含半合）"""
-    return any(a in trio and b in trio for trio in DIZHI_SANHE)
+    """检查两个地支是否组成标准半合。"""
+    return frozenset({a, b}) in DIZHI_BANHE
 
 def _life_stage(age: int,
                 dayun_ten_god: str | None = None,

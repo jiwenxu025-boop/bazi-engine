@@ -30,7 +30,7 @@ from .llm_bridge import (
     _execute_llm_reviews_parallel,
     _execute_llm_reviews_streaming,
 )
-from .signal import AnnualScan, EventSignal
+from .signal import AnnualScan, EventSignal, EvidenceItem
 from .utils import (
     _life_stage,
     _make_prediction,
@@ -39,6 +39,90 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _attach_default_evidence(
+    events: list[EventSignal],
+    liunian_label: str,
+    dayun_label: str | None = None,
+) -> None:
+    """给未提供专门证据的规则事件补一条可审计摘要。
+
+    具体组合规则（如三刑、三合）会写入更精确的柱位证据；这里只补
+    流年规则的来源和触发摘要，避免事件在 API/LLM 上下文中变成不可追溯
+    的自然语言结论。
+    """
+    for event in events:
+        if event.evidence:
+            continue
+        text = "；".join([*event.triggers[:3], *event.notes[:1]])
+        layers = ["流年"]
+        pillars = ["流年"]
+        if dayun_label and any(keyword in text for keyword in ("大运", "岁运")):
+            layers.append("大运")
+            pillars.append("大运")
+        if any(keyword in text for keyword in ("原局", "日柱", "日支", "夫妻宫", "月柱", "时柱", "年柱")):
+            layers.append("原局")
+            pillars.append("命局相关柱")
+        event.evidence.append(EvidenceItem(
+            rule=f"{event.category}_rule",
+            layers=tuple(dict.fromkeys(layers)),
+            pillars=tuple(dict.fromkeys(pillars)),
+            detail=f"{liunian_label}: {text[:220]}" if text else f"{liunian_label}: 规则层事件信号",
+        ))
+
+
+def _rewrite_student_event_language(event: EventSignal) -> None:
+    """把事业规则的触发语义翻译成学生可用的学业场景。"""
+    replacements = (
+        ("主动跳槽/创业", "主动调整学习方向/竞赛项目"),
+        ("跳槽/创业", "学习方向/竞赛项目调整"),
+        ("跳槽", "学习方向调整"),
+        ("创业", "竞赛或项目尝试"),
+        ("离职风险", "转专业/换导师风险"),
+        ("离职", "退出项目或学习方向调整"),
+        ("晋升机会", "升学/竞赛机会"),
+        ("工作地点", "学习环境"),
+        ("工作有", "学习安排有"),
+        ("工作", "学习"),
+        ("职场", "校园"),
+    )
+
+    def rewrite(text: str) -> str:
+        for old, new in replacements:
+            text = text.replace(old, new)
+        return text
+
+    event.triggers = [rewrite(item) for item in event.triggers]
+    event.notes = [rewrite(item) for item in event.notes]
+    event.evidence = [
+        EvidenceItem(
+            rule=item.rule,
+            layers=item.layers,
+            pillars=item.pillars,
+            relation=item.relation,
+            detail=rewrite(item.detail),
+            effect=item.effect,
+        ) if isinstance(item, EvidenceItem) else item
+        for item in event.evidence
+    ]
+
+
+def _adapt_life_stage_events(
+    events: list[EventSignal], stage_for_year: str, age: int,
+) -> None:
+    """统一处理阶段重命名和对应的当代语义。"""
+    for event in events:
+        if stage_for_year in ("职场", "晚年") and event.category == "升学":
+            event.category = "进修"
+        elif stage_for_year in ("中学", "大学", "深造") and event.category == "事业":
+            event.category = "学业"
+        if event.category == "学业":
+            _rewrite_student_event_language(event)
+            event.prediction = _make_prediction(
+                "事业", event.direction, event.strength,
+                event.triggers, event.notes, age=age, life_stage=stage_for_year,
+            )
 
 
 def build_personality_context(day_master: Tiangan, strength: str,
@@ -347,6 +431,7 @@ def scan_years(
             day_master,
             (year_branch, month_branch, day_branch, hour_branch),
             favorable,
+            dayun_branch=dn_dz,
         ))
         events.extend(detect_guanfei_signals(
             ln_tg, ln_dz, day_master, day_branch,
@@ -355,6 +440,12 @@ def scan_years(
             natal_shang_guan=has_natal_shangguan,
             pillars_tengan=pillars_tengan,
         ))
+
+        _attach_default_evidence(
+            events,
+            liunian_label=f"{ln_tg.value}{ln_dz.value}",
+            dayun_label=f"{dn_tg.value}{dn_dz.value}" if dn_tg and dn_dz else None,
+        )
 
         # 流年十神权威出处
         ln_shishen_name = get_ten_god(day_master, ln_tg)
@@ -403,12 +494,8 @@ def scan_years(
                 life_stage=stage_for_year,
             )
 
-        # 人生阶段适配：非学生阶段重命名事件类别（在 prediction 生成之后）
-        for e in events:
-            if stage_for_year in ("职场", "晚年") and e.category == "升学":
-                e.category = "进修"
-            elif stage_for_year in ("中学", "大学", "深造") and e.category == "事业":
-                e.category = "学业"
+        # 人生阶段适配：先处理基础事件，后置规则追加事件时会再处理一次。
+        _adapt_life_stage_events(events, stage_for_year, age)
 
         # ── 事件矛盾检查 + 融合 ──
         _check_event_conflicts(events, ln_dz, day_branch, day_master,
@@ -525,6 +612,9 @@ def scan_years(
                     else:
                         e.notes.append("⚠ 岁运交战→波动大、变数多，中性事件偏负面方向倾斜")
 
+        # 岁运交战可能追加事业事件；在 LLM 收集上下文前统一转换场景。
+        _adapt_life_stage_events(events, stage_for_year, age)
+
         # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
         if chart_data:
             try:
@@ -588,6 +678,12 @@ def scan_years(
                         shang_triggers = [t for t in e.triggers if "伤官" in t]
                         if shang_triggers:
                             e.notes.append("贪生忘克提示：若有印星通关，伤官克官之凶可减")
+
+        _attach_default_evidence(
+            events,
+            liunian_label=f"{ln_tg.value}{ln_dz.value}",
+            dayun_label=f"{dn_tg.value}{dn_dz.value}" if dn_tg and dn_dz else None,
+        )
 
         # 合并同类别信号（同类多触发源→汇总为一条）
         events = _merge_same_category_events(events)
@@ -702,6 +798,13 @@ def _backtrack_hunjia_prelude(results: list[AnnualScan]) -> list[AnnualScan]:
                 prediction="婚嫁前奏年——强信号出现在次年，本年已开始酝酿",
                 triggers=prelude_triggers,
                 notes=[f"次年{curr_scan.year}年有≥3★婚嫁信号，本年出现前奏: {'; '.join(prelude_triggers)}"],
+                evidence=[EvidenceItem(
+                    rule="hunjia_prelude",
+                    layers=("前一年", "流年"),
+                    pillars=("前一年", "流年"),
+                    relation="时点回溯",
+                    detail=f"次年{curr_scan.year}年强婚嫁信号；前一年触发: {'; '.join(prelude_triggers)}",
+                )],
             ))
 
     return results

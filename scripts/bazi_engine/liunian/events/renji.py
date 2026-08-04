@@ -2,7 +2,7 @@
 from ..._constants import TIANXI
 from ...enums import Dizhi, Shishen, Tiangan
 from ...ten_gods import get_ten_god
-from ..signal import EventSignal
+from ..signal import EventSignal, EvidenceItem
 from ..utils import (
     _has_branch_interaction,
     _is_in_same_sanhe,
@@ -16,13 +16,15 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           day_branch: Dizhi, hour_branch: Dizhi,
                           day_master: Tiangan,
                           all_branches: tuple[Dizhi, ...],
-                          favorable: set[str] | None = None) -> list[EventSignal]:
+                          favorable: set[str] | None = None,
+                          dayun_branch: Dizhi | None = None) -> list[EventSignal]:
     """检测人际关系信号（朋友/同事/社交）— v0.4.0"""
     signals: list[EventSignal] = []
     ln_shishen = get_ten_god(day_master, ln_stem)
     strength = 0
     triggers = []
     notes = []
+    evidence: list[EvidenceItem] = []
 
     is_bijian = ln_shishen == Shishen.比肩
     is_jiecai = ln_shishen == Shishen.劫财
@@ -35,13 +37,47 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         ({Dizhi.寅, Dizhi.巳, Dizhi.申}, "寅巳申三刑→官非/人际重大冲突"),
         ({Dizhi.丑, Dizhi.未, Dizhi.戌}, "丑未戌三刑→口舌/纠纷"),
     ]
+    natal_labels = ("年柱", "月柱", "日柱", "时柱")
+    natal_sources: dict[Dizhi, list[str]] = {}
+    for index, branch in enumerate(all_branches):
+        label = natal_labels[index] if index < len(natal_labels) else "原局"
+        natal_sources.setdefault(branch, []).append(label)
+
     for trio, label in sanxing_sets:
-        yr_set = set(all_branches)
-        yr_set.add(ln_branch)
-        if len(trio & yr_set) >= 3:  # 流年+原局凑齐三刑
+        natal_hits = trio & set(natal_sources)
+        runtime_sources: dict[Dizhi, list[str]] = {}
+        if dayun_branch in trio:
+            runtime_sources.setdefault(dayun_branch, []).append("大运")
+        if ln_branch in trio:
+            runtime_sources.setdefault(ln_branch, []).append("流年")
+        combined_hits = natal_hits | set(runtime_sources)
+        # 原局既有三刑只是底盘结构；只有流年/大运实际带入（或重复引动）
+        # 才形成年度事件，避免每年都误报“流年+原局凑齐”。
+        if len(combined_hits) >= 3 and runtime_sources:
+            source_parts = []
+            layers = {"原局"} if natal_hits else set()
+            pillars = []
+            for branch in sorted(trio, key=lambda item: item.index):
+                branch_sources = [*(f"原局:{p}" for p in natal_sources.get(branch, [])),
+                                  *runtime_sources.get(branch, [])]
+                if branch_sources:
+                    source_parts.append(f"{branch.value}({'/'.join(branch_sources)})")
+                if branch in natal_sources:
+                    pillars.extend(natal_sources[branch])
+                for source in runtime_sources.get(branch, []):
+                    layers.add(source)
+                    pillars.append(source)
+            detail = "+".join(sorted(source_parts))
             strength = max(strength, 3)
-            triggers.append(label)
-            notes.append("三刑汇聚→重大人际冲突/官非 (《渊海子平》)")
+            triggers.append(f"{label}（{detail}）")
+            notes.append("三刑由流年/大运引动→重大人际冲突候选，不把原局底盘当作年度事件")
+            evidence.append(EvidenceItem(
+                rule="sanxing_renji",
+                layers=tuple(sorted(layers)),
+                pillars=tuple(dict.fromkeys(pillars)),
+                relation="三刑",
+                detail=detail,
+            ))
             break
 
     # ── ★★: 卯辰穿/子未穿等相害 ──
@@ -117,6 +153,7 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                 prediction=_make_prediction("人际", direction, min(strength, 3), triggers, notes),
                 triggers=triggers,
                 notes=notes,
+                evidence=evidence,
             ))
     return signals
 

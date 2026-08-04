@@ -146,6 +146,7 @@ def build_review_context(
         "harmful_wuxing": base["harmful_wuxing"],
         "day_branch": base["day_branch"],
         "tiaohou": base.get("tiaohou", {}),
+        "decision_policy": base.get("decision_policy", {}),
         "key_interactions": base["key_interactions"][:10],
     }
 
@@ -206,6 +207,11 @@ def build_review_context(
             "direction": e.direction,
             "strength": e.strength,
             "triggers": e.triggers[:5],
+            "evidence": [
+                item.to_dict() if hasattr(item, "to_dict") else item
+                for item in e.evidence[:5]
+            ],
+            "conflicts": e.conflicts[:5],
         }
         for e in rule_events
     ]
@@ -269,6 +275,17 @@ def build_review_prompt(ctx: dict) -> str:
     prompt_parts.append(f"日主: {natal['day_master']} | 格局: {natal['pattern']} | 强弱: {natal['strength']}")
     prompt_parts.append(f"喜用五行: {natal['favorable_wuxing']} | 忌神五行: {natal['harmful_wuxing']}")
     prompt_parts.append(f"喜用十神: {natal['favorable']} | 忌十神: {natal['harmful']}")
+    policy = natal.get("decision_policy", {})
+    if policy:
+        effective = policy.get("effective", {})
+        prompt_parts.append(
+            "喜忌裁决: "
+            f"优先级={' > '.join(policy.get('precedence', []))} | "
+            f"当前有效喜={effective.get('favorable', natal['favorable'])} | "
+            f"当前有效忌={effective.get('harmful', natal['harmful'])}"
+        )
+        if policy.get("conflicts"):
+            prompt_parts.append(f"喜忌冲突记录: {'; '.join(policy['conflicts'][:4])}")
     if natal.get("key_interactions"):
         prompt_parts.append(f"原局关键关系: {'; '.join(natal['key_interactions'][:8])}")
 
@@ -314,6 +331,8 @@ def build_review_prompt(ctx: dict) -> str:
         for s in rule_signals:
             sig_lines.append(
                 f"  {s['category']}/{s['direction']}/{s['strength']}★"
+                f" | 证据={s.get('evidence', [])[:2]}"
+                f" | 冲突={s.get('conflicts', [])[:2]}"
             )
         prompt_parts.append("规则引擎信号:\n" + "\n".join(sig_lines))
     else:
@@ -328,6 +347,9 @@ def build_review_prompt(ctx: dict) -> str:
 ## 任务
 
 规则引擎已经跑过但可能遗漏"多弱信号叠加"型的事件。根据流年特征做综合推理：
+
+LLM 只能解释和整合已提供的结构化证据，不得自行重算三合、藏干、强弱或喜忌；
+若证据冲突或来源不足，应降低置信度并在 reasoning 中说明，不得覆盖规则层结论。
 
 必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，不得跳项。先在 category_matrix
 中对六类分别标记 1（有信号）或 0（无明显信号），再仅为标记 1 的类别输出事件详情。

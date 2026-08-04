@@ -51,10 +51,19 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             s.add(0, "大运合日支+流年六冲→关系结构引动",
                   "合冲组合需结合配偶星及其他现实信息，不单独判断婚变。", fixed=True)
 
-    # 检查流年地支藏干是否含配偶星
+    # 检查流年地支藏干，并保留正配偶星/次级关系星的层级。
+    # 不能因为午中藏丁（正财）就把丙（偏财）透干写成“正财透干”。
     ln_canggan_shishen = [get_ten_god(day_master, hs.stem) for hs in DIZHI_CANGGAN.get(ln_branch, [])]
-    has_spouse_in_branch = (spouse_star in ln_canggan_shishen or second_star in ln_canggan_shishen)
-    spouse_in_branch_label = spouse_name if spouse_star in ln_canggan_shishen else (second_name if second_star in ln_canggan_shishen else "")
+    has_primary_in_branch = spouse_star in ln_canggan_shishen
+    has_secondary_in_branch = second_star in ln_canggan_shishen
+    has_spouse_in_branch = has_primary_in_branch or has_secondary_in_branch
+    hidden_names = [
+        name for present, name in (
+            (has_primary_in_branch, spouse_name),
+            (has_secondary_in_branch, second_name),
+        ) if present
+    ]
+    spouse_in_branch_label = "/".join(hidden_names)
 
     tianxi_activated = False
     if tianxi_dz:
@@ -108,11 +117,17 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         sp_visible = ln_shishen in (spouse_star, second_star)
         is_student = age and age <= 21
         if sp_visible:
-            s.add(3, f"干支皆见{spouse_in_branch_label}(配偶星透+藏)", "配偶星公开→正缘/婚期")
+            visible_name = spouse_name if ln_shishen == spouse_star else second_name
+            if ((ln_shishen == spouse_star and has_primary_in_branch) or
+                    (ln_shishen == second_star and has_secondary_in_branch)):
+                s.add(3, f"干支皆见{visible_name}(对应关系星透+藏)", "对应关系星同时透藏→关系机会更明确")
+            else:
+                s.add(3, f"{visible_name}透干+藏{spouse_in_branch_label}(配偶关系星分层)",
+                      "透干与藏干属于不同层级，保留关系机会但不混称正配偶星")
         elif is_student:
-            s.add(1, f"地支暗藏{spouse_in_branch_label}(配偶星·学生)", "藏干不透+学生→暗恋, 待透干之年转正")
+            s.add(1, f"地支暗藏{spouse_in_branch_label}(配偶关系星·学生)", "藏干不透+学生→暗恋，待对应关系星透干时再观察")
         else:
-            s.add(3, f"地支暗藏{spouse_in_branch_label}(配偶星·不透干)", "藏干不透→暗处流动, 但成人仍可成婚")
+            s.add(3, f"地支暗藏{spouse_in_branch_label}(配偶关系星·不透干)", "藏干不透→暗处流动，但成人仍可成婚")
 
     # 流年合夫妻宫（弱因子，需搭配配偶星或天喜）
     if gong_he:

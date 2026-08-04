@@ -220,6 +220,7 @@ def extract_base_context(chart_data: dict) -> dict[str, Any]:
     ctx["favorable_wuxing"] = yongshen.get("favorable_wuxing", [])
     ctx["harmful_wuxing"] = yongshen.get("harmful_wuxing", [])
     ctx["cong_ge"] = yongshen.get("cong_ge")
+    ctx["decision_policy"] = yongshen.get("decision_policy", {})
 
     # ── 调候 ──
     tiaohou = chart_data.get("tiaohou", {})

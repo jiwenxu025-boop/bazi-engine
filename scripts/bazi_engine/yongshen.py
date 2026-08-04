@@ -336,8 +336,71 @@ def recommend_yongshen(
 
     # ── 格局用神（陆致极区分：格局用神 ≠ 有用之神）──
     result["pattern_yongshen"] = _get_pattern_yongshen(pattern, day_master)
+    result["decision_policy"] = build_decision_policy(result)
 
     return result
+
+
+def build_decision_policy(yongshen_result: dict) -> dict:
+    """把扶抑、格局和调候整理成一个兼容旧字段的裁决出口。
+
+    该策略不重新计算强弱，也不偷偷改动既有 ``favorable``/``harmful``；
+    它明确各维度的优先级，并把冲突保留下来供流年和解释层引用。
+    """
+    base_favorable = list(yongshen_result.get("favorable", []))
+    base_harmful = list(yongshen_result.get("harmful", []))
+    pattern = yongshen_result.get("pattern_yongshen") or {}
+    pattern_needs = list(pattern.get("needs", []))
+    pattern_avoid = list(pattern.get("avoid", []))
+    tiaohou = yongshen_result.get("tiaohou") or {}
+    tiaohou_wuxing = list(
+        tiaohou.get("wuxing", tiaohou.get("tiaohou_wuxing", [])) or []
+    )
+
+    conflicts: list[str] = []
+    for item in pattern_needs:
+        if item in base_harmful:
+            conflicts.append(f"格局需要{item}，但扶抑层列为忌：保留冲突，不自动翻转")
+    for item in pattern_avoid:
+        if item in base_favorable:
+            conflicts.append(f"格局忌{item}，但扶抑层列为喜：保留冲突，不自动翻转")
+
+    effective_fav_wx = list(yongshen_result.get("favorable_wuxing", []))
+    effective_harm_wx = list(yongshen_result.get("harmful_wuxing", []))
+    return {
+        "version": "1.0",
+        "precedence": ["扶抑/从格", "格局维护", "调候"],
+        "formula": "基础强弱 + 格局维护需求 + 调候修正 = 当前有效喜忌及优先级",
+        "base": {
+            "strength": yongshen_result.get("strength", "中和"),
+            "score": yongshen_result.get("score", 0),
+            "favorable": base_favorable,
+            "harmful": base_harmful,
+            "source": "扶抑/从格",
+        },
+        "pattern": {
+            "needs": pattern_needs,
+            "avoid": pattern_avoid,
+            "method": pattern.get("method", "") if pattern else "",
+            "priority": "maintenance" if pattern else "none",
+            "source": "格局维护",
+        },
+        "tiaohou": {
+            "wuxing": tiaohou_wuxing,
+            "is_fei_ju": bool(tiaohou.get("is_fei_ju", False)),
+            "role": "supplement",
+            "source": "调候",
+        },
+        "effective": {
+            # 兼容旧流年模块：无明确冲突时数值与旧出口保持一致。
+            "favorable": base_favorable,
+            "harmful": base_harmful,
+            "favorable_wuxing": effective_fav_wx,
+            "harmful_wuxing": effective_harm_wx,
+            "priority": "格局维护" if pattern else "扶抑/从格",
+        },
+        "conflicts": conflicts,
+    }
 
 
 def _get_pattern_yongshen(pattern: str, day_master: Tiangan) -> dict | None:

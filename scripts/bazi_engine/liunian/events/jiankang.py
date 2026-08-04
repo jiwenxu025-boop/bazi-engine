@@ -8,7 +8,7 @@ from ..._constants import (
 )
 from ...enums import TIANGAN_LU, TIANGAN_YANGREN, Dizhi, Shishen, Tiangan
 from ...ten_gods import get_ten_god
-from ..signal import EventSignal
+from ..signal import EventSignal, EvidenceItem
 from ..utils import (
     _changsheng_status,
     _has_branch_interaction,
@@ -36,6 +36,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     strength = 0
     triggers = []
     notes = []
+    evidence: list[EvidenceItem] = []
 
     fav = is_favorable(ln_shishen, favorable)
 
@@ -54,30 +55,75 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                     Wuxing.金: {Dizhi.巳, Dizhi.酉, Dizhi.丑},
                     Wuxing.水: {Dizhi.申, Dizhi.子, Dizhi.辰}}
         target_trio = sanhe_wx.get(guansha_wx, set())
-        # 收集所有相关地支
-        all_dz = set(all_branches)
-        if dayun_branch:
-            all_dz.add(dayun_branch)
-        all_dz.add(ln_branch)
-        # 计算命中数
-        hits = len(target_trio & all_dz)
-        if hits >= 3:
+        # 保留每一柱的来源。set 只能回答“出现过”，无法回答是原局、
+        # 大运还是流年引入，也会把原局既有三合误报成年度引动。
+        natal_labels = ("年柱", "月柱", "日柱", "时柱")
+        natal_sources: dict[Dizhi, list[str]] = {}
+        for index, branch in enumerate(all_branches):
+            label = natal_labels[index] if index < len(natal_labels) else "原局"
+            natal_sources.setdefault(branch, []).append(label)
+        runtime_sources: dict[Dizhi, list[str]] = {}
+        if dayun_branch in target_trio:
+            runtime_sources.setdefault(dayun_branch, []).append("大运")
+        if ln_branch in target_trio:
+            runtime_sources.setdefault(ln_branch, []).append("流年")
+
+        combined_hits = target_trio & (set(natal_sources) | set(runtime_sources))
+        if len(combined_hits) >= 3 and runtime_sources:
+            source_parts = []
+            layers = {
+                "原局"
+            } if any(branch in natal_sources for branch in combined_hits) else set()
+            pillars = []
+            for branch in sorted(combined_hits, key=lambda item: item.value):
+                branch_sources = [*(f"原局:{p}" for p in natal_sources.get(branch, [])),
+                                  *runtime_sources.get(branch, [])]
+                source_parts.append(f"{branch.value}({'/'.join(branch_sources)})")
+                if branch in natal_sources:
+                    pillars.extend(natal_sources[branch])
+                for source in runtime_sources.get(branch, []):
+                    layers.add(source)
+                    pillars.append(source)
+            detail = "+".join(source_parts)
             strength = 3
-            triggers.append(f"三合官杀局(流年+大运+原局){hits}柱→克身重灾")
-            notes.append("官杀汇聚成局→防重大疾病/手术/意外 (《渊海子平》)")
+            triggers.append(f"三合官杀局({'/'.join(sorted(layers))}){len(combined_hits)}柱→克身重灾")
+            notes.append("官杀三合由动态层引入→防健康压力/意外；原局既有结构不单独计作流年事件")
+            evidence.append(EvidenceItem(
+                rule="sanhe_guansha_health",
+                layers=tuple(sorted(layers)),
+                pillars=tuple(dict.fromkeys(pillars)),
+                relation="三合",
+                detail=detail,
+            ))
 
     # ── 多柱联动: 羊刃聚会 ──
     yangren_jk = TIANGAN_YANGREN.get(day_master)
     if yangren_jk:
-        all_dz_y = set(all_branches)
-        if dayun_branch:
-            all_dz_y.add(dayun_branch)
-        all_dz_y.add(ln_branch)
-        yr_count = sum(1 for dz in all_dz_y if dz == yangren_jk)
+        natal_labels = ("年柱", "月柱", "日柱", "时柱")
+        yangren_sources = [
+            f"原局:{natal_labels[index] if index < len(natal_labels) else '原局'}"
+            for index, branch in enumerate(all_branches)
+            if branch == yangren_jk
+        ]
+        if dayun_branch == yangren_jk:
+            yangren_sources.append("大运")
+        if ln_branch == yangren_jk:
+            yangren_sources.append("流年")
+        yr_count = len(yangren_sources)
         if yr_count >= 3:
             strength = max(strength, 3)
-            triggers.append(f"羊刃聚会({yr_count}重)→血光/手术/中风")
+            triggers.append(f"羊刃聚会({yr_count}重; {'/'.join(yangren_sources)})→血光/手术/中风")
             notes.append("多柱羊刃汇聚→防意外血光/心脑血管 (textbook: 五羊刃聚会中风案)")
+            evidence.append(EvidenceItem(
+                rule="yangren_cluster_health",
+                layers=tuple(dict.fromkeys(
+                    "原局" if item.startswith("原局:") else item
+                    for item in yangren_sources
+                )),
+                pillars=tuple(yangren_sources),
+                relation="聚会",
+                detail=f"羊刃{yangren_jk.value}共{yr_count}重",
+            ))
 
     # ═══ ★★★ 级别 ═══
 
@@ -244,6 +290,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             prediction=_make_prediction("健康", "负面", min(strength,3), safe_triggers, safe_notes),
             triggers=safe_triggers,
             notes=safe_notes,
+            evidence=evidence,
         ))
     return signals
 

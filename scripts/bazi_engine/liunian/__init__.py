@@ -35,7 +35,7 @@ from .scanner import (
     build_personality_context,
     scan_years,
 )
-from .signal import AnnualScan, EventSignal, Factor, ScoreAccumulator
+from .signal import AnnualScan, EventSignal, EvidenceItem, Factor, ScoreAccumulator
 from .utils import (
     _CAIKU_BY_DAY_WUXING,
     _CAIKU_MAP,
@@ -67,6 +67,7 @@ __all__ = [
     '_CAIKU_MAP',
     'AnnualScan',
     'EventSignal',
+    'EvidenceItem',
     'Factor',
     'ScoreAccumulator',
     '_annotate_taohua_clusters',

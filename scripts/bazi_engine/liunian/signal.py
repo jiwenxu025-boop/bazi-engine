@@ -11,6 +11,33 @@ class Factor:
     trigger: str
     note: str = ""
 
+
+@dataclass(frozen=True)
+class EvidenceItem:
+    """可审计的规则证据摘要。
+
+    ``layers`` 区分原局、大运、流年等来源，``pillars`` 保留具体柱位，
+    ``relation`` 记录生克合冲刑害等关系。它是面向报告和 LLM 的摘要，
+    不暴露内部完整推理过程，也不允许替代规则结论。
+    """
+
+    rule: str
+    layers: tuple[str, ...] = ()
+    pillars: tuple[str, ...] = ()
+    relation: str = ""
+    detail: str = ""
+    effect: str = "support"  # support | conflict | context
+
+    def to_dict(self) -> dict:
+        return {
+            "rule": self.rule,
+            "layers": list(self.layers),
+            "pillars": list(self.pillars),
+            "relation": self.relation,
+            "detail": self.detail,
+            "effect": self.effect,
+        }
+
 class ScoreAccumulator:
     """打分累加器：收集因子 → 综合判断信号"""
     def __init__(self, favorable_set: set[str] | None = None):
@@ -95,6 +122,8 @@ class EventSignal:
     magnitude: str = ""         # 财务信号强度 "弱"/"中"/"较强"，不表示金额或损失规模
     source: str = "rule"        # v0.16.0: 信号来源 "rule"|"llm"
     review_status: str = ""     # AI审阅状态："有信号"|"无明显信号"|"未完成"
+    evidence: list[EvidenceItem] = field(default_factory=list)
+    conflicts: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = {
@@ -108,6 +137,13 @@ class EventSignal:
             "personality_note": self.personality_note,
             "source": self.source,
         }
+        if self.evidence:
+            d["evidence"] = [
+                item.to_dict() if isinstance(item, EvidenceItem) else item
+                for item in self.evidence
+            ]
+        if self.conflicts:
+            d["conflicts"] = self.conflicts
         if self.magnitude:
             d["magnitude"] = self.magnitude
         if self.review_status:
