@@ -156,3 +156,45 @@ def test_chart_output_excludes_diagnostic_and_deterministic_harm_language():
 
     for prohibited in ("克妻", "克夫", "寿元", "肿瘤倾向", "先天不足", "赌博或挥霍"):
         assert prohibited not in output
+
+
+def test_suiyun_liuhe_does_not_apply_clash_penalty_to_year_events():
+    chart = build_chart(
+        name="suiyun-liuhe", gender="男", year=2007, month=8, day=26, hour=20,
+        liunian_range=(2027, 2027),
+    )
+    scan = chart.to_dict()["annual_scans"][0]
+
+    assert scan["liunian"] == "丁未"
+    assert scan["dayun"] == "丙午"
+    assert any(
+        "流年未合大运午" in trigger
+        for event in scan["events"]
+        for trigger in event["triggers"]
+    )
+    assert all(
+        "岁运交战" not in note and "岁运地战" not in note
+        for event in scan["events"]
+        for note in event["notes"]
+    )
+
+
+def test_actual_suiyun_clash_still_applies_conflict_note():
+    chart = build_chart(
+        name="suiyun-clash", gender="男", year=2007, month=8, day=26, hour=20,
+        liunian_range=(2030, 2030),
+    )
+    scan = chart.to_dict()["annual_scans"][0]
+
+    assert scan["liunian"] == "庚戌"
+    assert scan["dayun"] == "丙午"
+    assert any(
+        "天战" in trigger
+        for event in scan["events"]
+        for trigger in event["triggers"]
+    )
+    assert any(
+        "岁运交战" in note
+        for event in scan["events"]
+        for note in event["notes"]
+    )

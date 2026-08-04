@@ -588,29 +588,33 @@ def scan_years(
                                                      day_master, current_dayun_mod)
             if sui_yun_signals:
                 events.extend(sui_yun_signals)
-                # 判断交战等级
-                is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
-                any("天战" in str(s.triggers) for s in sui_yun_signals)
-                any("喜神" in str(s.triggers) for s in sui_yun_signals)
-
-                # v0.11.1: 岁运交战分方向处理——动荡加剧≠信号变弱
-                # 吉事打折(动荡中好事难落实)，凶事加码(动荡中坏事更易发生)
-                is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
-                for e in events:
-                    if e.category == "健康":
-                        continue
-                    if e.direction == "正面":
-                        if is_dizhan:
-                            e.notes.append("⚠ 岁运地战→根基动摇，好事打折，宜守不宜攻")
+                has_conflict = any(
+                    any(
+                        marker in trigger
+                        for marker in ("天战", "地战", "刑大运", "害大运")
+                    )
+                    for signal in sui_yun_signals
+                    for trigger in signal.triggers
+                )
+                if has_conflict:
+                    # v0.11.1: 岁运交战分方向处理——动荡加剧≠信号变弱
+                    # 吉事打折(动荡中好事难落实)，凶事加码(动荡中坏事更易发生)
+                    is_dizhan = any("地战" in str(s.triggers) for s in sui_yun_signals)
+                    for e in events:
+                        if e.category == "健康":
+                            continue
+                        if e.direction == "正面":
+                            if is_dizhan:
+                                e.notes.append("⚠ 岁运地战→根基动摇，好事打折，宜守不宜攻")
+                            else:
+                                e.notes.append("⚠ 岁运交战→吉事可信度下降，好事可能落空或附带代价")
+                        elif e.direction == "负面":
+                            if is_dizhan:
+                                e.notes.append("⚠ 岁运地战→根基动摇，坏事加剧，重大决策暂缓")
+                            else:
+                                e.notes.append("⚠ 岁运交战→动荡加剧，负面事件更易坐实，不可轻视")
                         else:
-                            e.notes.append("⚠ 岁运交战→吉事可信度下降，好事可能落空或附带代价")
-                    elif e.direction == "负面":
-                        if is_dizhan:
-                            e.notes.append("⚠ 岁运地战→根基动摇，坏事加剧，重大决策暂缓")
-                        else:
-                            e.notes.append("⚠ 岁运交战→动荡加剧，负面事件更易坐实，不可轻视")
-                    else:
-                        e.notes.append("⚠ 岁运交战→波动大、变数多，中性事件偏负面方向倾斜")
+                            e.notes.append("⚠ 岁运交战→波动大、变数多，中性事件偏负面方向倾斜")
 
         # 岁运交战可能追加事业事件；在 LLM 收集上下文前统一转换场景。
         _adapt_life_stage_events(events, stage_for_year, age)
