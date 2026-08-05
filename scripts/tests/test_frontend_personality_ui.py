@@ -636,9 +636,7 @@ def test_annual_ai_review_matrix_summary_and_visibility():
         if (meta.signalCategories.join(',') !== '桃花') throw new Error('signal categories are wrong');
 
         const summary = sandbox._renderAnnualAiSummary(meta);
-        if (!summary.includes('AI说明') || !summary.includes('仅供参考：桃花')) throw new Error('visible summary is incomplete');
-        const header = sandbox._renderAnnualAiHeaderTag(meta);
-        if (!header.includes('AI说明')) throw new Error('AI header marker is missing');
+        if (!summary.includes('AI参考') || !summary.includes('桃花方面有补充说明')) throw new Error('visible summary is incomplete');
         const details = sandbox._renderAnnualAiReviews(reviews);
         if (!details.includes('未发现额外提示：婚嫁、事业、财运、搬迁') || !details.includes('未完成')) throw new Error('matrix states are not summarized');
         if (details.includes('<span class=tag>婚嫁</span>') || details.includes('<span class=tag>事业</span>')) throw new Error('clear categories look like positive signals');
@@ -648,13 +646,13 @@ def test_annual_ai_review_matrix_summary_and_visibility():
           {{category: '事业', review_status: '无明显信号', direction: '中性'}},
         ]);
         const clearSummary = sandbox._renderAnnualAiSummary(clearMeta);
-        if (!clearSummary.includes('未发现额外提示')) throw new Error('all-clear review was hidden');
+        if (clearSummary !== '') throw new Error('all-clear review should not occupy the collapsed card');
         const emptySummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]));
         if (emptySummary !== '') throw new Error('empty review state should be hidden');
         const pendingSummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]), 'pending');
-        if (!pendingSummary.includes('AI说明') || !pendingSummary.includes('生成中')) throw new Error('pending review state was not visible');
+        if (!pendingSummary.includes('AI参考') || !pendingSummary.includes('生成中')) throw new Error('pending review state was not visible');
         const errorSummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]), 'error');
-        if (!errorSummary.includes('AI说明') || !errorSummary.includes('暂时不可用')) throw new Error('error review state was not visible');
+        if (!errorSummary.includes('AI参考') || !errorSummary.includes('暂时不可用')) throw new Error('error review state was not visible');
         const emptyDetails = sandbox._renderAnnualAiReviews([]);
         if (emptyDetails !== '') throw new Error('empty review details should be hidden');
         """
@@ -709,9 +707,45 @@ def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
 
         const cardCount = (eventsSection.innerHTML.match(/class=event-card/g) || []).length;
         if (cardCount !== 2) throw new Error('all-clear or pending years were hidden');
-        if (!eventsSection.innerHTML.includes('AI补充说明已返回 · 未发现额外提示')) throw new Error('all-clear AI status was not visible');
+        if (eventsSection.innerHTML.includes('ai-layer-summary')) throw new Error('all-clear AI status occupied the collapsed card');
+        if (!eventsSection.innerHTML.includes('未发现额外提示：婚嫁、事业')) throw new Error('all-clear AI details were removed');
         if (eventsSection.innerHTML.includes('暂无返回结果')) throw new Error('unstarted AI status was rendered');
         if ((eventsSection.innerHTML.match(/本年规则层没有两星以上显著信号/g) || []).length !== 2) throw new Error('empty rule layers were hidden');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_relationship_window_uses_compact_summary_hierarchy():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const source = fs.readFileSync({str(APP_JS)!r}, 'utf8');
+        const start = source.indexOf('function _annualAiReviewMeta');
+        const end = source.indexOf('function setDayunInterpretations');
+        const sandbox = {{ esc(value) {{ return String(value); }} }};
+        vm.createContext(sandbox);
+        vm.runInContext(source.slice(start, end), sandbox);
+
+        const peak = sandbox._renderRelationshipWindow({{
+          relationship_window: '2026-2027',
+          relationship_phase: 'peak',
+          relationship_peak_year: 2026,
+        }});
+        if (!peak.includes('annual-layer-summary relationship-layer-summary')) throw new Error('relationship hierarchy is inconsistent');
+        if (!peak.includes('关系进程') || !peak.includes('2026年为峰值')) throw new Error('peak summary is incomplete');
+        if (peak.includes('<small>') || peak.includes('annual-relationship-summary')) throw new Error('legacy callout layout is still used');
+
+        const continuation = sandbox._renderRelationshipWindow({{
+          relationship_window: '2026-2027',
+          relationship_phase: 'continuation',
+          relationship_peak_year: 2026,
+        }});
+        if (!continuation.includes('延续年，峰值在2026年')) throw new Error('continuation summary is incomplete');
         """
     )
 

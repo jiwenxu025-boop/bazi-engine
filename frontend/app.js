@@ -401,31 +401,21 @@ function _annualAiReviewMeta(reviews){
   };
 }
 
-function _renderAnnualAiHeaderTag(meta){
-  if (!meta || !meta.reviews.length) return '';
-  return '<span class="header-tag ai-header-tag">AI说明</span>';
-}
-
 function _renderAnnualAiSummary(meta, status){
   let reviewStatus = status || 'idle';
   if (!meta || !meta.reviews.length){
-    if (reviewStatus === 'pending') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI说明</span><span>生成中...</span></div>';
-    if (reviewStatus === 'error') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI说明</span><span>暂时不可用</span></div>';
+    if (reviewStatus === 'pending') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI参考</span><span>生成中...</span></div>';
+    if (reviewStatus === 'error') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI参考</span><span>暂时不可用</span></div>';
     return '';
   }
-  let text = 'AI补充说明已返回';
-  if (meta && meta.reviews.length && meta.hasExplicitStatuses){
-    if (meta.signalCategories.length){
-      text += ' · 仅供参考：' + meta.signalCategories.join('、');
-    } else if (meta.incompleteCount){
-      text += ' · 部分说明未返回';
-    } else if (!meta.incompleteCount){
-      text += ' · 未发现额外提示';
-    }
-  } else if (meta.signalCategories.length){
-    text += ' · 仅供参考：' + meta.signalCategories.join('、');
+  let text = '';
+  if (meta.signalCategories.length){
+    text = meta.signalCategories.join('、') + '方面有补充说明';
+  } else if (meta.incompleteCount){
+    text = '部分说明暂未返回';
   }
-  return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI说明</span><span>' + esc(text) + '</span></div>';
+  if (!text) return '';
+  return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI参考</span><span>' + esc(text) + '</span></div>';
 }
 
 function _renderAnnualAiReviews(reviews, status){
@@ -471,10 +461,16 @@ function _renderRelationshipWindow(scan){
     adjustment: '磨合年',
   };
   let phase = phaseLabels[scan.relationship_phase] || '关系进程';
-  let peak = scan.relationship_peak_year ? ' · 峰值' + scan.relationship_peak_year + '年' : '';
-  return '<div class="annual-relationship-summary"><span>婚恋窗口 ' +
-    esc(scan.relationship_window) + '</span><span>' + esc(phase + peak) +
-    '</span><small>连续年份属于同一段关系进程，不代表重复婚嫁</small></div>';
+  let timing = phase;
+  if (scan.relationship_peak_year){
+    timing = scan.relationship_phase === 'peak'
+      ? scan.relationship_peak_year + '年为峰值'
+      : phase + '，峰值在' + scan.relationship_peak_year + '年';
+  }
+  let text = scan.relationship_window + ' · ' + timing +
+    '；连续年份是同一段关系进程，不代表重复婚嫁';
+  return '<div class="annual-layer-summary relationship-layer-summary"><span class=annual-layer-label>关系进程</span><span>' +
+    esc(text) + '</span></div>';
 }
 
 function _annualSignalKey(signal){
@@ -1633,8 +1629,6 @@ function render(d){
         let dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
         tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
       }
-      tagBadges.push(_renderAnnualAiHeaderTag(aiMeta));
-
       h += '<div class=event-card>';
       h += '<div class=event-header>';
       h += '<span class=event-year>' + scan.year + '</span>';
@@ -1893,7 +1887,6 @@ function refreshFlowSection(d){
       let dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
       tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
     }
-    tagBadges.push(_renderAnnualAiHeaderTag(aiMeta));
     h += '<div class=event-card>';
     h += '<div class=event-header>';
     h += '<span class=event-year>' + scan.year + '</span>';
