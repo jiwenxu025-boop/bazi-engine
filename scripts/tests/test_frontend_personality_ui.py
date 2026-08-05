@@ -904,6 +904,28 @@ def test_report_overview_summarizes_chart_for_reading_first_result_page():
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+def test_report_omits_internal_reading_instructions():
+    source = APP_JS.read_text(encoding="utf-8")
+    removed_copy = (
+        "先看结论，再看依据",
+        "本节展示排运、起运和六亲",
+        "把命盘信息转成现实主题",
+        "默认把事业类信号转译为",
+        "默认按职场、项目、收入结构",
+        "这里只汇总已有流年事件类别",
+        "关系和家庭信息保留在性格关系模块中阅读",
+        "大运、流年和年龄为规则事实",
+        "四柱、格局、喜忌和大运是规则事实来源",
+        "默认阅读报告正文",
+        "用于快速查看近期开启行动",
+        "优先看年份主线",
+        "生成流年后会显示年份主线",
+    )
+
+    for text in removed_copy:
+        assert text not in source
+
+
 def test_home_form_keeps_advanced_options_collapsed_and_uses_report_cta():
     html = INDEX_HTML.read_text(encoding="utf-8")
 
@@ -1325,12 +1347,13 @@ def test_foundation_rules_are_rendered_as_expandable_evidence():
     assert "查看原始命盘与规则依据" in js
 
 
-def test_report_text_marks_rule_facts_and_ai_explanations_boundary():
+def test_report_keeps_rule_and_ai_layers_distinct_without_internal_copy():
     js = APP_JS.read_text(encoding="utf-8")
 
-    assert "规则事实" in js
-    assert "AI 解读" in js
-    assert "若冲突以规则事实为准" in js
+    assert "规则判断" in js
+    assert "AI 辅助说明（仅作补充，不参与事件判断）" in js
+    assert "规则事实" not in js
+    assert "若冲突以规则事实为准" not in js
 
 
 def test_chat_context_fact_hint_has_visible_active_style():

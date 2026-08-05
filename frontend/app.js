@@ -1081,7 +1081,6 @@ function _buildReportOverview(d){
   h += '<div class=report-overview-copy>';
   h += '<div class=report-eyebrow>命盘总览</div>';
   h += '<div class=report-headline>' + esc(headline) + '</div>';
-  h += '<div class=report-subline>先看结论，再看依据。下面的四柱、流年和规则细节用于解释这些判断从哪里来。</div>';
   h += '<div class=report-document-meta>';
   h += '<span>' + esc(d.name || '命主') + '</span>';
   if (d.gender) h += '<span>' + esc(d.gender) + '</span>';
@@ -1360,7 +1359,7 @@ function _buildGenderLuckSection(d){
   let h = '';
 
   h += '<section id=section-gender-luck class="report-section gender-luck-section">';
-  h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div><p>本节展示排运、起运和六亲相关的传统规则依据。</p></div>';
+  h += '<div class=report-section-head><div><span>运势起点与六亲</span><h2>' + esc(heading) + '</h2></div></div>';
   h += '<div class=gender-luck-panel>';
   if (direction) summaryRows += '<div class=gender-luck-summary-row><span>排运方向</span><b>' + esc(direction) + '</b></div>';
 
@@ -1432,18 +1431,20 @@ function _buildReportFocusSections(d){
   let h = '';
 
   h += '<section class="report-section report-focus-section" id=section-focus>';
-  h += '<div class=report-section-head><div><span>事业财运</span><h2>' + (stageInfo.isStudent ? '学业、进修与资源' : '事业、财务与资源') + '</h2></div><p>把命盘信息转成现实主题，先看当前阶段和未来高频信号。</p></div>';
+  h += '<div class=report-section-head><div><span>事业财运</span><h2>' + (stageInfo.isStudent ? '学业、进修与资源' : '事业、财务与资源') + '</h2></div></div>';
   h += _buildModulePrompts(stageInfo.isStudent ? '学业财运' : '事业财运', [stageInfo.isStudent ? '学业和进修重点是什么？' : '事业推进重点是什么？', '财运上应该注意什么？']);
   h += '<div class=report-card-grid>';
-  h += '<div class=report-mini-card><span>当前阶段</span><b>' + esc(stageInfo.label) + '</b><p>' + (stageInfo.isStudent ? '默认把事业类信号转译为学业、考试、进修和资源支持。' : '默认按职场、项目、收入结构和资源调度来阅读。') + '</p></div>';
-  h += '<div class=report-mini-card><span>高频主题</span><b>' + esc(workSignals.length ? workSignals.join('、') : '暂无明显集中信号') + '</b><p>这里只汇总已有流年事件类别，不额外新增判断。</p></div>';
-  h += '<div class=report-mini-card><span>关系牵引</span><b>' + esc(relationSignals.length ? relationSignals.join('、') : '暂无明显集中信号') + '</b><p>关系和家庭信息保留在性格关系模块中阅读。</p></div>';
-  h += '<div class=report-mini-card><span>当前年份</span><b>' + esc(scanSummary) + '</b><p>' + (currentScan ? esc([currentScan.year + '年 ' + (currentScan.liunian || ''), currentScan.dayun ? currentScan.dayun + '大运' : '', ageNote].filter(Boolean).join(' · ')) : '生成流年后会显示年份主线。') + '</p></div>';
+  h += '<div class=report-mini-card><span>当前阶段</span><b>' + esc(stageInfo.label) + '</b></div>';
+  h += '<div class=report-mini-card><span>高频主题</span><b>' + esc(workSignals.length ? workSignals.join('、') : '暂无明显集中信号') + '</b></div>';
+  h += '<div class=report-mini-card><span>关系牵引</span><b>' + esc(relationSignals.length ? relationSignals.join('、') : '暂无明显集中信号') + '</b></div>';
+  h += '<div class=report-mini-card><span>当前年份</span><b>' + esc(scanSummary) + '</b>';
+  if (currentScan) h += '<p>' + esc([currentScan.year + '年 ' + (currentScan.liunian || ''), currentScan.dayun ? currentScan.dayun + '大运' : '', ageNote].filter(Boolean).join(' · ')) + '</p>';
+  h += '</div>';
   h += '</div>';
   h += '</section>';
 
   h += '<section class="report-section report-dayun-section" id=section-dayun>';
-  h += '<div class=report-section-head><div><span>当前大运</span><h2>十年背景节奏</h2></div><p>大运、流年和年龄为规则事实；下方 AI 解读只做解释翻译，若冲突以规则事实为准。</p></div>';
+  h += '<div class=report-section-head><div><span>当前大运</span><h2>十年背景节奏</h2></div></div>';
   h += _buildModulePrompts('当前大运', ['当前大运对我影响最大的是什么？', '这步大运适合主动还是保守？']);
   h += '<div class=dayun-focus-card>';
   h += '<div><span>大运</span><b>' + esc(dy.label) + '</b><p>' + esc([dy.age, ageNote, dy.theme, dy.offsetText].filter(Boolean).join(' · ')) + '</p></div>';
@@ -1505,7 +1506,7 @@ function render(d){
 
   // Four pillars
   h += '<section class=report-section id=section-foundation>';
-  h += '<div class=report-section-head><div><span>原始依据</span><h2>命盘与规则细节</h2></div><p>四柱、格局、喜忌和大运是规则事实来源；AI 解读只负责把这些事实转成白话。</p></div>';
+  h += '<div class=report-section-head><div><span>原始依据</span><h2>命盘与规则细节</h2></div></div>';
   h += _buildModulePrompts('命盘', ['这个格局现实里意味着什么？', '这条判断依据是什么？']);
   h += '<details class=evidence-details><summary>查看原始命盘与规则依据</summary><div class=evidence-body>';
   h += '<div class=section-title>四柱</div><div class=pillars>';
@@ -1638,7 +1639,7 @@ function render(d){
   let personalityEvidence = d.personality ? _buildPersonalityEvidence(d.personality) : '';
   if (d.personality || d.family){
     h += '<section class=report-section id=section-personality>';
-    h += '<div class=report-section-head><div><span>性格关系</span><h2>行为模式</h2></div><p>默认阅读报告正文，需要核对时再展开规则依据。</p></div>';
+    h += '<div class=report-section-head><div><span>性格关系</span><h2>行为模式</h2></div></div>';
     h += _buildModulePrompts('性格', ['这段性格最需要注意什么？', '这会如何影响关系？', '这条判断依据是什么？']);
   }
   if (d.personality){
@@ -1720,14 +1721,14 @@ function render(d){
 
   // ── 择日月历 ──
   h += '<section class=report-section id=section-calendar>';
-  h += '<div class=report-section-head><div><span>择日</span><h2>近期可用日历</h2></div><p>用于快速查看近期开启行动的日期参考。</p></div>';
+  h += '<div class=report-section-head><div><span>择日</span><h2>近期可用日历</h2></div></div>';
   h += _buildCalendar(d);
   h += '</section>';
 
   // Flow years
   if (d.annual_scans && d.annual_scans.length){
     h += '<section class=report-section id=section-flow>';
-    h += '<div class=report-section-head><div><span>流年</span><h2>年份趋势时间线</h2></div><p>优先看年份主线，展开后再看触发依据和详细事件。</p></div>';
+    h += '<div class=report-section-head><div><span>流年</span><h2>年份趋势时间线</h2></div></div>';
     h += _buildModulePrompts('流年', ['未来三年重点注意哪一年？', '这些流年信号怎么理解？', '哪一年适合主动推进？']);
     h += '<div class=section-title>流年</div>';
 
