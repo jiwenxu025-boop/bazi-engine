@@ -15,9 +15,7 @@ def _review_to_signal(llm_evt) -> EventSignal:
     review_status = getattr(llm_evt, "review_status", "有信号")
     notes = []
     if review_status == "有信号":
-        notes.append(
-            f"🤖 LLM综合推理 (置信度{llm_evt.confidence:.0%}): {llm_evt.reasoning}"
-        )
+        notes.append(f"AI辅助依据：{llm_evt.reasoning}")
     elif review_status == "未完成":
         notes.append("本类别未返回完整审阅结果")
     return EventSignal(

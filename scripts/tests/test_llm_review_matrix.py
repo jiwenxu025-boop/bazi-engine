@@ -5,6 +5,7 @@ import json
 from bazi_engine.chart import build_chart
 from bazi_engine.liunian.signal import EventSignal, EvidenceItem
 from bazi_engine.llm_review import (
+    _enforce_relationship_review_policy,
     _parse_batch_response,
     _parse_review_response,
     build_review_context,
@@ -130,6 +131,35 @@ def test_matrix_response_ignores_categories_outside_fixed_review_scope():
 
     assert len(results) == 6
     assert {result.category for result in results} == set(_matrix())
+
+
+def test_ai_cannot_upgrade_taohua_into_hunjia_without_rule_signal():
+    results = [_positive_event("婚嫁")]
+    parsed = _parse_review_response(
+        json.dumps({"events": results}, ensure_ascii=False), 2027,
+    )
+    constrained = _enforce_relationship_review_policy(
+        parsed,
+        {"rule_signals": [], "relationship_context": {"state": "unknown"}},
+    )
+    marriage = next(result for result in constrained if result.category == "婚嫁")
+    assert marriage.review_status == "无明显信号"
+    assert marriage.strength == 0
+
+
+def test_ai_marriage_wording_is_state_aware_for_married_users():
+    parsed = _parse_review_response(
+        json.dumps({"events": [_positive_event("婚嫁")]}, ensure_ascii=False), 2029,
+    )
+    constrained = _enforce_relationship_review_policy(
+        parsed,
+        {
+            "rule_signals": [{"category": "婚嫁", "strength": 3}],
+            "relationship_context": {"state": "married", "phase": "peak"},
+        },
+    )
+    marriage = next(result for result in constrained if result.category == "婚嫁")
+    assert "再次结婚" in marriage.prediction
 
 
 def test_legacy_event_only_response_remains_compatible():

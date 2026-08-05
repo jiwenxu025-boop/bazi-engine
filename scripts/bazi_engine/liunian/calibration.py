@@ -233,31 +233,20 @@ def _check_event_conflicts(events: list[EventSignal],
             th.conflicts.append(conflict)
 
 def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
-    """婚嫁与桃花共享触发空间（合冲、配偶星、天喜红鸾），一侧≥2★时应补足另一侧。
+    """婚嫁可以带来桃花铺垫，但普通桃花不能反推婚嫁。
 
     规则:
-    1. 成人(>21): 桃花≥2★但无婚嫁 → 派生婚嫁信号（星数=桃花-0或2，取低值）
-    2. 婚嫁≥2★ → 派生桃花信号（星数=婚嫁-1），婚嫁必有感情机遇
-    3. 学生(≤21): 不派生——婚嫁原已降级为桃花，反向不处理
+    1. 婚嫁≥2★ → 派生桃花信号（星数上限2），表示关系事件的感情铺垫。
+    2. 桃花无论强弱都不派生婚嫁。桃花只说明关系领域活跃，不能证明婚期。
+
+    ``age`` 保留为兼容参数；年龄不再改变这个单向关系。
     """
     taohua_evts = [e for e in events if e.category == "桃花"]
     hunjia_evts = [e for e in events if e.category == "婚嫁"]
     max_th = max((e.strength for e in taohua_evts), default=0)
     max_hj = max((e.strength for e in hunjia_evts), default=0)
 
-    # Rule 1: 成人桃花≥2 → 补婚嫁（max_hj<2：婚嫁本身未达到2★才补）
-    if age > 21 and max_th >= 2 and max_hj < 2:
-        best = max(taohua_evts, key=lambda e: e.strength)
-        derived_strength = min(best.strength, 2)
-        events.append(EventSignal(
-            category="婚嫁",
-            direction=best.direction,
-            strength=derived_strength,
-            triggers=[*best.triggers, "桃花→婚嫁(交叉引用)"],
-            notes=[*best.notes, "感情信号较强，成年命主→倾向婚姻/长期关系方向"],
-        ))
-
-    # Rule 2: 婚嫁≥2 → 补桃花（仅当无原生桃花≥2★时才补，避免重复）
+    # 婚嫁≥2 → 补桃花（仅当无原生桃花≥2★时才补，避免重复）
     if max_hj >= 2 and max_th < 2:
         already_derived = any(
             "婚嫁→桃花" in str(t)

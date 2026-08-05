@@ -402,36 +402,30 @@ function _annualAiReviewMeta(reviews){
 }
 
 function _renderAnnualAiHeaderTag(meta){
-  if (!meta || !meta.signalCategories.length) return '';
-  let labels = meta.signalCategories.slice(0, 2).map(function(category){
-    let direction = meta.signalDirections[category];
-    let symbol = direction === '正面' ? '↑' : direction === '负面' ? '↓' : '·';
-    return category + symbol;
-  });
-  if (meta.signalCategories.length > 2) labels.push('+' + (meta.signalCategories.length - 2));
-  return '<span class="header-tag ai-header-tag">AI ' + esc(labels.join('、')) + '</span>';
+  if (!meta || !meta.reviews.length) return '';
+  return '<span class="header-tag ai-header-tag">AI说明</span>';
 }
 
 function _renderAnnualAiSummary(meta, status){
   let reviewStatus = status || 'idle';
   if (!meta || !meta.reviews.length){
-    if (reviewStatus === 'pending') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>生成中...</span></div>';
-    if (reviewStatus === 'error') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>暂时不可用</span></div>';
+    if (reviewStatus === 'pending') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI说明</span><span>生成中...</span></div>';
+    if (reviewStatus === 'error') return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI说明</span><span>暂时不可用</span></div>';
     return '';
   }
-  let text = '辅助提示已返回';
+  let text = 'AI补充说明已返回';
   if (meta && meta.reviews.length && meta.hasExplicitStatuses){
-    text = meta.completedCount + '/' + meta.categoryCount + '类已完成';
-    if (meta.incompleteCount) text += ' · ' + meta.incompleteCount + '类未完成';
     if (meta.signalCategories.length){
-      text += ' · 有提示：' + meta.signalCategories.join('、');
+      text += ' · 仅供参考：' + meta.signalCategories.join('、');
+    } else if (meta.incompleteCount){
+      text += ' · 部分说明未返回';
     } else if (!meta.incompleteCount){
-      text += ' · 无额外提示';
+      text += ' · 未发现额外提示';
     }
   } else if (meta.signalCategories.length){
-    text += ' · 有提示：' + meta.signalCategories.join('、');
+    text += ' · 仅供参考：' + meta.signalCategories.join('、');
   }
-  return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI审阅</span><span>' + esc(text) + '</span></div>';
+  return '<div class="annual-layer-summary ai-layer-summary"><span class=annual-layer-label>AI说明</span><span>' + esc(text) + '</span></div>';
 }
 
 function _renderAnnualAiReviews(reviews, status){
@@ -439,17 +433,16 @@ function _renderAnnualAiReviews(reviews, status){
     return '';
   }
   let meta = _annualAiReviewMeta(reviews);
-  let detailLabel = meta.hasExplicitStatuses
-    ? 'AI 辅助审阅（' + meta.completedCount + '/' + meta.categoryCount + '类，不计入规则信号）'
-    : 'AI 辅助审阅（不计入规则信号）';
+  let detailLabel = 'AI 辅助说明（仅作补充，不参与事件判断）';
   let h = '<details class=ai-review><summary>' + esc(detailLabel) + '</summary>';
   for (let i = 0; i < reviews.length; i++){
     let review = reviews[i] || {};
     let status = review.review_status || '有信号';
     let statusClass = status === '有信号' ? 'signal' : status === '未完成' ? 'incomplete' : 'clear';
+    let displayStatus = status === '有信号' ? '辅助提示' : status;
     h += '<div class="ai-review-item ai-review-' + statusClass + '">';
     if (review.category) h += '<span class=tag>' + esc(review.category) + '</span>';
-    h += '<span class="ai-review-status ' + statusClass + '">' + esc(status) + '</span>';
+    h += '<span class="ai-review-status ' + statusClass + '">' + esc(displayStatus) + '</span>';
     if (status === '有信号' && review.direction) h += '<span class=ai-review-direction>' + esc(review.direction) + '</span>';
     if (status === '有信号' && review.prediction) h += '<div class=ai-review-text>' + esc(review.prediction) + '</div>';
     let notes = Array.isArray(review.notes) ? review.notes : [];
@@ -457,6 +450,22 @@ function _renderAnnualAiReviews(reviews, status){
     h += '</div>';
   }
   return h + '</details>';
+}
+
+function _renderRelationshipWindow(scan){
+  if (!scan || !scan.relationship_window) return '';
+  let phaseLabels = {
+    opening: '起始年',
+    developing: '发展年',
+    peak: '峰值年',
+    continuation: '延续年',
+    adjustment: '磨合年',
+  };
+  let phase = phaseLabels[scan.relationship_phase] || '关系进程';
+  let peak = scan.relationship_peak_year ? ' · 峰值' + scan.relationship_peak_year + '年' : '';
+  return '<div class="annual-relationship-summary"><span>婚恋窗口 ' +
+    esc(scan.relationship_window) + '</span><span>' + esc(phase + peak) +
+    '</span><small>连续年份属于同一段关系进程，不代表重复婚嫁</small></div>';
 }
 
 function _annualSignalKey(signal){
@@ -525,6 +534,8 @@ function _buildChartParams(){
   params.set('time_accuracy', location.time_accuracy);
   if (lnFrom) params.set('liunian_from', lnFrom);
   if (lnTo) params.set('liunian_to', lnTo);
+  let relationshipStatus = document.getElementById('relationshipStatus');
+  if (relationshipStatus && relationshipStatus.value) params.set('relationship_status', relationshipStatus.value);
   let lsOverride = sessionStorage.getItem('bazi-life-stage');
   if (lsOverride) params.set('life_stage', lsOverride);
   return params;
@@ -1625,6 +1636,7 @@ function render(d){
       h += '</div>';
       let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
       h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
+      h += _renderRelationshipWindow(scan);
       h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
       // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
       h += '<div class=event-body>';
@@ -1883,6 +1895,7 @@ function refreshFlowSection(d){
     h += '</div>';
     let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
     h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
+    h += _renderRelationshipWindow(scan);
     h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
     h += '<div class=event-body>';
     h += '<div class=annual-layer-title>规则判断</div>';

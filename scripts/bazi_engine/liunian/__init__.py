@@ -31,6 +31,7 @@ from .llm_bridge import (
     _execute_llm_reviews_streaming,
 )
 from .scanner import (
+    _annotate_relationship_windows,
     _annotate_taohua_clusters,
     build_personality_context,
     scan_years,
@@ -70,6 +71,7 @@ __all__ = [
     'EvidenceItem',
     'Factor',
     'ScoreAccumulator',
+    '_annotate_relationship_windows',
     '_annotate_taohua_clusters',
     '_changsheng_status',
     '_check_event_conflicts',

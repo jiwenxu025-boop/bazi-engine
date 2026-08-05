@@ -90,6 +90,7 @@ class ChartStreamRequest(BaseModel):
     liunian_to: int | None = Field(default=None, ge=1900, le=2100)
     favorable: list[str] | None = None
     life_stage: Literal["auto", "中学", "大学", "深造", "职场", "晚年"] = "auto"
+    relationship_status: Literal["unknown", "single", "dating", "married"] = "unknown"
     hour_confirmed: bool = False
     practical: bool = False
 
@@ -268,6 +269,7 @@ def chart_api(
     favorable: list[str] | None = _FAVORABLE_QUERY,
     calibrate: bool = Query(False),
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
+    relationship_status: Literal["unknown", "single", "dating", "married"] = Query("unknown"),
     hour_confirmed: bool = Query(False, description="出生时辰是否经用户确认"),
     practical: bool = Query(False, description="实用模式：仅返回白话解读，不包含技术推导"),
 ):
@@ -289,6 +291,7 @@ def chart_api(
         favorable=fav_set,
         calibrate=use_calibrate,
         life_stage_override=life_stage if life_stage != "auto" else "",
+        relationship_status=relationship_status,
         hour_confirmed=hour_confirmed,
         city_id=city_id,
         longitude=longitude,
@@ -305,6 +308,7 @@ async def stream_chart(
     name, gender, year, month, day, hour, minute,
     city_id, longitude, timezone_offset_minutes, requested_time_mode, time_accuracy,
     ln_range, fav_set, life_stage, hour_confirmed, practical,
+    relationship_status="unknown",
 ):
     """Stream deterministic chart data first, then run optional AI work in parallel."""
     loop = asyncio.get_running_loop()
@@ -346,6 +350,7 @@ async def stream_chart(
                 favorable=fav_set,
                 calibrate=False,
                 life_stage_override=life_stage if life_stage != "auto" else "",
+                relationship_status=relationship_status,
                 hour_confirmed=hour_confirmed,
                 city_id=city_id,
                 longitude=longitude,
@@ -658,6 +663,7 @@ async def chart_stream(
     liunian_to: int | None = Query(None),
     favorable: list[str] | None = _FAVORABLE_QUERY,
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
+    relationship_status: Literal["unknown", "single", "dating", "married"] = Query("unknown"),
     hour_confirmed: bool = Query(False),
     practical: bool = Query(False),
 ):
@@ -694,6 +700,7 @@ async def chart_stream(
         liunian_to=liunian_to,
         favorable=favorable,
         life_stage=life_stage,
+        relationship_status=relationship_status,
         hour_confirmed=hour_confirmed,
         practical=practical,
     )
@@ -723,6 +730,7 @@ def _chart_stream_response(payload: ChartStreamRequest):
         payload.life_stage,
         payload.hour_confirmed,
         payload.practical,
+        payload.relationship_status,
     ))
 
 

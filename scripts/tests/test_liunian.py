@@ -8,9 +8,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from bazi_engine.chart import build_chart
 from bazi_engine.enums import Dizhi, Tiangan
 from bazi_engine.liunian import (
+    AnnualScan,
     EventSignal,
     EvidenceItem,
     ScoreAccumulator,
+    _annotate_relationship_windows,
+    _cross_ref_hunjia_taohua,
     _has_branch_interaction,
     _has_sanhe_with_dizhi,
     _is_in_same_sanhe,
@@ -517,6 +520,37 @@ def test_event_signal_defaults():
     assert sig.strength == 2
     assert sig.direction == "正面"
     assert sig.prediction == "test"
+
+
+def test_taohua_does_not_promote_to_hunjia_for_adults():
+    events = [EventSignal(category="桃花", direction="正面", strength=2)]
+    _cross_ref_hunjia_taohua(events, age=30)
+    assert [event.category for event in events] == ["桃花"]
+
+
+def test_relationship_window_has_one_peak_and_no_repeat_marriage_wording():
+    scans = [
+        AnnualScan(2027, Tiangan.丁, Dizhi.未, events=[
+            EventSignal("桃花", "正面", 2, prediction="关系机会增加"),
+        ]),
+        AnnualScan(2028, Tiangan.戊, Dizhi.申, events=[
+            EventSignal("桃花", "正面", 2, prediction="关系机会增加"),
+        ]),
+        AnnualScan(2029, Tiangan.己, Dizhi.酉, events=[
+            EventSignal("婚嫁", "正面", 3, prediction="可能结婚"),
+        ]),
+        AnnualScan(2030, Tiangan.庚, Dizhi.戌, events=[
+            EventSignal("婚嫁", "正面", 2, prediction="可能结婚"),
+        ]),
+    ]
+    _annotate_relationship_windows(scans)
+
+    assert {scan.relationship_window for scan in scans} == {"2027-2030"}
+    assert scans[2].relationship_phase == "peak"
+    assert scans[2].relationship_peak_year == 2029
+    assert "关系定型候选" in scans[2].events[0].prediction
+    assert scans[3].relationship_phase == "continuation"
+    assert "再次结婚" in scans[3].events[0].prediction
 
 
 def test_event_signal_evidence_is_structured_and_serialized():

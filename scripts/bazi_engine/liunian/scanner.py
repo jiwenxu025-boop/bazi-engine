@@ -223,6 +223,143 @@ def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
     return results
 
 
+def _annotate_relationship_windows(results: list[AnnualScan]) -> list[AnnualScan]:
+    """把连续婚恋信号合并为一个窗口，并只保留一个峰值年语义。
+
+    年度规则仍逐年保留，窗口只负责用户解释：连续出现的桃花/婚嫁是同一段
+    关系进程，不是每年重新发生一次婚嫁。AI 审阅不参与窗口计算。
+    """
+    active_indexes = [
+        index for index, scan in enumerate(results)
+        if any(
+            event.category in ("桃花", "婚嫁") and event.strength >= 2
+            for event in scan.events
+        )
+    ]
+    if not active_indexes:
+        return results
+
+    clusters: list[list[int]] = []
+    cluster = [active_indexes[0]]
+    for index in active_indexes[1:]:
+        if results[index].year - results[cluster[-1]].year <= 1:
+            cluster.append(index)
+        else:
+            clusters.append(cluster)
+            cluster = [index]
+    clusters.append(cluster)
+
+    phase_labels = {
+        "opening": "起始年",
+        "developing": "发展年",
+        "peak": "峰值年",
+        "continuation": "延续年",
+        "adjustment": "磨合年",
+    }
+
+    for indexes in clusters:
+        if len(indexes) < 2:
+            continue
+
+        def peak_key(index: int) -> tuple[int, int, int]:
+            events = results[index].events
+            marriage = max(
+                (event.strength for event in events if event.category == "婚嫁"),
+                default=0,
+            )
+            romance = max(
+                (event.strength for event in events if event.category == "桃花"),
+                default=0,
+            )
+            return marriage, max(marriage, romance), -index
+
+        peak_index = max(indexes, key=peak_key)
+        first_year = results[indexes[0]].year
+        last_year = results[indexes[-1]].year
+        window = f"{first_year}-{last_year}"
+
+        for position, index in enumerate(indexes):
+            scan = results[index]
+            relation_events = [
+                event for event in scan.events
+                if event.category in ("桃花", "婚嫁") and event.strength >= 2
+            ]
+            risk_text = " ".join(
+                str(value)
+                for event in relation_events
+                for value in [*event.triggers, *event.notes, *event.conflicts]
+            )
+            if index == peak_index:
+                phase = "peak"
+            elif index < peak_index:
+                phase = "opening" if position == 0 else "developing"
+            elif any(marker in risk_text for marker in ("交战", "六冲", "穿", "害", "冲突", "波动")):
+                phase = "adjustment"
+            else:
+                phase = "continuation"
+
+            scan.relationship_window = window
+            scan.relationship_phase = phase
+            scan.relationship_peak_year = results[peak_index].year
+            note = (
+                f"婚恋窗口{window}：本年为{phase_labels[phase]}，"
+                "连续信号属于同一段关系进程，不代表重复婚嫁"
+            )
+            for event in relation_events:
+                if note not in event.notes:
+                    event.notes.insert(0, note)
+
+    _apply_relationship_wording(results)
+    return results
+
+
+def _apply_relationship_wording(results: list[AnnualScan]) -> None:
+    """按现实状态和窗口阶段约束婚嫁文案，不把结构引动写成既成事实。"""
+    for scan in results:
+        for event in scan.events:
+            if event.category != "婚嫁":
+                continue
+
+            if event.direction == "负面":
+                event.prediction = (
+                    "关系领域存在压力或变化；已婚者重点看沟通与共同生活，"
+                    "未婚者不宜把波动直接理解为婚期"
+                )
+                continue
+
+            state = scan.relationship_state
+            phase = scan.relationship_phase
+            if state == "married":
+                event.prediction = (
+                    "婚姻关系被引动，重点看配偶、共同生活或家庭安排，"
+                    "不代表再次结婚"
+                )
+            elif phase == "peak":
+                event.prediction = (
+                    "本段婚恋窗口的关系定型候选年；未婚可关注长期关系进展，"
+                    "已婚则对应配偶与家庭事项"
+                )
+            elif phase in ("opening", "developing"):
+                event.prediction = (
+                    "婚恋窗口正在形成，更适合理解为认识、交往或关系升温，"
+                    "不代表当年必然结婚"
+                )
+            elif phase in ("continuation", "adjustment"):
+                event.prediction = (
+                    "婚恋窗口进入延续或磨合；若前期已确定关系，重点看共同生活，"
+                    "不代表再次结婚"
+                )
+            elif state == "dating":
+                event.prediction = "关系存在定型机会，是否订婚或结婚仍取决于现实进展"
+            elif state == "single":
+                event.prediction = "建立稳定关系的候选信号，不直接等于当年结婚"
+            else:
+                event.prediction = (
+                    "婚恋关系领域被引动；未婚与已婚的现实表现不同，"
+                    "不能直接断为订婚或结婚"
+                )
+
+
 @dataclass
 class ScanConfig:
     """流年扫描配置 — scan_years 的参数封装"""
@@ -239,6 +376,7 @@ class ScanConfig:
     end_year: int
     start_age_exact: float | None = None
     known_events: dict[int, str] | None = None
+    relationship_status: str = "unknown"
     favorable: set[str] | None = None
     personality_ctx: dict | None = None
     life_stage_override: str = ""
@@ -265,6 +403,7 @@ def scan_years_from_config(config: ScanConfig) -> list[AnnualScan]:
         config.start_age, config.luck_pillars, config.birth_date,
         config.start_year, config.end_year,
         known_events=config.known_events,
+        relationship_status=config.relationship_status,
         favorable=config.favorable,
         personality_ctx=config.personality_ctx,
         life_stage_override=config.life_stage_override,
@@ -315,10 +454,12 @@ def scan_years(
     start_age_exact: float | None = None,
     defer_llm: bool = False,
     llm_tasks_out: list[tuple[int, dict]] | None = None,
+    relationship_status: str = "unknown",
 ) -> list[AnnualScan]:
     """逐年扫描，返回每年所有事件信号
 
-    known_events: {year: "relationship"/"single"} — 该年已知的感情状态
+    known_events: {year: "relationship"/"single"/"married"} — 该年已知的感情状态
+    relationship_status: 扫描起始时的现实状态；未知时使用条件化文案
     favorable: {"正印","比肩",...} — 日主喜用十神集合，None=不判断喜忌
     is_fei_ju: 调候废局标志（v0.8.0: 废局→所有信号降1星）
     tiaohou_climate: 调候气候类型（v0.8.0: 大燥/大寒→信号额外压制）
@@ -343,14 +484,27 @@ def scan_years(
 
     # 将 known_events 转换为按年存储的"进入该年时是否恋爱中"
     known_rel: dict[int, bool] = {}
+    known_states: dict[int, str] = {}
     if known_events:
         for y, status in known_events.items():
             known_rel[int(y)] = (status == "relationship")
+            normalized = {
+                "relationship": "dating",
+                "dating": "dating",
+                "married": "married",
+                "single": "single",
+            }.get(str(status), "unknown")
+            known_states[int(y)] = normalized
     prev_year_rel = False
-    relationship_state = "single"  # v0.11.1: 跨年关系状态机 single/dating/married
+    relationship_state = relationship_status if relationship_status in {
+        "single", "dating", "married",
+    } else "unknown"
     llm_tasks: list[tuple[int, dict]] = []  # v0.11.1: (result_index, review_context) 延迟并行执行
 
     for year in range(start_year, end_year + 1):
+        if year in known_states and known_states[year] != "unknown":
+            relationship_state = known_states[year]
+        relationship_state_for_year = relationship_state
         ln_tg, ln_dz = compute_liunian_pillar(year)
 
         # 确定当前大运。年度扫描不能把交运前或交运中的整年强行套入第一步大运。
@@ -647,6 +801,7 @@ def scan_years(
                         false_generations=false_generations,
                         year_features=yr_features,
                         personality_text=personality_text,
+                        relationship_state=relationship_state_for_year,
                     )
                     llm_tasks.append((len(results), review_ctx))
             except Exception as error:
@@ -704,6 +859,7 @@ def scan_years(
             stem_weight=sb_sw,
             branch_weight=sb_bw,
             dayun_weight_note=dn_weight_note,
+            relationship_state=relationship_state_for_year,
         ))
 
         # ── v0.11.1: 跨年关系状态机更新 ──
@@ -744,6 +900,21 @@ def scan_years(
             if has_divorce:
                 relationship_state = "single"
 
+    # 先完成跨年规则解释，再把窗口与状态上下文交给 AI 审阅。
+    results = _backtrack_hunjia_prelude(results)
+    results = _annotate_relationship_windows(results)
+    results = _annotate_taohua_clusters(results)
+    for result_index, review_ctx in llm_tasks:
+        if result_index >= len(results):
+            continue
+        scan = results[result_index]
+        review_ctx["relationship_context"] = {
+            "state": scan.relationship_state,
+            "window": scan.relationship_window,
+            "phase": scan.relationship_phase,
+            "peak_year": scan.relationship_peak_year,
+        }
+
     # ── v0.11.1: LLM审查并行执行（循环中收集，此处并行发射）──
     if llm_tasks and defer_llm:
         if llm_tasks_out is not None:
@@ -758,12 +929,6 @@ def scan_years(
             _execute_llm_reviews_parallel(results, llm_tasks)
     else:
         logger.debug("no llm review tasks collected")
-
-    # ── v0.15.2: 婚嫁回溯—强信号前一年检测前奏 ──
-    results = _backtrack_hunjia_prelude(results)
-
-    # ── v0.11.1: 扫描后聚类处理—标注连续桃花年的"首发年" ──
-    results = _annotate_taohua_clusters(results)
 
     return results
 

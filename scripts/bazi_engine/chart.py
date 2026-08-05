@@ -128,6 +128,7 @@ class BaziChart:
     # 人生阶段
     life_stage: str = ""          # 智能判定的人生阶段
     life_stage_override: str = ""  # 用户手动覆盖
+    relationship_status: str = "unknown"  # 用户提供的当前婚恋状态
 
     # 用户输入（校准用）
     family_context: dict | None = None  # {economic_level, father_occupation, mother_occupation}
@@ -237,6 +238,7 @@ class BaziChart:
             "personality": self.personality_result,
             "family": self.family_result,
             "life_stage": self.life_stage,
+            "relationship_status": self.relationship_status,
             "void_gods": [v.to_dict() for v in self.void_gods],
             "nayin_relations": [nr.to_dict() for nr in self.nayin_relations],
             "changsheng": [cs.to_dict() for cs in self.changsheng_states] if hasattr(self, "changsheng_states") and self.changsheng_states else [],
@@ -738,6 +740,7 @@ def _compute_liunian_stage(
     liunian_range: tuple[int, int],
     known_events: dict[int, str] | None,
     favorable: set[str] | None,
+    relationship_status: str = "unknown",
     on_llm_result=None,
     on_llm_token=None,
     defer_llm: bool = False,
@@ -779,6 +782,7 @@ def _compute_liunian_stage(
         liunian_range[1],
         known_events,
         favorable or effective_favorable or None,
+        relationship_status=relationship_status,
         personality_ctx=p_ctx,
         life_stage_override=getattr(chart, '_life_stage_override', ''),
         chart_pattern=chart.pattern,
@@ -979,6 +983,7 @@ def build_chart(
     on_llm_result=None,  # v0.11.1: 流式回调 callable(year, signals)
     on_llm_token=None,   # v0.11.2: token级回调 callable(year, token)
     defer_llm: bool = False,
+    relationship_status: str = "unknown",
 ) -> BaziChart:
     """一站式八字排盘
 
@@ -990,6 +995,7 @@ def build_chart(
         known_events: {年份: "relationship"/"single"/...} 已知事件供校准
         favorable: {"正印","比肩",...} 喜用十神
         calibrate: True=从校准数据库自动加载 known_events
+        relationship_status: 当前婚恋状态，未知时使用条件化文案
 
     Returns:
         BaziChart: 完整命盘
@@ -1020,6 +1026,11 @@ def build_chart(
         hour_confirmed=hour_confirmed,
         minute=minute,
         time_resolution=time_resolution,
+    )
+    chart.relationship_status = (
+        relationship_status
+        if relationship_status in {"single", "dating", "married"}
+        else "unknown"
     )
 
     # 校准数据库自动加载
@@ -1081,6 +1092,7 @@ def build_chart(
             start_age=start_age,
             liunian_range=liunian_range,
             known_events=known_events,
+            relationship_status=chart.relationship_status,
             favorable=favorable,
             on_llm_result=on_llm_result,
             on_llm_token=on_llm_token,

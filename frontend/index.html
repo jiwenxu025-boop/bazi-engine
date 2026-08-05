@@ -121,6 +121,14 @@
             <label><span>流年范围</span><input id="lnFrom" type="number" placeholder="2026" min="1900" max="2100"></label>
             <label><span>至</span><input id="lnTo" type="number" placeholder="2031" min="1900" max="2100"></label>
           </div>
+          <div class="form-row" style="margin-top:10px">
+            <label><span>当前婚恋状态（可选）</span><select id="relationshipStatus">
+              <option value="unknown">不提供</option>
+              <option value="single">单身</option>
+              <option value="dating">交往中</option>
+              <option value="married">已婚</option>
+            </select></label>
+          </div>
         </details>
         <button class="btn" id="submitBtn">生成解读</button>
         <p class="form-legal">仅供传统文化娱乐参考，不构成任何决策依据。</p>

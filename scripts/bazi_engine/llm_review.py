@@ -123,6 +123,7 @@ def build_review_context(
     false_generations: list[dict] | None = None,
     year_features: dict | None = None,
     personality_text: str = "",
+    relationship_state: str = "unknown",
 ) -> dict:
     """从一个特定年份提取结构化 LLM 审查上下文。
 
@@ -185,6 +186,14 @@ def build_review_context(
         "age": age,
         "stem": liunian_stem,
         "branch": liunian_branch,
+    }
+    ctx["relationship_context"] = {
+        "state": relationship_state if relationship_state in {
+            "single", "dating", "married", "unknown",
+        } else "unknown",
+        "window": "",
+        "phase": "",
+        "peak_year": None,
     }
 
     # ── 4b. 流年近失特征（v0.9.1: LLM需要这些才能判断婚嫁/桃花）──
@@ -319,6 +328,20 @@ def build_review_prompt(ctx: dict) -> str:
     # 流年
     prompt_parts.append(f"流年: {liunian['year']}年 {liunian['stem']}{liunian['branch']} | 命主{liunian['age']}岁")
 
+    relationship_context = ctx.get("relationship_context", {})
+    state_label = {
+        "single": "单身",
+        "dating": "交往中",
+        "married": "已婚",
+        "unknown": "未提供",
+    }.get(relationship_context.get("state", "unknown"), "未提供")
+    prompt_parts.append(
+        f"婚恋解释上下文: 当前状态={state_label} | "
+        f"窗口={relationship_context.get('window') or '无连续窗口'} | "
+        f"阶段={relationship_context.get('phase') or '单年判断'} | "
+        f"峰值年={relationship_context.get('peak_year') or '未定'}"
+    )
+
     # 流年近失特征（规则引擎内算但未触发——LLM的推理原料）
     yr_feat = ctx.get("year_features", {})
     if yr_feat:
@@ -354,13 +377,21 @@ LLM 只能解释和整合已提供的结构化证据，不得自行重算三合�
 必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，不得跳项。先在 category_matrix
 中对六类分别标记 1（有信号）或 0（无明显信号），再仅为标记 1 的类别输出事件详情。
 
-1. 婚嫁检测: 流年十神=配偶星 + 夫妻宫引动 + 红鸾/天喜 + 大运与夫妻宫互动 → 叠加即可能
+1. 婚嫁检测: 婚嫁类别只能解释规则层已经给出的婚嫁信号（至少2星）；
+   夫妻宫、桃花、红鸾/天喜单独或叠加，只能标记桃花/关系活跃，不能自行升级为订婚或结婚。
 2. 桃花检测: 桃花入命 + 红鸾 + 配偶星透干 + 流年合日主
 3. 事业检测: 官/印星 + 驿马 + 大运官印相生 → 晋升/跳槽
 4. 财运检测: 财星 + 食伤生财 + 驿马+财
 5. 吉处藏凶: 用神流年被合/冲/空 → 好事打折
 6. 凶中有救: 忌神流年被制/化 → 坏事有转机
 7. 岁运交战: 若有岁运天克地冲→所有信号需结合喜忌重判，正负面可能反转
+
+### 婚恋状态与连续窗口（必须遵守）
+
+- 婚恋窗口中的连续年份是同一段关系进程；只有峰值年可以描述“关系定型候选”，其余年份写认识、升温、延续或磨合。
+- 当前状态为“已婚”时，婚嫁预测必须改写为配偶、共同生活或家庭安排，不得出现“脱单、订婚、结婚、再婚”。
+- 当前状态未知时必须使用条件句，例如“未婚可关注……，已婚则对应……”，不得把婚礼写成确定事件。
+- 不得输出“结婚概率”或把 confidence 当成真实概率；它只是模型内部的审阅质量字段。
 
 ### 当代翻译要求（重要）
 
@@ -386,8 +417,7 @@ LLM 只能解释和整合已提供的结构化证据，不得自行重算三合�
       "direction": "正面/负面/中性",
       "strength": 1或2,
       "prediction": "一句话(≤30字)",
-      "reasoning": "推理(≤80字): 哪几个特征叠加→为何成立",
-      "confidence": 0.5-1.0
+      "reasoning": "推理(≤80字): 哪几个特征叠加→为何成立"
     }}
   ]
 }}
@@ -496,7 +526,8 @@ def call_llm_review(
         if not content or _cancelled(cancel_event):
             return []
 
-        return _parse_review_response(content, ctx["liunian"]["year"])
+        parsed = _parse_review_response(content, ctx["liunian"]["year"])
+        return _enforce_relationship_review_policy(parsed, ctx)
 
     except (httpx.TimeoutException, httpx.ConnectError, Exception):
         return []
@@ -643,6 +674,41 @@ def _parse_category_review_payload(data: dict, year: int) -> list[LLMReviewResul
         results.append(_status_only_review(year, category, status))
 
     return results
+
+
+def _enforce_relationship_review_policy(
+    results: list[LLMReviewResult], ctx: dict,
+) -> list[LLMReviewResult]:
+    """在解析边界再拦截 AI 的婚嫁升级，避免提示词漂移改变规则语义。"""
+    rule_signals = ctx.get("rule_signals", [])
+    has_rule_hunjia = any(
+        signal.get("category") == "婚嫁" and signal.get("strength", 0) >= 2
+        for signal in rule_signals
+    )
+    relationship_context = ctx.get("relationship_context", {})
+    state = relationship_context.get("state", "unknown")
+    phase = relationship_context.get("phase", "")
+
+    normalized: list[LLMReviewResult] = []
+    for result in results:
+        if result.category != "婚嫁" or result.review_status != "有信号":
+            normalized.append(result)
+            continue
+
+        if not has_rule_hunjia:
+            normalized.append(_status_only_review(result.year, "婚嫁", "无明显信号"))
+            continue
+
+        if state == "married":
+            result.prediction = "婚姻关系被引动，重点看配偶、共同生活或家庭安排，不代表再次结婚"
+        elif state == "unknown":
+            result.prediction = "未婚可关注关系定型，已婚则对应配偶与家庭事项；不作确定婚期判断"
+        elif phase and phase != "peak":
+            result.prediction = "婚恋窗口处于推进或磨合阶段，重点看关系进程，不等于当年结婚"
+        elif state == "dating":
+            result.prediction = "交往关系存在定型机会，是否订婚或结婚仍取决于现实进展"
+        normalized.append(result)
+    return normalized
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -979,6 +1045,13 @@ def call_llm_batch_review(
 
         section = [f"## 年份{i+1}: {liunian['year']}年 {liunian['stem']}{liunian['branch']} | {liunian['age']}岁"]
         section.append(f"大运: {dayun.get('stem','')}{dayun.get('branch','')} | 主题'{dayun.get('theme','')}' | 十年基调偏{'吉' if dayun.get('baseline_offset',0) > 0 else '凶' if dayun.get('baseline_offset',0) < 0 else '平'}")
+        relationship_context = ctx.get("relationship_context", {})
+        section.append(
+            f"婚恋上下文: 状态={relationship_context.get('state', 'unknown')} | "
+            f"窗口={relationship_context.get('window') or '无连续窗口'} | "
+            f"阶段={relationship_context.get('phase') or '单年判断'} | "
+            f"峰值年={relationship_context.get('peak_year') or '未定'}"
+        )
 
         if signals:
             sigs = "; ".join(f"{s['category']}/{s['direction']}/{s['strength']}★" for s in signals)
@@ -1010,6 +1083,10 @@ def call_llm_batch_review(
 每个年份都必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，并在
 category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的类别详情。
 
+婚嫁类别只能解释该年份规则层已有的婚嫁信号（至少2星），不得用桃花、天喜或夫妻宫
+单独升级出婚嫁；连续年份属于同一婚恋窗口，只有峰值年可写关系定型候选。已婚状态
+只写配偶、共同生活或家庭安排，未知状态必须用“未婚/已婚分别表现”的条件句。
+
 ### 当代翻译要求（重要）
 对每个信号的 prediction 和 reasoning，必须翻译成命主能看懂的当代现实场景，不能停留在八字术语上。用非命理语言说出具体可能发生的事情。
 
@@ -1029,7 +1106,7 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
   {{"year": {ctxs[0]['liunian']['year']},
     "category_matrix": {{"婚嫁": 0, "桃花": 1, "事业": 0, "财运": 0, "健康": 0, "搬迁": 0}},
     "events": [
-    {{"category": "...", "direction": "...", "strength": 1或2, "prediction": "...", "reasoning": "...", "confidence": 0.5-1.0}}
+    {{"category": "...", "direction": "...", "strength": 1或2, "prediction": "...", "reasoning": "..."}}
   ]}},
   ...
 ]}}
@@ -1119,6 +1196,10 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
             return [[] for _ in ctxs]
 
         parsed = _parse_batch_response(content, ctxs)
+        parsed = [
+            _enforce_relationship_review_policy(year_results, ctx)
+            for year_results, ctx in zip(parsed, ctxs, strict=False)
+        ]
         missing_years = [
             ctxs[index]["liunian"]["year"]
             for index, year_results in enumerate(parsed)

@@ -164,6 +164,10 @@ class AnnualScan:
     stem_weight: float = 0.5         # 天干权重
     branch_weight: float = 0.5       # 地支权重
     dayun_weight_note: str = ""      # 大运重地支/流年重天干说明
+    relationship_state: str = "unknown"  # 进入该年时的用户状态/条件状态
+    relationship_window: str = ""         # 连续婚恋窗口，如 2027-2030
+    relationship_phase: str = ""          # opening/developing/peak/continuation/adjustment
+    relationship_peak_year: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -175,6 +179,10 @@ class AnnualScan:
             "stem_weight": self.stem_weight,
             "branch_weight": self.branch_weight,
             "dayun_weight_note": self.dayun_weight_note,
+            "relationship_state": self.relationship_state,
+            "relationship_window": self.relationship_window,
+            "relationship_phase": self.relationship_phase,
+            "relationship_peak_year": self.relationship_peak_year,
             "events": [e.to_dict() for e in self.events],
             "ai_reviews": [review.to_dict() for review in self.ai_reviews],
         }

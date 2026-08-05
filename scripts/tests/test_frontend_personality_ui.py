@@ -636,9 +636,9 @@ def test_annual_ai_review_matrix_summary_and_visibility():
         if (meta.signalCategories.join(',') !== '桃花') throw new Error('signal categories are wrong');
 
         const summary = sandbox._renderAnnualAiSummary(meta);
-        if (!summary.includes('AI审阅') || !summary.includes('5/6类已完成') || !summary.includes('有提示：桃花')) throw new Error('visible summary is incomplete');
+        if (!summary.includes('AI说明') || !summary.includes('仅供参考：桃花')) throw new Error('visible summary is incomplete');
         const header = sandbox._renderAnnualAiHeaderTag(meta);
-        if (!header.includes('AI 桃花↑')) throw new Error('AI header category is missing');
+        if (!header.includes('AI说明')) throw new Error('AI header marker is missing');
         const details = sandbox._renderAnnualAiReviews(reviews);
         if (!details.includes('无明显信号') || !details.includes('未完成')) throw new Error('matrix states are not rendered');
 
@@ -647,13 +647,13 @@ def test_annual_ai_review_matrix_summary_and_visibility():
           {{category: '事业', review_status: '无明显信号', direction: '中性'}},
         ]);
         const clearSummary = sandbox._renderAnnualAiSummary(clearMeta);
-        if (!clearSummary.includes('2/2类已完成') || !clearSummary.includes('无额外提示')) throw new Error('all-clear review was hidden');
+        if (!clearSummary.includes('未发现额外提示')) throw new Error('all-clear review was hidden');
         const emptySummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]));
         if (emptySummary !== '') throw new Error('empty review state should be hidden');
         const pendingSummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]), 'pending');
-        if (!pendingSummary.includes('AI审阅') || !pendingSummary.includes('生成中')) throw new Error('pending review state was not visible');
+        if (!pendingSummary.includes('AI说明') || !pendingSummary.includes('生成中')) throw new Error('pending review state was not visible');
         const errorSummary = sandbox._renderAnnualAiSummary(sandbox._annualAiReviewMeta([]), 'error');
-        if (!errorSummary.includes('AI审阅') || !errorSummary.includes('暂时不可用')) throw new Error('error review state was not visible');
+        if (!errorSummary.includes('AI说明') || !errorSummary.includes('暂时不可用')) throw new Error('error review state was not visible');
         const emptyDetails = sandbox._renderAnnualAiReviews([]);
         if (emptyDetails !== '') throw new Error('empty review details should be hidden');
         """
@@ -708,7 +708,7 @@ def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
 
         const cardCount = (eventsSection.innerHTML.match(/class=event-card/g) || []).length;
         if (cardCount !== 2) throw new Error('all-clear or pending years were hidden');
-        if (!eventsSection.innerHTML.includes('2/2类已完成 · 无额外提示')) throw new Error('all-clear AI status was not visible');
+        if (!eventsSection.innerHTML.includes('AI补充说明已返回 · 未发现额外提示')) throw new Error('all-clear AI status was not visible');
         if (eventsSection.innerHTML.includes('暂无返回结果')) throw new Error('unstarted AI status was rendered');
         if ((eventsSection.innerHTML.match(/本年规则层没有两星以上显著信号/g) || []).length !== 2) throw new Error('empty rule layers were hidden');
         """
