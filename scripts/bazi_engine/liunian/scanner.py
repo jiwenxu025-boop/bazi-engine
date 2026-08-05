@@ -173,8 +173,8 @@ def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
 
     逻辑：
     - 连续≥2年出现正面桃花信号 → 形成"桃花簇"
-    - 簇中第一年标记为"最可能脱单/关系开始的年份"
-    - 簇中后续年份标记为"关系内事件（升温/危机/里程碑），非新恋情"
+    - 簇中第一年标记为关系机会相对集中的起始候选年
+    - 簇中后续年份只标记为连续规则信号，不推断现实关系是否已经建立
     - 如果引擎已在运行时通过 relationship_state 做了标注，此处做补充校验
     """
     # 找出所有有正面桃花的年份
@@ -204,12 +204,12 @@ def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
         if len(cluster) >= 2:
             first_year = cluster[0]
             year_to_note[first_year] = (
-                f"连续{len(cluster)}年桃花簇首发年→最可能是感情开始的年份"
+                f"连续{len(cluster)}年桃花簇首发候选年→关系机会相对集中，是否开始关系以现实进展为准"
             )
             for y in cluster[1:]:
                 year_to_note[y] = (
-                    f"桃花簇第{cluster.index(y)+1}年→若已脱单则为关系内深化/升温，非新恋情；"
-                    f"若仍单身则信号可能虚浮（首发年{first_year}未兑现时）"
+                    f"连续桃花信号第{cluster.index(y)+1}年→若现实中已有关系，可核对互动变化；"
+                    f"若没有关系，则只表示规则信号延续（起点候选年{first_year}）"
                 )
 
     # 将注记添加到对应年份的桃花事件中
@@ -226,8 +226,8 @@ def _annotate_taohua_clusters(results: list[AnnualScan]) -> list[AnnualScan]:
 def _annotate_relationship_windows(results: list[AnnualScan]) -> list[AnnualScan]:
     """把连续婚恋信号合并为一个窗口，并只保留一个峰值年语义。
 
-    年度规则仍逐年保留，窗口只负责用户解释：连续出现的桃花/婚嫁是同一段
-    关系进程，不是每年重新发生一次婚嫁。AI 审阅不参与窗口计算。
+    年度规则仍逐年保留，窗口只说明桃花/婚嫁信号连续出现，不把它写成现实中
+    已经形成或持续的一段关系，也不把每年都解释成一次婚嫁。AI 审阅不参与窗口计算。
     """
     active_indexes = [
         index for index, scan in enumerate(results)
@@ -250,11 +250,11 @@ def _annotate_relationship_windows(results: list[AnnualScan]) -> list[AnnualScan
     clusters.append(cluster)
 
     phase_labels = {
-        "opening": "起始年",
-        "developing": "发展年",
-        "peak": "峰值年",
-        "continuation": "延续年",
-        "adjustment": "磨合年",
+        "opening": "窗口起点",
+        "developing": "信号增强",
+        "peak": "相对峰值",
+        "continuation": "信号延续",
+        "adjustment": "压力偏多",
     }
 
     for indexes in clusters:
@@ -303,7 +303,7 @@ def _annotate_relationship_windows(results: list[AnnualScan]) -> list[AnnualScan
             scan.relationship_peak_year = results[peak_index].year
             note = (
                 f"婚恋窗口{window}：本年为{phase_labels[phase]}，"
-                "连续信号属于同一段关系进程，不代表重复婚嫁"
+                "仅表示规则信号连续，不证明现实中存在同一段关系，也不代表重复婚嫁"
             )
             for event in relation_events:
                 if note not in event.notes:
@@ -378,6 +378,7 @@ class ScanConfig:
     known_events: dict[int, str] | None = None
     relationship_status: str = "unknown"
     favorable: set[str] | None = None
+    harmful: set[str] | None = None
     personality_ctx: dict | None = None
     life_stage_override: str = ""
     chart_pattern: str = ""
@@ -405,6 +406,7 @@ def scan_years_from_config(config: ScanConfig) -> list[AnnualScan]:
         known_events=config.known_events,
         relationship_status=config.relationship_status,
         favorable=config.favorable,
+        harmful=config.harmful,
         personality_ctx=config.personality_ctx,
         life_stage_override=config.life_stage_override,
         chart_pattern=config.chart_pattern,
@@ -438,6 +440,7 @@ def scan_years(
     end_year: int,
     known_events: dict[int, str] | None = None,
     favorable: set[str] | None = None,
+    harmful: set[str] | None = None,
     personality_ctx: dict | None = None,
     life_stage_override: str = "",
     chart_pattern: str = "",
@@ -460,7 +463,7 @@ def scan_years(
 
     known_events: {year: "relationship"/"single"/"married"} — 该年已知的感情状态
     relationship_status: 扫描起始时的现实状态；未知时使用条件化文案
-    favorable: {"正印","比肩",...} — 日主喜用十神集合，None=不判断喜忌
+    favorable/harmful: 日主喜忌十神集合；两者均提供时保留中性十神
     is_fei_ju: 调候废局标志（v0.8.0: 废局→所有信号降1星）
     tiaohou_climate: 调候气候类型（v0.8.0: 大燥/大寒→信号额外压制）
     dayun_modulations: 大运调制结果列表（v0.8.0: 方向二—基线偏移+主题加权+岁运交战）
@@ -496,15 +499,18 @@ def scan_years(
             }.get(str(status), "unknown")
             known_states[int(y)] = normalized
     prev_year_rel = False
-    relationship_state = relationship_status if relationship_status in {
+    current_relationship_state = relationship_status if relationship_status in {
         "single", "dating", "married",
     } else "unknown"
+    current_year = date.today().year
+    llm_candidates: list[tuple[int, dict]] = []
     llm_tasks: list[tuple[int, dict]] = []  # v0.11.1: (result_index, review_context) 延迟并行执行
 
     for year in range(start_year, end_year + 1):
-        if year in known_states and known_states[year] != "unknown":
-            relationship_state = known_states[year]
-        relationship_state_for_year = relationship_state
+        relationship_state_for_year = known_states.get(
+            year,
+            current_relationship_state if year == current_year else "unknown",
+        )
         ln_tg, ln_dz = compute_liunian_pillar(year)
 
         # 确定当前大运。年度扫描不能把交运前或交运中的整年强行套入第一步大运。
@@ -554,24 +560,28 @@ def scan_years(
         ))
         events.extend(detect_xuesheng_signals(
             ln_tg, ln_dz, day_branch, day_master, year_branch, month_branch, hour_branch, favorable,
+            harmful=harmful,
         ))
         events.extend(detect_hunjia_signals(
             ln_tg, ln_dz, day_branch, day_master, year_branch, gender, favorable, dn_dz, age,
             (year_branch, month_branch, day_branch, hour_branch),
+            harmful=harmful,
         ))
         events.extend(detect_shiye_signals(
             ln_tg, ln_dz, day_master, year_branch, month_branch, day_branch,
-            hour_branch, dn_tg, dn_dz, favorable,
+            hour_branch, dn_tg, dn_dz, favorable, harmful=harmful,
         ))
         events.extend(detect_caiyun_signals(
             ln_tg, ln_dz, day_master, year_branch, day_branch, favorable,
             (year_branch, month_branch, day_branch, hour_branch),
+            harmful=harmful,
         ))
         events.extend(detect_jiankang_signals(
             ln_tg, ln_dz, day_branch, day_master, year_branch, dn_tg, dn_dz, favorable,
             (year_branch, month_branch, day_branch, hour_branch),
             health_profile=health_profile,
             first_year=(year == start_year),
+            harmful=harmful,
         ))
         events.extend(detect_banqian_signals(
             ln_dz, year_branch, day_branch, month_branch, hour_branch, dn_dz,
@@ -579,6 +589,7 @@ def scan_years(
         ))
         events.extend(detect_zhuangtai_signals(
             ln_tg, ln_dz, day_master, day_branch, dn_tg, dn_dz, favorable,
+            harmful=harmful,
         ))
         events.extend(detect_renji_signals(
             ln_tg, ln_dz, year_branch, month_branch, day_branch, hour_branch,
@@ -586,6 +597,7 @@ def scan_years(
             (year_branch, month_branch, day_branch, hour_branch),
             favorable,
             dayun_branch=dn_dz,
+            harmful=harmful,
         ))
         events.extend(detect_guanfei_signals(
             ln_tg, ln_dz, day_master, day_branch,
@@ -607,7 +619,7 @@ def scan_years(
         if ln_shishen_val:
             apply_shishen_year_notes(events, ln_shishen_val)
 
-        # 财星流年联动：同时有桃花+财运信号时，加欲望消费提示
+        # 财星流年联动：只记录主题同现，不推断欲望、消费动机或关系经历。
         has_taohua = any(e.category == "桃花" for e in events)
         has_caiyun = any(e.category == "财运" for e in events)
         is_caixing_year = ln_shishen_val in ("正财", "偏财")
@@ -615,13 +627,16 @@ def scan_years(
         if is_caixing_year:
             for e in events:
                 if e.category == "桃花":
-                    e.notes.append(f"{ln_shishen_val}年→情感欲望增强，对异性的关注度上升")
+                    e.notes.append(f"{ln_shishen_val}年与关系信号同现，仅作关系主题参考")
                 if e.category == "财运":
-                    e.notes.append(f"{ln_shishen_val}年→消费欲增加，可能为感情/社交花钱")
+                    e.notes.append(f"{ln_shishen_val}年与财务信号同现，需以实际收支核对")
             if has_taohua and has_caiyun:
                 for e in events:
                     if e.category == "桃花" or e.category == "财运":
-                        e.notes.append(f"{ln_shishen_val}年桃花+财运同现→钱和情的欲望同步放大，注意为感情消费")
+                        e.notes.append(
+                            f"{ln_shishen_val}年桃花与财运信号同现，分别核对关系互动和实际收支，"
+                            "不推断两者存在因果"
+                        )
 
         # 注入性格联动备注
         if personality_ctx:
@@ -670,7 +685,7 @@ def scan_years(
             for e in events:
                 if e.strength >= 3:
                     e.strength -= 1
-                    e.notes.append(f"流年{sb_rel}({ln_tg.value}{ln_dz.value})→天干压制地支，能量内耗，高烈度事件概率降低")
+                    e.notes.append(f"流年{sb_rel}({ln_tg.value}{ln_dz.value})→天干压制地支，能量内耗，高烈度信号降权")
 
         # ── 调候废局降权（v0.8.0: 仅压制最高烈度，中等信号保留）──
         # 废局 + 极端气候合并处理：最多降1星，不重复
@@ -712,10 +727,10 @@ def scan_years(
                         e.notes.append("大运凶调：十年基调偏凶，负面事件放大")
                     elif baseline < 0 and e.direction == "正面" and e.strength >= 2:
                         if e.category in ("桃花", "婚嫁"):
-                            e.notes.append("大运凶调：婚恋事件在凶运中需谨慎辨别，但机会本身仍存在")
+                            e.notes.append("大运基调偏逆：婚恋信号需结合现实进展辨别")
                         else:
                             e.strength = max(1, e.strength - 1)
-                            e.notes.append("大运凶调：不幸之运，吉事打折扣")
+                            e.notes.append("大运基调偏逆：正面信号的落实条件可能受限")
 
             # 主题加权: 大运主题与流年事件一致时加权
             if theme and theme_w != 1.0:
@@ -759,59 +774,41 @@ def scan_years(
                             continue
                         if e.direction == "正面":
                             if is_dizhan:
-                                e.notes.append("⚠ 岁运地战→根基动摇，好事打折，宜守不宜攻")
+                                e.notes.append("岁运交战（地支相冲）→正面信号的落实条件可能受扰动")
                             else:
-                                e.notes.append("⚠ 岁运交战→吉事可信度下降，好事可能落空或附带代价")
+                                e.notes.append("岁运交战（天干相克）→正面信号存在额外变数")
                         elif e.direction == "负面":
                             if is_dizhan:
-                                e.notes.append("⚠ 岁运地战→根基动摇，坏事加剧，重大决策暂缓")
+                                e.notes.append("岁运交战（地支相冲）→风险信号权重上升，但不代表事件必然发生")
                             else:
-                                e.notes.append("⚠ 岁运交战→动荡加剧，负面事件更易坐实，不可轻视")
+                                e.notes.append("岁运交战（天干相克）→负面信号存在额外变数，需以现实信息核对")
                         else:
-                            e.notes.append("⚠ 岁运交战→波动大、变数多，中性事件偏负面方向倾斜")
+                            e.notes.append("岁运交战（存在冲克）→中性信号的现实表现可能更反复")
 
         # 岁运交战可能追加事业事件；在 LLM 收集上下文前统一转换场景。
         _adapt_life_stage_events(events, stage_for_year, age)
 
-        # ── LLM 推理层（v0.11.1: 延迟到循环结束后并行执行）──
+        # 记录年度事实；跨年窗口和最终规则后处理完成后再构建 LLM 上下文。
         if chart_data:
             try:
-                from ..llm_review import DEEPSEEK_KEY, LLM_REVIEW_ENABLED, build_review_context, should_invoke_llm
                 yr_features = _extract_year_features(
                     ln_tg, ln_dz, year_branch, day_branch, day_master,
                     gender, dn_tg, dn_dz,
                 )
-                personality_text = chart_data.get("personality", {}).get("profile", "")
-                # 判断是否需要 LLM，需要则收集上下文（不立即调用）
-                llm_ok = should_invoke_llm(events, year, age)
-                if year == start_year:
-                    logger.debug(
-                        "llm review enabled=%s key_configured=%s age=%s",
-                        LLM_REVIEW_ENABLED,
-                        bool(DEEPSEEK_KEY),
-                        age,
-                    )
-                if llm_ok:
-                    review_ctx = build_review_context(
-                        chart_data, year, age,
-                        ln_tg.value, ln_dz.value,
-                        dn_tg.value if dn_tg else None,
-                        dn_dz.value if dn_dz else None,
-                        events, current_dayun_mod, tansheng_wangke,
-                        false_generations=false_generations,
-                        year_features=yr_features,
-                        personality_text=personality_text,
-                        # AI 只能使用用户/校准数据提供的状态，不能把规则预测出的
-                        # single -> dating -> married 状态机再当成事实喂回模型。
-                        relationship_state=known_states.get(
-                            year,
-                            relationship_status if year == date.today().year else "unknown",
-                        ),
-                    )
-                    llm_tasks.append((len(results), review_ctx))
+                llm_candidates.append((len(results), {
+                    "year": year,
+                    "age": age,
+                    "liunian_stem": ln_tg.value,
+                    "liunian_branch": ln_dz.value,
+                    "dayun_stem": dn_tg.value if dn_tg else None,
+                    "dayun_branch": dn_dz.value if dn_dz else None,
+                    "dayun_mod": current_dayun_mod,
+                    "year_features": yr_features,
+                    "relationship_state": relationship_state_for_year,
+                }))
             except Exception as error:
                 logger.warning(
-                    "llm review context failed year=%s type=%s",
+                    "llm review candidate failed year=%s type=%s",
                     year,
                     type(error).__name__,
                 )
@@ -860,6 +857,7 @@ def scan_years(
             dayun_branch=dn_dz,
             events=events,
             age=age,
+            life_stage=stage_for_year,
             sb_relation=sb_rel,
             stem_weight=sb_sw,
             branch_weight=sb_bw,
@@ -867,59 +865,58 @@ def scan_years(
             relationship_state=relationship_state_for_year,
         ))
 
-        # ── v0.11.1: 跨年关系状态机更新 ──
-        taohua_sigs = [e for e in events if e.category == "桃花"]
-        hunjia_sigs = [e for e in events if e.category == "婚嫁"]
-        prev_year_rel = any(e.strength >= 2 for e in taohua_sigs)
-
-        # 状态转换
-        if relationship_state == "single":
-            # 单身→恋爱：桃花≥3★正面 或 婚嫁信号
-            has_strong_positive = any(
-                e.strength >= 3 and e.direction == "正面"
-                for e in taohua_sigs
-            )
-            has_hunjia = any(e.strength >= 2 for e in hunjia_sigs)
-            if has_strong_positive or has_hunjia:
-                relationship_state = "dating"
-        elif relationship_state == "dating":
-            # 恋爱→分手：负面桃花≥2★ 且有其他明确风险信号；日支六冲本身不定方向。
-            has_breakup = any(
-                e.direction == "负面" and e.strength >= 2 and
-                any("劫财" in str(t) or "伤官克官" in str(t)
-                    for t in e.triggers)
-                for e in taohua_sigs
-            )
-            if has_breakup:
-                relationship_state = "single"
-            # 恋爱→已婚：婚嫁信号≥3★（未分手才可能结婚）
-            elif any(e.strength >= 3 for e in hunjia_sigs):
-                relationship_state = "married"
-        # married→single: 婚嫁负面信号（离婚）
-        elif relationship_state == "married":
-            has_divorce = any(
-                e.direction == "负面" and e.strength >= 3 and
-                any("伤官" in str(t) for t in e.triggers)
-                for e in hunjia_sigs + taohua_sigs
-            )
-            if has_divorce:
-                relationship_state = "single"
-
-    # 先完成跨年规则解释，再把窗口与状态上下文交给 AI 审阅。
+    # 先完成跨年规则解释，再把最终信号、窗口与现实状态交给 AI 审阅。
     results = _backtrack_hunjia_prelude(results)
     results = _annotate_relationship_windows(results)
     results = _annotate_taohua_clusters(results)
-    for result_index, review_ctx in llm_tasks:
-        if result_index >= len(results):
-            continue
-        scan = results[result_index]
-        review_relationship = review_ctx.get("relationship_context", {})
-        review_ctx["relationship_context"] = {
-            "state": review_relationship.get("state", "unknown"),
-            "window": scan.relationship_window,
-            "phase": scan.relationship_phase,
-            "peak_year": scan.relationship_peak_year,
-        }
+    if chart_data and llm_candidates:
+        try:
+            from ..llm_review import (
+                DEEPSEEK_KEY,
+                LLM_REVIEW_ENABLED,
+                build_review_context,
+                should_invoke_llm,
+            )
+            logger.debug(
+                "llm review enabled=%s key_configured=%s candidates=%s",
+                LLM_REVIEW_ENABLED,
+                bool(DEEPSEEK_KEY),
+                len(llm_candidates),
+            )
+            personality_text = chart_data.get("personality", {}).get("profile", "")
+            for result_index, candidate in llm_candidates:
+                if result_index >= len(results):
+                    continue
+                scan = results[result_index]
+                if not should_invoke_llm(scan.events, scan.year, scan.age or 0):
+                    continue
+                review_ctx = build_review_context(
+                    chart_data,
+                    candidate["year"],
+                    candidate["age"],
+                    candidate["liunian_stem"],
+                    candidate["liunian_branch"],
+                    candidate["dayun_stem"],
+                    candidate["dayun_branch"],
+                    scan.events,
+                    candidate["dayun_mod"],
+                    tansheng_wangke,
+                    false_generations=false_generations,
+                    year_features=candidate["year_features"],
+                    personality_text=personality_text,
+                    relationship_state=candidate["relationship_state"],
+                )
+                review_ctx["relationship_context"].update({
+                    "window": scan.relationship_window,
+                    "phase": scan.relationship_phase,
+                    "peak_year": scan.relationship_peak_year,
+                })
+                llm_tasks.append((result_index, review_ctx))
+        except Exception as error:
+            logger.warning(
+                "llm review context build failed type=%s",
+                type(error).__name__,
+            )
 
     # ── v0.11.1: LLM审查并行执行（循环中收集，此处并行发射）──
     if llm_tasks and defer_llm:
@@ -970,9 +967,9 @@ def _backtrack_hunjia_prelude(results: list[AnnualScan]) -> list[AnnualScan]:
                 category="婚嫁",
                 direction="正面",
                 strength=1,
-                prediction="婚嫁前奏年——强信号出现在次年，本年已开始酝酿",
+                prediction="婚恋时点回看候选：次年规则信号更强，本年只作弱关联参考",
                 triggers=prelude_triggers,
-                notes=[f"次年{curr_scan.year}年有≥3★婚嫁信号，本年出现前奏: {'; '.join(prelude_triggers)}"],
+                notes=[f"次年{curr_scan.year}年有≥3★婚嫁信号；本年仅记录相邻时点候选，不代表关系已发生: {'; '.join(prelude_triggers)}"],
                 evidence=[EvidenceItem(
                     rule="hunjia_prelude",
                     layers=("前一年", "流年"),

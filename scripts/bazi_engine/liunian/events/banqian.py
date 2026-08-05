@@ -35,7 +35,7 @@ def detect_banqian_signals(ln_branch: Dizhi,
     if is_yima_yr and dayun_branch and dayun_branch == yima:
         strength = 3
         triggers.append("大运流年双驿马")
-        notes.append("双驿马→重大搬迁/远行 (textbook)")
+        notes.append("双驿马只表示出行或环境调整信号较集中，不代表必然搬迁。")
 
     # ═══ ★★ 级别 ═══
 
@@ -58,22 +58,22 @@ def detect_banqian_signals(ln_branch: Dizhi,
     if dayun_branch and dayun_branch == yima and _has_branch_interaction(ln_branch, yima, "六合"):
         strength = max(strength, 2)
         triggers.append("大运驿马+流年合动")
-        notes.append("大运驿马被流年合动→当年搬迁 (textbook)")
+        notes.append("大运驿马被流年合动→出行或环境调整候选")
 
     # 驿马+财星/官星 → 因工作/求财远行
     if is_yima_yr and ln_shishen:
         if ln_shishen in (Shishen.正财, Shishen.偏财):
             strength = max(strength, 2)
-            triggers.append("驿马+财星→求财远行")
+            triggers.append("驿马+财星→出行或资源安排候选")
         elif ln_shishen in (Shishen.正官, Shishen.偏官):
             strength = max(strength, 2)
-            triggers.append("驿马+官星→工作调动远行")
+            triggers.append("驿马+官星→工作地点调整候选")
 
     # 冲月柱（环境宫）
     if _has_branch_interaction(month_branch, ln_branch, "六冲"):
         strength = max(strength, 2)
         triggers.append("流年冲月柱(环境宫)")
-        notes.append("冲月柱→环境/居住地变动")
+        notes.append("冲月柱→环境或居住安排变化候选，不单独判断搬迁")
 
     # 冲年柱（祖基宫）
     if _has_branch_interaction(year_branch, ln_branch, "六冲"):
@@ -84,19 +84,19 @@ def detect_banqian_signals(ln_branch: Dizhi,
     if hour_branch and _has_branch_interaction(hour_branch, ln_branch, "六冲"):
         strength = max(strength, 2)
         triggers.append("流年冲时柱(门户)")
-        notes.append("冲时柱→门户变动/搬家 (textbook)")
+        notes.append("冲时柱→出行或居住安排变化候选")
 
     # 合月柱（环境宫被合动）
     if _has_branch_interaction(month_branch, ln_branch, "六合") or _has_branch_interaction(month_branch, ln_branch, "三合"):
         strength = max(strength, 2)
         triggers.append("流年合月柱(环境宫)")
-        notes.append("合动月柱→环境变化/搬迁移居")
+        notes.append("合动月柱→环境变化候选，不单独判断搬迁")
 
     # 驿马+印星 → 因学业/工作调动搬迁
     if is_yima_yr and ln_shishen in (Shishen.正印, Shishen.偏印):
         strength = max(strength, 2)
-        triggers.append("驿马+印星→学习/工作调动搬迁")
-        notes.append("印星主文书/合同→因入学/入职/调令而搬迁 (textbook)")
+        triggers.append("驿马+印星→学习或工作环境调整候选")
+        notes.append("可结合入学、入职或文书安排核对是否存在现实变动。")
 
     # ═══ ★ 级别 ═══
 

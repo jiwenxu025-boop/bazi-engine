@@ -151,8 +151,8 @@ def test_liunian_taohua_notes_branch_by_gender():
         dayun_branch=None,
     )
     female_notes = "；".join(female_signals[0].notes)
-    assert "女命七杀坐桃花" in female_notes
-    assert "感情困扰" in female_notes
+    assert "官杀与桃花同现" in female_notes
+    assert "不推断具体感情经历" in female_notes
 
     male_signals = detect_taohua_signals(
         ln_stem=Tiangan.戊,
@@ -165,5 +165,9 @@ def test_liunian_taohua_notes_branch_by_gender():
         dayun_branch=None,
     )
     male_notes = "；".join(male_signals[0].notes)
-    assert "男命财星坐桃花" in male_notes
-    assert "风流" in male_notes
+    assert "财星与桃花同现" in male_notes
+    assert "不推断具体感情经历或消费动机" in male_notes
+
+    forbidden_claims = ("七杀坐桃花", "感情困扰", "风流", "多线暧昧", "关系受制")
+    assert not any(claim in female_notes for claim in forbidden_claims)
+    assert not any(claim in male_notes for claim in forbidden_claims)

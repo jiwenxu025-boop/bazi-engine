@@ -28,6 +28,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                             all_branches: tuple[Dizhi, ...] = (),
                             health_profile: dict | None = None,
                             first_year: bool = False,
+                            harmful: set[str] | None = None,
                             ) -> list[EventSignal]:
     """检测健康信号 — v0.10.0: +调候体质筛查 + 五行脏腑预警"""
     signals: list[EventSignal] = []
@@ -38,7 +39,7 @@ def detect_jiankang_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     notes = []
     evidence: list[EvidenceItem] = []
 
-    fav = is_favorable(ln_shishen, favorable)
+    fav = is_favorable(ln_shishen, favorable, harmful)
 
     # ── 多柱联动: 三合官杀局 ──
     # 流年+大运+原局三合官杀局 → 官杀过旺克身

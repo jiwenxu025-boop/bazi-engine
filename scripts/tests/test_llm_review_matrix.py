@@ -60,6 +60,9 @@ def test_review_prompt_requires_complete_compact_category_matrix():
     assert '"category_matrix"' in prompt
     for category in ("婚嫁", "桃花", "事业", "财运", "健康", "搬迁"):
         assert f'"{category}"' in prompt
+    assert "不得新增规则层没有的事件类别" in prompt
+    assert "慢性病发作" not in prompt
+    assert "被裁员" not in prompt
 
 
 def test_review_context_carries_decision_policy_and_rule_evidence():
@@ -185,12 +188,88 @@ def test_ai_cannot_upgrade_taohua_into_hunjia_without_rule_signal():
     assert marriage.strength == 0
 
 
-def test_ai_context_does_not_reuse_predicted_relationship_state(monkeypatch):
+def test_ai_cannot_create_or_reverse_non_relationship_rule_signals():
+    parsed = _parse_review_response(
+        json.dumps({
+            "category_matrix": _matrix(事业=1, 财运=1),
+            "events": [
+                _positive_event("事业"),
+                _positive_event("财运"),
+            ],
+        }, ensure_ascii=False),
+        2027,
+    )
+    constrained = _enforce_relationship_review_policy(
+        parsed,
+        {
+            "rule_signals": [
+                {"category": "财运", "direction": "负面", "strength": 1},
+            ],
+            "relationship_context": {"state": "unknown"},
+        },
+    )
+
+    career = next(result for result in constrained if result.category == "事业")
+    wealth = next(result for result in constrained if result.category == "财运")
+    assert career.review_status == "无明显信号"
+    assert career.strength == 0
+    assert wealth.review_status == "有信号"
+    assert wealth.direction == "负面"
+    assert wealth.strength == 1
+
+
+def test_ai_specific_health_and_career_claims_fall_back_to_rule_text():
+    unsafe_health = _positive_event("健康")
+    unsafe_health.update({
+        "direction": "负面",
+        "prediction": "今年会确诊疾病并做手术",
+        "reasoning": "羊刃说明会住院",
+    })
+    unsafe_career = _positive_event("事业")
+    unsafe_career.update({
+        "direction": "负面",
+        "prediction": "今年一定会被裁员",
+        "reasoning": "伤官意味着失业",
+    })
+    parsed = _parse_review_response(
+        json.dumps({"events": [unsafe_health, unsafe_career]}, ensure_ascii=False),
+        2027,
+    )
+
+    constrained = _enforce_relationship_review_policy(
+        parsed,
+        {
+            "rule_signals": [
+                {
+                    "category": "健康", "direction": "负面", "strength": 1,
+                    "prediction": "留意作息、运动和出行安排",
+                },
+                {
+                    "category": "事业", "direction": "负面", "strength": 1,
+                    "prediction": "工作调整主题出现，需结合现实安排核对",
+                },
+            ],
+            "relationship_context": {"state": "unknown"},
+        },
+    )
+
+    combined = " ".join(
+        f"{result.prediction} {result.reasoning} {' '.join(result.triggers)}"
+        for result in constrained
+    )
+    for forbidden in ("确诊", "疾病", "手术", "住院", "裁员", "失业", "一定会"):
+        assert forbidden not in combined
+    assert "留意作息、运动和出行安排" in combined
+    assert "工作调整主题出现" in combined
+
+
+def test_rule_and_ai_context_do_not_reuse_predicted_relationship_state(monkeypatch):
     import bazi_engine.llm_review as llm_review
 
     monkeypatch.setenv("BAZI_LLM_REVIEW", "1")
     monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
     monkeypatch.setattr(llm_review, "DEEPSEEK_KEY", "test-key")
+    monkeypatch.setattr(llm_review, "should_invoke_llm", lambda *_args, **_kwargs: True)
     chart = build_chart(
         name="状态回灌回归",
         gender="男",
@@ -207,12 +286,54 @@ def test_ai_context_does_not_reuse_predicted_relationship_state(monkeypatch):
         chart.annual_scans[index].year: context
         for index, context in chart._pending_llm_tasks
     }
-    assert chart.annual_scans[1].relationship_state == "dating"
+    assert chart.annual_scans[0].relationship_state == "single"
+    assert all(
+        scan.relationship_state == "unknown"
+        for scan in chart.annual_scans[1:]
+    )
     assert contexts[2026]["relationship_context"]["state"] == "single"
     assert all(
         contexts[year]["relationship_context"]["state"] == "unknown"
         for year in (2027, 2028, 2029, 2030)
     )
+
+
+def test_ai_context_uses_final_rule_signals_after_post_processing(monkeypatch):
+    import bazi_engine.llm_review as llm_review
+
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "1")
+    monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
+    monkeypatch.setattr(llm_review, "DEEPSEEK_KEY", "test-key")
+    monkeypatch.setattr(llm_review, "should_invoke_llm", lambda *_args, **_kwargs: True)
+    chart = build_chart(
+        name="最终规则上下文",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        liunian_range=(2026, 2030),
+        defer_llm=True,
+    )
+
+    contexts = {
+        chart.annual_scans[index].year: context
+        for index, context in chart._pending_llm_tasks
+    }
+    for scan in chart.annual_scans:
+        expected = [
+            {
+                "category": event.category,
+                "direction": event.direction,
+                "strength": event.strength,
+                "prediction": event.prediction,
+                "triggers": event.triggers[:5],
+                "evidence": [item.to_dict() for item in event.evidence[:5]],
+                "conflicts": event.conflicts[:5],
+            }
+            for event in scan.events
+        ]
+        assert contexts[scan.year]["rule_signals"] == expected
 
 
 def test_ai_marriage_wording_is_state_aware_for_married_users():

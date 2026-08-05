@@ -7,6 +7,7 @@ from bazi_engine.enums import Dizhi, Tiangan
 from bazi_engine.liunian.llm_bridge import (
     _execute_llm_reviews_parallel,
     _execute_llm_reviews_streaming,
+    _signals_to_dicts,
 )
 from bazi_engine.liunian.signal import AnnualScan, EventSignal
 from bazi_engine.llm_review import LLMReviewResult
@@ -84,7 +85,25 @@ def test_no_signal_ai_review_serializes_status_without_rule_event(monkeypatch):
     ]
 
 
-def test_multi_year_batch_is_chunked_and_retries_at_most_one_missing_year(monkeypatch):
+def test_streamed_and_synchronous_ai_review_shapes_match():
+    review = LLMReviewResult(
+        year=2026,
+        category="财运",
+        direction="负面",
+        strength=1,
+        prediction="核对实际收支",
+        reasoning="规则层已有财运弱信号",
+    )
+    scan = AnnualScan(2026, Tiangan("甲"), Dizhi("子"))
+
+    from bazi_engine.liunian.llm_bridge import _review_to_signal
+
+    scan.ai_reviews.append(_review_to_signal(review))
+
+    assert _signals_to_dicts([review]) == scan.to_dict()["ai_reviews"]
+
+
+def test_multi_year_batch_is_chunked_and_retries_every_missing_year(monkeypatch):
     import bazi_engine.llm_review as llm_review
 
     years = list(range(2023, 2027))
@@ -124,14 +143,61 @@ def test_multi_year_batch_is_chunked_and_retries_at_most_one_missing_year(monkey
     )
 
     assert sorted(batch_sizes) == [2, 2]
-    assert len(single_years) == 1
-    assert single_years[0] in years
-    assert sum(len(scan.ai_reviews) for scan in scans) == 1
-    assert sorted(year for year, _signals in streamed_results) == single_years
-    assert sorted(streamed_tokens) == [(single_years[0], "ok")]
+    assert sorted(single_years) == years
+    assert sum(len(scan.ai_reviews) for scan in scans) == len(years)
+    assert sorted(year for year, _signals in streamed_results) == years
+    assert sorted(streamed_tokens) == [(year, "ok") for year in years]
 
 
-def test_annual_review_triggers_when_rule_categories_are_incomplete(monkeypatch):
+def test_missing_single_year_fallback_emits_explicit_incomplete_matrix(monkeypatch):
+    import bazi_engine.llm_review as llm_review
+
+    years = [2023, 2024, 2025]
+    scans = [AnnualScan(year, Tiangan("甲"), Dizhi("子")) for year in years]
+    streamed_results = []
+    monkeypatch.setattr(
+        llm_review,
+        "call_llm_batch_review",
+        lambda contexts, on_token=None: [[] for _ in contexts],
+    )
+    monkeypatch.setattr(llm_review, "call_llm_review", lambda _context, on_token=None: [])
+
+    _execute_llm_reviews_streaming(
+        scans,
+        list(enumerate({"year": year} for year in years)),
+        lambda year, signals: streamed_results.append((year, signals)),
+    )
+
+    assert sorted(year for year, _signals in streamed_results) == years
+    for scan in scans:
+        assert len(scan.ai_reviews) == 6
+        assert {review.review_status for review in scan.ai_reviews} == {"未完成"}
+
+
+def test_one_year_empty_review_is_explicit_for_streaming_and_sync(monkeypatch):
+    import bazi_engine.llm_review as llm_review
+
+    monkeypatch.setattr(llm_review, "call_llm_review", lambda _context, **_kwargs: [])
+
+    streamed_scan = AnnualScan(2026, Tiangan("甲"), Dizhi("子"))
+    streamed_results = []
+    _execute_llm_reviews_streaming(
+        [streamed_scan],
+        [(0, {"year": 2026})],
+        lambda year, signals: streamed_results.append((year, signals)),
+    )
+
+    sync_scan = AnnualScan(2027, Tiangan("乙"), Dizhi("丑"))
+    _execute_llm_reviews_parallel([sync_scan], [(0, {"year": 2027})])
+
+    assert [year for year, _signals in streamed_results] == [2026]
+    assert len(streamed_results[0][1]) == 6
+    for scan in (streamed_scan, sync_scan):
+        assert len(scan.ai_reviews) == 6
+        assert {review.review_status for review in scan.ai_reviews} == {"未完成"}
+
+
+def test_annual_review_triggers_only_when_weak_rule_signals_need_explanation(monkeypatch):
     import bazi_engine.llm_review as llm_review
 
     monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
@@ -146,6 +212,7 @@ def test_annual_review_triggers_when_rule_categories_are_incomplete(monkeypatch)
     assert llm_review.should_invoke_llm(one_weak, 2026, 30)
     assert llm_review.should_invoke_llm(two_weak, 2026, 30)
     assert not llm_review.should_invoke_llm(all_strong, 2026, 30)
+    assert not llm_review.should_invoke_llm([], 2026, 30)
 
 
 def test_build_chart_can_defer_annual_reviews_without_calling_provider(monkeypatch):

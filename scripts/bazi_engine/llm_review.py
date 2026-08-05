@@ -2,7 +2,7 @@
 
 设计原则:
 - 规则引擎不变，继续产生 1-3★ 信号
-- LLM 只介入"规则引擎判定为弱信号或无信号"的年份
+- LLM 只介入规则引擎已经给出一星弱信号的年份
 - LLM 接收结构化特征（不是原始八字），做多弱信号综合推理
 - LLM 输出置信度低于规则引擎（标记 source="llm"）
 
@@ -64,6 +64,18 @@ _TRIGGER_MAX_CHARS = 120
 _SENTENCE_ENDINGS = "。！？!?."
 _CLAUSE_ENDINGS = "，,；;、"
 _LLM_TRIGGER_PREFIX = "[LLM推理] "
+_UNSUPPORTED_REVIEW_TERMS = {
+    "婚嫁": ("出轨", "第三者", "离婚", "分手", "复合", "怀孕"),
+    "桃花": ("出轨", "第三者", "离婚", "分手", "复合", "怀孕"),
+    "事业": ("裁员", "开除", "失业", "降薪", "加薪", "晋升", "录取"),
+    "财运": ("破产", "暴富", "亏损", "赔钱", "损失", "具体金额"),
+    "健康": (
+        "疾病", "确诊", "诊断", "癌", "肿瘤", "中风", "心脑血管", "手术",
+        "住院", "血光", "死亡", "寿命", "体检结果",
+    ),
+    "搬迁": ("一定搬", "必搬", "被迫搬"),
+}
+_ABSOLUTE_REVIEW_TERMS = ("必然", "注定", "肯定会", "一定会", "大概率", "很可能会")
 _ANNUAL_REVIEW_MAX_OUTPUT_TOKENS = max(
     512, int(os.getenv("BAZI_LLM_REVIEW_MAX_OUTPUT_TOKENS", "2048"))
 )
@@ -75,14 +87,7 @@ _ANNUAL_BATCH_MAX_OUTPUT_TOKENS = max(
 
 def should_invoke_llm(events: list, year: int, age: int,
                        target_categories: set[str] | None = None) -> bool:
-    """判断某一年是否需要 LLM 二次判断。
-
-    条件：年龄在合理范围内，且目标类别中仍有规则层未覆盖的类别。
-    规则层只覆盖部分类别时，交给 LLM 做跨类别的补充审阅；当所有
-    目标类别都已有 ≥2★ 规则信号时，规则结果已经足够，不再重复调用。
-
-    如果 target_categories 为 None，默认检查所有关键类别。
-    """
+    """仅在存在需要解释的弱规则信号时调用 LLM。"""
     if not LLM_REVIEW_ENABLED:
         return False
     if not DEEPSEEK_KEY:
@@ -91,18 +96,14 @@ def should_invoke_llm(events: list, year: int, age: int,
         return False
 
     if target_categories is None:
-        target_categories = {"婚嫁", "桃花", "事业", "财运", "健康"}
+        target_categories = {"婚嫁", "桃花", "事业", "财运", "健康", "搬迁"}
 
-    # 检查目标类别中哪些有 ≥2★。类别覆盖不足本身就是边界信号，不能
-    # 只统计 1★ 事件：同类事件在后续合并前，弱信号可能暂时还未出现。
-    strong_in_target = set()
-    for e in events:
-        if e.category in target_categories and e.strength >= 2:
-            strong_in_target.add(e.category)
-
-    # 如果目标类别全部都有 ≥2★ 信号，不需要 LLM；否则让 LLM 补充
-    # 规则层没有覆盖或仅有弱信号的类别。
-    return not strong_in_target >= target_categories
+    category_aliases = {"学业": "事业", "升学": "事业", "进修": "事业"}
+    return any(
+        category_aliases.get(e.category, e.category) in target_categories
+        and e.strength == 1
+        for e in events
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -215,6 +216,7 @@ def build_review_context(
             "category": e.category,
             "direction": e.direction,
             "strength": e.strength,
+            "prediction": e.prediction,
             "triggers": e.triggers[:5],
             "evidence": [
                 item.to_dict() if hasattr(item, "to_dict") else item
@@ -233,20 +235,11 @@ def build_review_context(
 # ═══════════════════════════════════════════════════════════════
 
 _SUIYUN_KNOWLEDGE = """
-## 岁运交战知识（关键参考）
+## 岁运交战解释边界
 
-岁运交战=大运与流年天克地冲(天干相克+地支相冲同时出现)，是流年层面最剧烈的冲突形态。
-
-- 岁=流年(太岁为君)，运=大运(为臣)。臣冲克君→主动荡是非破财变动
-- 运伐岁(大运天干克流年天干)：下犯上，凶性重
-- 岁伐运(流年天干克大运天干)：上制下，凶性稍减
-- 天战(天干冲)：表层影响，事业/人际/口舌
-- 地战(地支冲)：底层动摇，环境/健康/家庭，比天战严重1.5-2倍
-- 冲克喜用神→破财伤病官非分手离职
-- 冲克忌神→转机换运去旧迎新
-- 原局有合/生/制→减凶；无救→波动加剧
-- 古诀：反吟伏吟泪淋淋，不伤自己损他人
-- 现实中：稳守、少投资、不冒险、低调行事
+岁运天干相克或地支相冲只表示长期背景与年度条件之间存在扰动。它可以解释规则层
+已有信号为何更不稳定，但不能新增事件、反转既有方向，也不能推出健康、财务、法律
+或关系领域的具体结果。
 """
 
 
@@ -342,7 +335,7 @@ def build_review_prompt(ctx: dict) -> str:
         f"峰值年={relationship_context.get('peak_year') or '未定'}"
     )
 
-    # 流年近失特征（规则引擎内算但未触发——LLM的推理原料）
+    # 流年近失特征只作解释背景，不能生成新信号。
     yr_feat = ctx.get("year_features", {})
     if yr_feat:
         feat_lines = [f"  {k}: {v}" for k, v in yr_feat.items()]
@@ -354,6 +347,8 @@ def build_review_prompt(ctx: dict) -> str:
         for s in rule_signals:
             sig_lines.append(
                 f"  {s['category']}/{s['direction']}/{s['strength']}★"
+                f" | 既有解读={s.get('prediction', '')}"
+                f" | 触发={s.get('triggers', [])[:3]}"
                 f" | 证据={s.get('evidence', [])[:2]}"
                 f" | 冲突={s.get('conflicts', [])[:2]}"
             )
@@ -363,30 +358,22 @@ def build_review_prompt(ctx: dict) -> str:
 
     context_text = "\n".join(prompt_parts)
 
-    prompt = f"""你是八字命理多因子综合推理器。以下是某命主在特定流年的结构化特征数据。
+    prompt = f"""你是规则结果审阅器。以下是某命主在特定流年的结构化规则数据。
 
 {context_text}{_suiyun_knowledge(ctx)}
 
 ## 任务
 
-规则引擎已经跑过但可能遗漏"多弱信号叠加"型的事件。根据流年特征做综合推理：
-
-LLM 只能解释和整合已提供的结构化证据，不得自行重算三合、藏干、强弱或喜忌；
-若证据冲突或来源不足，应降低置信度并在 reasoning 中说明，不得覆盖规则层结论。
-流年特征只列已经命中或被引动的事实；字段缺失表示本年没有该项证据。
-不得把当前婚恋状态本身当作桃花或婚嫁证据。
+LLM 只能把规则层已经输出的信号翻译成白话，不得自行重算三合、藏干、强弱或喜忌，
+不得新增规则层没有的事件类别，不得反转方向或提高强度。year_features 仅是解释背景，
+不能据此创建新事件；字段缺失表示本年没有该项证据。当前婚恋状态本身也不能作为
+桃花或婚嫁证据，不得把当前婚恋状态本身当作桃花或婚嫁证据。证据冲突或来源不足时，
+在 reasoning 中如实说明。
 
 必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，不得跳项。先在 category_matrix
-中对六类分别标记 1（有信号）或 0（无明显信号），再仅为标记 1 的类别输出事件详情。
-
-1. 婚嫁检测: 婚嫁类别只能解释规则层已经给出的婚嫁信号（至少2星）；
-   夫妻宫、桃花、红鸾/天喜单独或叠加，只能标记桃花/关系活跃，不能自行升级为订婚或结婚。
-2. 桃花检测: 桃花入命 + 红鸾 + 配偶星透干 + 流年合日主
-3. 事业检测: 官/印星 + 驿马 + 大运官印相生 → 晋升/跳槽
-4. 财运检测: 财星 + 食伤生财 + 驿马+财
-5. 吉处藏凶: 用神流年被合/冲/空 → 好事打折
-6. 凶中有救: 忌神流年被制/化 → 坏事有转机
-7. 岁运交战: 若有岁运天克地冲→所有信号需结合喜忌重判，正负面可能反转
+中对六类分别标记 1（规则层有对应信号）或 0（规则层没有对应信号），再仅为标记 1
+的类别输出解释。事业类可对应规则层的事业、学业、升学或进修信号；婚嫁类仅接受
+规则层至少2星的婚嫁信号，其他类别至少要有同类规则信号。
 
 ### 婚恋状态与连续窗口（必须遵守）
 
@@ -397,17 +384,10 @@ LLM 只能解释和整合已提供的结构化证据，不得自行重算三合�
 
 ### 当代翻译要求（重要）
 
-对每个信号的 prediction 和 reasoning，必须翻译成命主能看懂的当代现实场景，不能停留在八字术语上。**用非命理语言说出具体可能发生的事情**。
+对每个信号的 prediction 和 reasoning，只能改写规则层已有 prediction、触发摘要和证据，
+不能补充规则层没有的具体经历。健康类只作生活节律与安全提醒，不得推断疾病、诊断、
+手术或体检结果；财务和法律事项不得推断金额、损失或诉讼结果。
 **禁止在 prediction 中出现原始分数或★级别**。命主不需要知道★2或置信度，只需要知道"今年财运压力大"这种能看懂的话。
-
-参考对照（按类别）：
-- 婚嫁/桃花 → 脱单/热恋/同居/订婚/结婚/分手/冷战/感情疲惫/出轨/吃回头草
-- 事业 → 跳槽/晋升/转行/创业/被裁员/职场霸凌/项目压力/贵人提携/权力斗争
-- 财运 → 涨薪/奖金/副业收入/投资亏损/大额支出/借贷纠纷/被借钱/退税/分红
-- 健康 → 失眠/焦虑/抑郁/过劳/慢性病发作/体检异常/过敏/肠胃问题/手术
-- 搬迁 → 租房/买房/换城市/留学/移民/离家/装修/办公室换址
-- 人际 → 被孤立/遇知己/社交焦虑/团队矛盾/师友反目/和解/建立人脉
-- 状态 → 迷茫期/动力低谷/觉醒/坚持/放弃/自我怀疑/找到方向/创造欲
 
 ## 输出JSON
 
@@ -453,7 +433,7 @@ def call_llm_review(
     prompt = build_review_prompt(ctx)
 
     messages = [
-        {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
+        {"role": "system", "content": "你是规则结果审阅器，只解释现有证据，不重算或新增结论。只输出 JSON。"},
         {"role": "user", "content": prompt},
     ]
     max_output_tokens = _ANNUAL_REVIEW_MAX_OUTPUT_TOKENS
@@ -647,6 +627,14 @@ def _status_only_review(year: int, category: str, status: str) -> LLMReviewResul
     )
 
 
+def incomplete_review_results(year: int) -> list[LLMReviewResult]:
+    """为供应商无返回的年份生成完整、可见的未完成状态。"""
+    return [
+        _status_only_review(year, category, "未完成")
+        for category in _REVIEW_CATEGORIES
+    ]
+
+
 def _parse_category_review_payload(data: dict, year: int) -> list[LLMReviewResult]:
     """解析逐类矩阵；旧版仅含 events 的响应仍按原语义兼容。"""
     events = data.get("events", [])
@@ -681,24 +669,40 @@ def _parse_category_review_payload(data: dict, year: int) -> list[LLMReviewResul
 def _enforce_relationship_review_policy(
     results: list[LLMReviewResult], ctx: dict,
 ) -> list[LLMReviewResult]:
-    """在解析边界再拦截 AI 的婚嫁升级，避免提示词漂移改变规则语义。"""
+    """在解析边界拦截 AI 新增、反转或升级任何规则信号。"""
     rule_signals = ctx.get("rule_signals", [])
-    has_rule_hunjia = any(
-        signal.get("category") == "婚嫁" and signal.get("strength", 0) >= 2
-        for signal in rule_signals
-    )
+    category_aliases = {
+        "事业": {"事业", "学业", "升学", "进修"},
+    }
     relationship_context = ctx.get("relationship_context", {})
     state = relationship_context.get("state", "unknown")
     phase = relationship_context.get("phase", "")
 
     normalized: list[LLMReviewResult] = []
     for result in results:
-        if result.category != "婚嫁" or result.review_status != "有信号":
+        if result.review_status != "有信号":
             normalized.append(result)
             continue
 
-        if not has_rule_hunjia:
-            normalized.append(_status_only_review(result.year, "婚嫁", "无明显信号"))
+        accepted_categories = category_aliases.get(result.category, {result.category})
+        matching = [
+            signal for signal in rule_signals
+            if signal.get("category") in accepted_categories
+            and signal.get("strength", 0) >= (2 if result.category == "婚嫁" else 1)
+        ]
+        if not matching:
+            normalized.append(_status_only_review(
+                result.year, result.category, "无明显信号",
+            ))
+            continue
+
+        strongest = max(matching, key=lambda signal: signal.get("strength", 0))
+        result.strength = min(result.strength, int(strongest.get("strength", 0)), 2)
+        result.direction = strongest.get("direction", result.direction)
+        _constrain_review_language(result, strongest)
+
+        if result.category != "婚嫁":
+            normalized.append(result)
             continue
 
         if state == "married":
@@ -711,6 +715,26 @@ def _enforce_relationship_review_policy(
             result.prediction = "交往关系存在定型机会，是否订婚或结婚仍取决于现实进展"
         normalized.append(result)
     return normalized
+
+
+def _constrain_review_language(result: LLMReviewResult, strongest: dict) -> None:
+    """Replace provider prose that exceeds the rule evidence boundary."""
+    combined = f"{result.prediction} {result.reasoning}"
+    unsupported = _UNSUPPORTED_REVIEW_TERMS.get(result.category, ())
+    needs_fallback = (
+        not result.prediction
+        or not result.reasoning
+        or any(term in combined for term in _ABSOLUTE_REVIEW_TERMS)
+        or any(term in combined for term in unsupported)
+    )
+    if needs_fallback:
+        rule_prediction = strongest.get("prediction") or f"{result.category}主题有规则信号，需结合现实核对"
+        result.prediction = _trim_review_text(rule_prediction, _PREDICTION_MAX_CHARS)
+        result.reasoning = f"仅按规则层已有{result.category}信号作补充说明，具体情况需结合现实核对。"
+
+    trigger_budget = _TRIGGER_MAX_CHARS - len(_LLM_TRIGGER_PREFIX)
+    trigger_reasoning = _trim_review_text(result.reasoning, trigger_budget)
+    result.triggers = [f"{_LLM_TRIGGER_PREFIX}{trigger_reasoning}"] if trigger_reasoning else []
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -738,7 +762,7 @@ def review_year_if_needed(
         LLMReviewResult 列表（可能为空）。
     """
     # 从目标类别中找出需要审视的
-    target = {"婚嫁", "桃花", "事业", "财运", "健康"} - {
+    target = {"婚嫁", "桃花", "事业", "财运", "健康", "搬迁"} - {
         e.category for e in rule_events if e.strength >= 2
     }
     if not should_invoke_llm(rule_events, year, age, target if target else None):
@@ -1056,8 +1080,14 @@ def call_llm_batch_review(
         )
 
         if signals:
-            sigs = "; ".join(f"{s['category']}/{s['direction']}/{s['strength']}★" for s in signals)
-            section.append(f"规则信号: {sigs}")
+            section.append("规则信号:")
+            for signal in signals:
+                section.append(
+                    f"  {signal['category']}/{signal['direction']}/{signal['strength']}★ | "
+                    f"既有解读={signal.get('prediction', '')} | "
+                    f"触发={signal.get('triggers', [])} | "
+                    f"证据={signal.get('evidence', [])}"
+                )
         else:
             section.append("规则信号: 无")
 
@@ -1081,27 +1111,21 @@ def call_llm_batch_review(
 {chr(10).join(year_sections)}
 
 ## 任务
-为每个年份做综合推理。规则引擎已跑但可能遗漏"多弱信号叠加"型事件。
+为每个年份解释规则层已经输出的信号，不得新增规则层没有的事件类别，不得反转方向
+或提高强度。year_features 仅是解释背景，不能据此创建新事件。
 每个年份都必须逐项审阅婚嫁、桃花、事业、财运、健康、搬迁六类，并在
-category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的类别详情。
-流年特征只列已经命中或被引动的事实；字段缺失表示该年没有该项证据，
-当前婚恋状态本身也不能作为桃花或婚嫁证据。
+category_matrix 中完整返回六个 0/1 状态。只有规则层存在对应信号时才能标记1；
+事业类可对应事业、学业、升学或进修，婚嫁类要求规则层婚嫁至少2星。字段缺失表示
+没有该项证据，当前婚恋状态本身也不能作为桃花或婚嫁证据。
 
 婚嫁类别只能解释该年份规则层已有的婚嫁信号（至少2星），不得用桃花、天喜或夫妻宫
 单独升级出婚嫁；连续年份属于同一婚恋窗口，只有峰值年可写关系定型候选。已婚状态
 只写配偶、共同生活或家庭安排，未知状态必须用“未婚/已婚分别表现”的条件句。
 
 ### 当代翻译要求（重要）
-对每个信号的 prediction 和 reasoning，必须翻译成命主能看懂的当代现实场景，不能停留在八字术语上。用非命理语言说出具体可能发生的事情。
-
-参考（按类别）：
-- 婚嫁/桃花 → 脱单/热恋/同居/订婚/结婚/分手/冷战/出轨
-- 事业 → 跳槽/晋升/转行/创业/被裁员/项目压力/贵人提携
-- 财运 → 涨薪/奖金/副业/投资亏损/大额支出/被借钱
-- 健康 → 失眠/焦虑/过劳/慢性病/体检异常/过敏
-- 搬迁 → 租房/买房/换城市/留学/移民/装修
-- 人际 → 被孤立/遇知己/社交焦虑/团队矛盾/和解
-- 状态 → 迷茫/低谷/觉醒/放弃/找到方向/创造欲
+只能把规则层已有 prediction、触发摘要和证据翻译成白话，不能补充规则层没有的具体
+经历。健康类只作生活节律与安全提醒，不得推断疾病、诊断、手术或体检结果；财务和
+法律事项不得推断金额、损失或诉讼结果。
 
 **禁止在 prediction 中出现原始分数或八字术语**：如"★2""正财透干""比劫夺财"等。命主看到的是"今年财运有压力"而不是"★2"。
 
@@ -1119,7 +1143,7 @@ category_matrix 中完整返回六个 0/1 状态；events 只写状态为 1 的�
 无事件时返回空 events 数组；严格根据数据推理不编造"""
 
     messages = [
-        {"role": "system", "content": "你是一个精确的八字命理推理器。只输出 JSON，不输出其他内容。"},
+        {"role": "system", "content": "你是规则结果审阅器，只解释现有证据，不重算或新增结论。只输出 JSON。"},
         {"role": "user", "content": prompt},
     ]
     max_output_tokens = _ANNUAL_BATCH_MAX_OUTPUT_TOKENS

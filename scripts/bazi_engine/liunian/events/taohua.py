@@ -79,11 +79,11 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         strength = max(strength, 2)
         triggers.append("流年桃花入命")
         if gender == "女" and ln_shishen in (Shishen.偏官, Shishen.正官):
-            notes.append("女命七杀坐桃花→异性缘复杂，偏向感情困扰/关系受制，择偶需看边界感")
+            notes.append("官杀与桃花同现，只作关系互动与边界提示，不推断具体感情经历")
         elif gender == "男" and ln_shishen in (Shishen.偏财, Shishen.正财):
-            notes.append("男命财星坐桃花→异性缘旺、风流机会多，需防感情消费和多线暧昧")
+            notes.append("财星与桃花同现，只作关系与资源主题参考，不推断具体感情经历或消费动机")
         if all_branches.count(taohua) >= 1:
-            notes.append("原局桃花被流年引动→吸引力增强，也会放大感情波动")
+            notes.append("原局桃花与流年桃花重复，只表示关系主题信号叠加")
 
     # 天喜合动+偏财/正财 (男) or 官星 (女)
     if ln_branch == tianxi:
@@ -122,17 +122,16 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # 偏财/正财向正财过渡模式检查
     if gender == "男":
         if ln_shishen == Shishen.偏财:
-            notes.append("偏财年→吸引/机会，看次年正财是否接得住")
+            notes.append("偏财年只作关系与资源主题参考，不据此判断关系结果")
         elif ln_shishen == Shishen.正财:
-            notes.append("正财年→妻星出现，关系转正机会")
+            notes.append("正财年只作配偶星结构参考，关系进展需以现实互动为准")
 
     if triggers:
         direction = "正面"
         # 校准数据驱动的方向修正（v0.7.0）
         _triggers_str = str(triggers)
         _notes_str = str(notes)
-
-        if "分手" in _notes_str or ("卯辰穿" in _triggers_str and "天喜伴生" not in _triggers_str) or ("自刑" in _triggers_str and "伏吟" in _triggers_str):
+        if ("卯辰穿" in _triggers_str and "天喜伴生" not in _triggers_str) or ("自刑" in _triggers_str and "伏吟" in _triggers_str):
             direction = "负面"
         elif "困扰" in _notes_str or "不稳" in _notes_str:
             direction = "中性"
@@ -141,7 +140,7 @@ def detect_taohua_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         if direction == "正面":
             notes.insert(0, "若单身→恋爱机会/脱单窗口；若已有对象→关系升温/深化/里程碑")
         elif direction == "负面":
-            notes.insert(0, "若单身→烂桃花/感情困扰；若已有对象→感情危机/分手风险")
+            notes.insert(0, "若单身→留意关系质量与边界；若已有对象→重点看沟通与信任压力")
         else:
             notes.insert(0, "若单身→感情波动期，宜观望；若已有对象→关系平淡期或小摩擦")
 

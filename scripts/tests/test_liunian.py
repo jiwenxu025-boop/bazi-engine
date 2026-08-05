@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from bazi_engine.chart import build_chart
-from bazi_engine.enums import Dizhi, Tiangan
+from bazi_engine.enums import Dizhi, Shishen, Tiangan
 from bazi_engine.liunian import (
     AnnualScan,
     EventSignal,
@@ -18,15 +18,25 @@ from bazi_engine.liunian import (
     _has_sanhe_with_dizhi,
     _is_in_same_sanhe,
     _process_suiyun_clash,
+    detect_guanfei_signals,
     detect_hunjia_signals,
     detect_jiankang_signals,
     detect_renji_signals,
     detect_taohua_signals,
+    is_favorable,
 )
 
 # ═══════════════════════════════════════════════════════════════
 # ScoreAccumulator 单元测试
 # ═══════════════════════════════════════════════════════════════
+
+def test_favorability_distinguishes_favorable_harmful_and_neutral():
+    favorable = {"正印", "偏印", "比肩", "劫财"}
+    harmful: set[str] = set()
+
+    assert is_favorable(Shishen.正印, favorable, harmful) is True
+    assert is_favorable(Shishen.伤官, favorable, harmful) is None
+    assert is_favorable(Shishen.伤官, favorable, {"伤官"}) is False
 
 def test_score_accumulator_basic():
     """正负叠加 → 总分正确"""
@@ -526,6 +536,48 @@ def test_taohua_does_not_promote_to_hunjia_for_adults():
     events = [EventSignal(category="桃花", direction="正面", strength=2)]
     _cross_ref_hunjia_taohua(events, age=30)
     assert [event.category for event in events] == ["桃花"]
+
+
+def test_hunjia_derived_taohua_wording_remains_conditional():
+    events = [EventSignal(category="婚嫁", direction="正面", strength=3)]
+
+    _cross_ref_hunjia_taohua(events, age=30)
+
+    derived = next(event for event in events if event.category == "桃花")
+    assert "必有" not in " ".join(derived.notes)
+    assert "候选" in " ".join(derived.notes)
+
+
+def test_guanfei_rule_does_not_treat_seven_kill_as_direct_officer():
+    common = {
+        "ln_dz": Dizhi.子,
+        "day_master": Tiangan.甲,
+        "day_branch": Dizhi.寅,
+        "year_branch": Dizhi.辰,
+        "month_branch": Dizhi.巳,
+        "hour_branch": Dizhi.未,
+        "dn_tg": Tiangan.丁,
+        "dn_dz": Dizhi.酉,
+        "natal_shang_guan": True,
+    }
+
+    assert detect_guanfei_signals(ln_tg=Tiangan.庚, **common) == []
+    assert detect_guanfei_signals(ln_tg=Tiangan.辛, **common)
+
+
+def test_hidden_spouse_star_alone_does_not_create_marriage_signal():
+    events = detect_hunjia_signals(
+        ln_stem=Tiangan.乙,
+        ln_branch=Dizhi.丑,
+        day_branch=Dizhi.寅,
+        day_master=Tiangan.甲,
+        year_branch=Dizhi.子,
+        gender="男",
+        age=30,
+        all_branches=(Dizhi.子, Dizhi.卯, Dizhi.寅, Dizhi.辰),
+    )
+
+    assert all(event.category != "婚嫁" for event in events)
 
 
 def test_relationship_window_has_one_peak_and_no_repeat_marriage_wording():

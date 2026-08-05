@@ -36,25 +36,25 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
                 category="状态",
                 direction="负面",
                 strength=2,
-                prediction="岁运天战：流年克大运喜神→十年保护伞被太岁打破，事业/人际面临较大压力",
+                prediction="流年与大运天干相克，工作推进与沟通压力可能增加",
                 triggers=[f"流年{ln_tg_val}克大运{dn_tg_val}(天战)"],
-                notes=["岁运天战→权威之争/环境剧变", "大运天干为喜→保护被掀翻，压力增大"],
+                notes=["岁运天战只作压力与变化提示", "大运天干为喜→原有支持条件可能受扰动"],
             ))
         elif dn_tg_fav is False:
             signals.append(EventSignal(
                 category="状态",
                 direction="正面",
                 strength=1,
-                prediction="岁运天战：流年克大运忌神→十年枷锁被太岁打破，困境出现转机",
+                prediction="流年与大运天干相克，原有阻力可能松动，但仍需结合现实条件判断",
                 triggers=[f"流年{ln_tg_val}克大运{dn_tg_val}(天战)"],
-                notes=["岁运天战→打破困局", "大运天干为忌→枷锁被破，转机出现"],
+                notes=["岁运天战→原有安排出现调整空间", "大运天干为忌→阻力变化候选"],
             ))
         else:
             signals.append(EventSignal(
                 category="状态",
                 direction="中性",
                 strength=1,
-                prediction="岁运天战：流年与大运天干相克，有权威之争或环境变化",
+                prediction="流年与大运天干相克，可留意工作沟通与环境安排变化",
                 triggers=[f"流年{ln_tg_val}克大运{dn_tg_val}(天战)"],
                 notes=["岁运天战→注意职场人际摩擦"],
             ))
@@ -69,28 +69,28 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
                 category="状态",
                 direction="负面",
                 strength=3,
-                prediction="岁运地战：流年冲大运喜神→十年根基被太岁动摇，环境/健康/家庭面临重大变动",
+                prediction="流年与大运地支相冲，居住、家庭或长期安排的变动信号较强",
                 triggers=[f"流年{ln_branch.value}冲大运{dn_branch.value}(地战)"],
-                notes=["岁运地战→根基动摇，程度远大于天战",
-                       "大运地支为喜→十年保护地基被破，重大变动"],
+                notes=["岁运地战→长期安排受到扰动",
+                       "大运地支为喜→原有支持条件可能减弱"],
             ))
         elif dn_dz_fav is False:
             signals.append(EventSignal(
                 category="状态",
                 direction="正面",
                 strength=2,
-                prediction="岁运地战：流年冲大运忌神→十年困局被太岁打破根基，旧格局瓦解迎新生",
+                prediction="流年与大运地支相冲，原有阻力可能变化，适合先核对现实条件再行动",
                 triggers=[f"流年{ln_branch.value}冲大运{dn_branch.value}(地战)"],
-                notes=["岁运地战→打破困局根基", "大运地支为忌→地基被翻，旧环境瓦解"],
+                notes=["岁运地战→长期安排出现调整", "大运地支为忌→阻力变化候选"],
             ))
         else:
             signals.append(EventSignal(
                 category="状态",
                 direction="负面",
                 strength=2,
-                prediction="岁运地战：流年与大运地支相冲，环境/家庭有较大动荡",
+                prediction="流年与大运地支相冲，可留意居住、家庭或长期安排变化",
                 triggers=[f"流年{ln_branch.value}冲大运{dn_branch.value}(地战)"],
-                notes=["岁运地战→根基动摇，注意家庭/居住环境变动"],
+                notes=["岁运地战→环境与家庭安排变化候选"],
             ))
         has_conflict = True
 
@@ -103,9 +103,9 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
                 category="状态",
                 direction="负面",
                 strength=1,
-                prediction="岁运相刑：流年与大运相刑，有慢性摩擦或法律/健康隐患",
+                prediction="流年与大运相刑，持续性摩擦或规则压力可能增加",
                 triggers=[f"流年{ln_branch.value}刑大运{dn_branch.value}"],
-                notes=["岁运相刑→慢性损耗/官非隐忧（不分局）"],
+                notes=["岁运相刑→留意长期沟通、手续与节奏问题"],
             ))
             has_conflict = True
         if dz_hai:
@@ -113,9 +113,9 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
                 category="状态",
                 direction="负面",
                 strength=1,
-                prediction="岁运相害：流年与大运相害，有人际暗害或健康隐患",
+                prediction="流年与大运相害，可留意隐性沟通摩擦或安排反复",
                 triggers=[f"流年{ln_branch.value}害大运{dn_branch.value}"],
-                notes=["岁运相害→暗箭难防/隐性疾病（不分局）"],
+                notes=["岁运相害→信息不对称与隐性摩擦候选"],
             ))
             has_conflict = True
 
@@ -127,9 +127,9 @@ def _process_suiyun_clash(ln_stem, ln_branch, dn_stem, dn_branch,
                 category="状态",
                 direction="正面",
                 strength=1,
-                prediction="岁运相合：流年与大运地支六合，十年积累的力量在这一年集中兑现",
+                prediction="流年与大运地支六合，长期安排可能在本年形成较明确的推进重点",
                 triggers=[f"流年{ln_branch.value}合大运{dn_branch.value}"],
-                notes=["岁运相合→力量聚焦，十年势能转化为年度事件"],
+                notes=["岁运相合→事项聚焦候选，不代表结果必然兑现"],
             ))
 
     return signals

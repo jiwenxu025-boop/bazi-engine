@@ -19,12 +19,13 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           day_master: Tiangan, year_branch: Dizhi,
                           day_branch: Dizhi,
                           favorable: set[str] | None = None,
-                          all_branches: tuple[Dizhi, ...] = ()) -> list[EventSignal]:
+                          all_branches: tuple[Dizhi, ...] = (),
+                          harmful: set[str] | None = None) -> list[EventSignal]:
     """检测财运信号 — v0.5.0: 打分制"""
     signals: list[EventSignal] = []
     ln_shishen = get_ten_god(day_master, ln_stem)
     s = ScoreAccumulator(favorable)
-    fav = is_favorable(ln_shishen, favorable)
+    fav = is_favorable(ln_shishen, favorable, harmful)
     s.set_shishen(ln_shishen.value, fav)
 
     is_cai = ln_shishen in (Shishen.正财, Shishen.偏财)
@@ -33,7 +34,7 @@ def detect_caiyun_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     is_bijian = ln_shishen == Shishen.比肩
     is_jiecai = ln_shishen == Shishen.劫财
 
-    fav = is_favorable(ln_shishen, favorable)
+    fav = is_favorable(ln_shishen, favorable, harmful)
     yima = YIMA.get(year_branch)
     caiku = get_caiku_branch(day_master)
     lu_cai = TIANGAN_LU.get(day_master)

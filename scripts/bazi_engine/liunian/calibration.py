@@ -79,41 +79,33 @@ def apply_shishen_year_notes(events: list[EventSignal],
 
 def apply_personality_notes(events: list[EventSignal],
                             ctx: dict) -> None:
-    """为事件追加性格联动备注。只保留有具体行为指引的，删掉空洞安慰和性格吹捧。"""
+    """追加不依赖人格推断的现实核对建议。"""
+    del ctx
     for e in events:
         note = ""
 
         if e.category == "桃花":
-            if e.direction == "负面" and ctx.get("introspective"):
-                note = "你偏内省，感情波动后建议给自己多一些时间消化，不必急于做决定"
-            elif e.direction == "负面":
-                note = "感情波动期，注意沟通方式"
-            elif e.direction == "正面" and ctx.get("passive_romance"):
-                note = "机会出现，但你偏被动——对方可能会先迈出第一步，注意接收信号"
-            elif e.direction == "中性" and ctx.get("passive_romance"):
-                note = "感情节点期，你倾向于等对方推进——但有时主动一步效果更好"
+            if e.direction == "负面":
+                note = "如现实中出现关系压力，可先核对沟通、边界和双方意愿"
 
         elif e.category == "事业":
-            if e.direction == "负面" and ctx.get("is_weak"):
-                note = "身弱时期事业压力较大，建议优先保稳，不要在这个阶段做冒险决策"
+            if e.direction == "负面":
+                note = "如现实中工作或学业压力增加，先核对任务、资源和可调整事项"
 
         elif e.category == "财运":
             if e.direction == "负面":
-                note = "注意控制消费冲动，这个阶段宜守不宜攻"
+                note = "以实际预算、账单和合同为准，不仅凭该信号作财务决定"
 
         elif e.category == "健康":
             if e.direction == "负面":
-                note = "健康信号值得重视，建议规律作息和定期体检"
+                note = "仅作作息与安全提醒；如有不适，请以专业医疗意见为准"
 
         elif e.category == "状态":
-            if e.direction == "负面" and ctx.get("inner_withdrawn"):
-                note = "你容易在低谷时封闭自己——记得找信任的人聊聊，独处太久反而加重"
+            if e.direction == "负面":
+                note = "如现实压力持续影响生活，可向可信任的人或专业人士寻求支持"
 
-        elif e.category == "人际":
-            if e.direction == "负面" and ctx.get("inner_withdrawn"):
-                note = "人际摩擦时你倾向回避——有时直接沟通比沉默更有效"
-            elif e.direction == "负面":
-                note = "注意言辞分寸，这个阶段的人际冲突宜冷处理"
+        elif e.category == "人际" and e.direction == "负面":
+            note = "如现实中出现分歧，可核对信息、边界和沟通方式"
 
         if note:
             e.personality_note = note
@@ -203,31 +195,32 @@ def _check_event_conflicts(events: list[EventSignal],
     cats = {e.category for e in events}
     ev_map = {e.category: e for e in events}
 
-    # 桃花+财运同时出现 → 感情消费提示
+    # 桃花+财运同时出现只说明两个主题同年出现，不能推断消费动机。
     if "桃花" in cats and "财运" in cats:
-        ev_map["桃花"].notes.append("桃花+财运同现→社交和感情消费增加")
-        ev_map["财运"].notes.append("财运+桃花同现→部分开支与感情/社交有关")
+        shared_note = "桃花与财运信号同现，分别核对关系互动和实际收支，不推断两者存在因果"
+        ev_map["桃花"].notes.append(shared_note)
+        ev_map["财运"].notes.append(shared_note)
 
     # 事业+搬迁同时出现 → 可能是工作地点变动
     if "事业" in cats and "搬迁" in cats:
         ev_map["事业"].notes.append("事业+搬迁同现→工作地点或环境可能变动")
-        ev_map["搬迁"].notes.append("搬迁+事业同现→搬家可能与工作/学业有关")
+        ev_map["搬迁"].notes.append("搬迁+事业同现→可核对工作或学业环境是否有调整安排")
 
     # 健康+事业同时出现 → 注意工作压力影响健康
     if "健康" in cats and "事业" in cats:
         ev_map["健康"].notes.append("健康+事业同现→工作/学业压力可能影响身体")
 
-    # 桃花负面(分手型) + 婚嫁正面 → 婚嫁降级
-    # 仅当桃花负面明确来自卯辰穿时才降级；日支六冲本身不决定分手方向。
+    # 桃花关系压力信号 + 婚嫁正面 → 婚嫁降级。
+    # 仅当桃花负面明确来自卯辰穿时才降级；日支六冲本身不决定现实关系结果。
     if "桃花" in ev_map and "婚嫁" in ev_map:
         th = ev_map["桃花"]
         hj = ev_map["婚嫁"]
         th_trig = str(th.triggers)
-        is_breakup_type = "卯辰穿" in th_trig
-        if th.direction == "负面" and hj.direction == "正面" and is_breakup_type:
+        is_relationship_pressure = "卯辰穿" in th_trig
+        if th.direction == "负面" and hj.direction == "正面" and is_relationship_pressure:
             hj.direction = "中性"
             hj.strength = max(1, hj.strength - 1)
-            hj.notes.append("桃花负面(分手型)+婚嫁正面矛盾→婚期信号存疑")
+            hj.notes.append("桃花关系压力信号与婚嫁正面信号同现→关系定型信号需谨慎核对")
             conflict = "桃花负面与婚嫁正面同年，且桃花含明确穿害结构；婚嫁方向降为中性"
             hj.conflicts.append(conflict)
             th.conflicts.append(conflict)
@@ -260,6 +253,6 @@ def _cross_ref_hunjia_taohua(events: list[EventSignal], age: int = 0):
                 direction=best.direction,
                 strength=min(best.strength, 2),
                 triggers=[*best.triggers, "婚嫁→桃花(交叉引用)"],
-                notes=[*best.notes, "婚嫁信号强→必有感情事件铺垫"],
+                notes=[*best.notes, "婚嫁规则信号较强→感情领域同步活跃的候选，需以现实进展核对"],
             ))
 

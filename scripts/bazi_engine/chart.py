@@ -552,6 +552,9 @@ def _compute_yongshen_stage(
         # 若用户提供了喜用神，合并覆盖自动推荐
         if favorable:
             chart._yongshen_result["favorable"] = sorted(favorable)
+            chart._yongshen_result["harmful"] = sorted(
+                {item.value for item in Shishen} - favorable
+            )
             from .yongshen import build_decision_policy
             chart._yongshen_result["decision_policy"] = build_decision_policy(
                 chart._yongshen_result
@@ -768,6 +771,9 @@ def _compute_liunian_stage(
     effective_favorable = set(
         decision_policy.get("favorable", yongshen_result.get("favorable", []))
     )
+    effective_harmful = set(
+        decision_policy.get("harmful", yongshen_result.get("harmful", []))
+    )
     chart.annual_scans = scan_years(
         chart.day_master,
         chart.year.branch,
@@ -781,7 +787,8 @@ def _compute_liunian_stage(
         liunian_range[0],
         liunian_range[1],
         known_events,
-        favorable or effective_favorable or None,
+        favorable if favorable is not None else effective_favorable,
+        harmful=effective_harmful,
         relationship_status=relationship_status,
         personality_ctx=p_ctx,
         life_stage_override=getattr(chart, '_life_stage_override', ''),

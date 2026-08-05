@@ -211,6 +211,50 @@ def test_chart_stream_returns_rules_and_done_events(monkeypatch):
     assert response.status_code == 200
     assert '"phase": "rules_done"' in body or '"phase":"rules_done"' in body
     assert "data: [DONE]" in body
+    rules = next(
+        json.loads(line[6:])
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"phase": "rules_done"' in line
+    )
+    assert rules["annual_review_years"] == []
+
+
+def test_chart_stream_lists_only_years_with_pending_annual_reviews(monkeypatch):
+    import bazi_engine.liunian.llm_bridge as llm_bridge
+    import bazi_engine.llm_review as llm_review
+    from bazi_engine.api import app
+
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "1")
+    monkeypatch.setenv("BAZI_AI_ENABLED", "0")
+    monkeypatch.setenv("BAZI_FUSION_ENGINE", "0")
+    monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
+    monkeypatch.setattr(llm_review, "DEEPSEEK_KEY", "test-key")
+    monkeypatch.setattr(llm_review, "should_invoke_llm", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(llm_review, "enrich_dayun_interpretations", lambda _chart: [])
+    monkeypatch.setattr(llm_bridge, "_execute_llm_reviews_streaming", lambda *_args, **_kwargs: None)
+
+    with TestClient(app).stream(
+        "POST",
+        "/api/chart/stream",
+        json={
+            "name": "test",
+            "gender": "男",
+            "year": 2007,
+            "month": 8,
+            "day": 26,
+            "hour": 20,
+            "liunian_from": 2026,
+            "liunian_to": 2027,
+        },
+    ) as response:
+        body = "".join(response.iter_text())
+
+    rules = next(
+        json.loads(line[6:])
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"phase": "rules_done"' in line
+    )
+    assert rules["annual_review_years"] == [2026, 2027]
 
 
 def test_legacy_chart_get_can_be_disabled(monkeypatch):

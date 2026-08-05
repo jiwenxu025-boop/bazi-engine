@@ -663,8 +663,36 @@ def test_annual_ai_review_matrix_summary_and_visibility():
     assert result.returncode == 0, result.stderr or result.stdout
     source = APP_JS.read_text(encoding="utf-8")
     assert "if (!significant.length && !aiMeta.signalReviews.length) continue;" not in source
-    assert source.count("本年规则层没有两星以上显著信号") == 2
-    assert source.count("annual-layer-label>规则判断") == 2
+    assert source.count("本年规则层没有两星以上显著信号") == 1
+    assert source.count("annual-layer-label>规则判断") == 1
+
+
+def test_annual_ai_review_status_is_tracked_per_year():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const source = fs.readFileSync({str(APP_JS)!r}, 'utf8');
+        const start = source.indexOf('let AppState');
+        const end = source.indexOf('function _annualAiReviewMeta');
+        const sandbox = {{ AbortController, window: {{ addEventListener() {{}} }} }};
+        vm.createContext(sandbox);
+        vm.runInContext(source.slice(start, end), sandbox);
+
+        sandbox.setAnnualReviewPendingYears([2026, 2028]);
+        if (sandbox.getAnnualReviewStatus(2026) !== 'pending') throw new Error('2026 was not pending');
+        if (sandbox.getAnnualReviewStatus(2027) !== 'idle') throw new Error('non-review year inherited pending state');
+        sandbox.setAnnualReviewStatus('complete', 2026);
+        if (sandbox.getAnnualReviewStatus(2026) !== 'complete') throw new Error('completed year stayed pending');
+        if (sandbox.getAnnualReviewStatus() !== 'pending') throw new Error('global state ignored another pending year');
+        sandbox.failPendingAnnualReviews();
+        if (sandbox.getAnnualReviewStatus(2028) !== 'error') throw new Error('missing year was presented as complete');
+        """
+    )
+
+    result = run_node(script)
+
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
@@ -677,7 +705,11 @@ def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
         const end = source.indexOf('function applyEventFilter');
         const eventsSection = {{innerHTML: ''}};
         const sandbox = {{
-          esc(value) {{ return String(value); }},
+          esc(value) {{
+            return String(value)
+              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+          }},
           _uiIcon() {{ return ''; }},
           _summarizeAnnualScan() {{ return []; }},
           document: {{
@@ -701,7 +733,14 @@ def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
                 {{category: '事业', review_status: '无明显信号', direction: '中性'}},
               ],
             }},
-            {{year: 2028, liunian: '戊申', age: 21, events: [], ai_reviews: []}},
+            {{
+              year: 2028, liunian: '戊申', age: 21,
+              events: [{{
+                category: '<img src=x onerror=1>', direction: '正面', strength: 2,
+                prediction: '<script>bad()</script>', triggers: ['[喜]<img src=x>'], notes: ['<b>note</b>'],
+              }}],
+              ai_reviews: [],
+            }},
           ],
         }});
 
@@ -710,7 +749,9 @@ def test_flow_refresh_keeps_all_clear_years_and_hides_unstarted_reviews():
         if (eventsSection.innerHTML.includes('ai-layer-summary')) throw new Error('all-clear AI status occupied the collapsed card');
         if (!eventsSection.innerHTML.includes('未发现额外提示：婚嫁、事业')) throw new Error('all-clear AI details were removed');
         if (eventsSection.innerHTML.includes('暂无返回结果')) throw new Error('unstarted AI status was rendered');
-        if ((eventsSection.innerHTML.match(/本年规则层没有两星以上显著信号/g) || []).length !== 2) throw new Error('empty rule layers were hidden');
+        if ((eventsSection.innerHTML.match(/本年规则层没有两星以上显著信号/g) || []).length !== 1) throw new Error('empty rule layers were hidden');
+        if (eventsSection.innerHTML.includes('<script>') || eventsSection.innerHTML.includes('<img src=x')) throw new Error('annual event text reached HTML without escaping');
+        if (!eventsSection.innerHTML.includes('&lt;script&gt;bad()&lt;/script&gt;')) throw new Error('escaped annual prediction missing');
         """
     )
 
@@ -737,7 +778,8 @@ def test_relationship_window_uses_compact_summary_hierarchy():
           relationship_peak_year: 2026,
         }});
         if (!peak.includes('annual-layer-summary relationship-layer-summary')) throw new Error('relationship hierarchy is inconsistent');
-        if (!peak.includes('关系进程') || !peak.includes('2026年为峰值')) throw new Error('peak summary is incomplete');
+        if (!peak.includes('连续窗口') || !peak.includes('2026年为相对峰值')) throw new Error('peak summary is incomplete');
+        if (!peak.includes('不证明现实中存在同一段关系')) throw new Error('window was presented as a real relationship');
         if (peak.includes('<small>') || peak.includes('annual-relationship-summary')) throw new Error('legacy callout layout is still used');
 
         const continuation = sandbox._renderRelationshipWindow({{
@@ -745,7 +787,7 @@ def test_relationship_window_uses_compact_summary_hierarchy():
           relationship_phase: 'continuation',
           relationship_peak_year: 2026,
         }});
-        if (!continuation.includes('延续年，峰值在2026年')) throw new Error('continuation summary is incomplete');
+        if (!continuation.includes('信号延续，相对峰值在2026年')) throw new Error('continuation summary is incomplete');
         """
     )
 
@@ -1748,6 +1790,62 @@ def test_chat_payload_uses_app_state_chart_instead_of_stale_legacy_field():
     )
 
     result = run_node(f"(async () => {{ {script} }})().catch(e => {{ console.error(e.stack || e); process.exit(1); }});")
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_annual_summary_covers_marriage_legal_risk_and_uses_scan_age():
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const vm = require('vm');
+
+        const sandbox = {{
+          console,
+          setTimeout,
+          clearTimeout,
+          Date,
+          localStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}} }},
+          window: {{ matchMedia() {{ return {{ matches: false }}; }}, location: {{ origin: 'http://example.test' }}, addEventListener() {{}} }},
+          document: {{
+            documentElement: {{ classList: {{ contains() {{ return false; }}, add() {{}}, remove() {{}} }} }},
+            addEventListener() {{}},
+            getElementById() {{ return {{
+              style: {{}}, dataset: {{}}, title: '', value: '', innerHTML: '',
+              classList: {{ contains() {{ return false; }}, add() {{}}, remove() {{}}, toggle() {{}} }},
+              addEventListener() {{}},
+            }}; }},
+            querySelector() {{ return null; }},
+            querySelectorAll() {{ return []; }},
+          }},
+          navigator: {{ clipboard: {{ writeText() {{ return Promise.resolve(); }} }} }},
+        }};
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync({str(APP_JS)!r}, 'utf8'), sandbox);
+
+        const studentChart = {{ life_stage: '大学' }};
+        const adultScan = {{ age: 35, events: [
+          {{ category: '事业', direction: '正面', strength: 2 }},
+          {{ category: '财运', direction: '正面', strength: 2 }}
+        ] }};
+        const adultSummary = sandbox._summarizeAnnualScan(adultScan, studentChart).join('、');
+        if (!adultSummary.includes('事业有进')) throw new Error('adult year reused chart student stage');
+        if (adultSummary.includes('校园活跃') || adultSummary.includes('经济宽松')) throw new Error('adult year has student wording');
+
+        const riskScan = {{ age: 30, events: [
+          {{ category: '婚嫁', direction: '正面', strength: 2 }},
+          {{ category: '官非', direction: '负面', strength: 2 }}
+        ] }};
+        const riskSummary = sandbox._summarizeAnnualScan(riskScan, {{ life_stage: '职场' }}).join('、');
+        if (riskSummary.includes('运势平稳')) throw new Error('significant categories reported as calm');
+        if (!riskSummary.includes('关系进展')) throw new Error('marriage summary missing');
+        if (!riskSummary.includes('规则风险')) throw new Error('legal-risk summary missing');
+        """
+    )
+
+    result = run_node(script)
 
     assert result.returncode == 0, result.stderr or result.stdout
 

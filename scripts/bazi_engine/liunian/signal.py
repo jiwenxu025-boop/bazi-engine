@@ -160,6 +160,7 @@ class AnnualScan:
     events: list[EventSignal] = field(default_factory=list)
     ai_reviews: list[EventSignal] = field(default_factory=list)
     age: int | None = None
+    life_stage: str = ""
     sb_relation: str = ""            # 干支关系
     stem_weight: float = 0.5         # 天干权重
     branch_weight: float = 0.5       # 地支权重
@@ -173,6 +174,7 @@ class AnnualScan:
         return {
             "year": self.year,
             "age": self.age,
+            "life_stage": self.life_stage,
             "liunian": f"{self.liunian_stem.value}{self.liunian_branch.value}",
             "dayun": f"{self.dayun_stem.value}{self.dayun_branch.value}" if self.dayun_stem else None,
             "sb_relation": self.sb_relation,

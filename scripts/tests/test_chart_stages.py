@@ -240,7 +240,13 @@ def test_compute_yongshen_stage_sets_result_and_returns_pillar_lists():
     assert chart._yongshen_result["strength"] == "强"
     assert chart._yongshen_result["score"] == 5.0
     assert chart._yongshen_result["favorable"] == ["正印"]
-    assert chart._yongshen_result["harmful"] == ["偏印", "劫财", "正印", "比肩"]
+    assert set(chart._yongshen_result["harmful"]) == {
+        "伤官", "偏印", "偏官", "偏财", "劫财", "正官", "正财", "比肩", "食神",
+    }
+    assert not (
+        set(chart._yongshen_result["favorable"])
+        & set(chart._yongshen_result["harmful"])
+    )
 
 
 def test_compute_tiaohou_health_stage_sets_known_case_results():

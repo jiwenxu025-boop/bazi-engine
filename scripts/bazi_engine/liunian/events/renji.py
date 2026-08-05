@@ -17,7 +17,8 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           day_master: Tiangan,
                           all_branches: tuple[Dizhi, ...],
                           favorable: set[str] | None = None,
-                          dayun_branch: Dizhi | None = None) -> list[EventSignal]:
+                          dayun_branch: Dizhi | None = None,
+                          harmful: set[str] | None = None) -> list[EventSignal]:
     """检测人际关系信号（朋友/同事/社交）— v0.4.0"""
     signals: list[EventSignal] = []
     ln_shishen = get_ten_god(day_master, ln_stem)
@@ -29,13 +30,13 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     is_bijian = ln_shishen == Shishen.比肩
     is_jiecai = ln_shishen == Shishen.劫财
     is_shang = ln_shishen == Shishen.伤官
-    fav = is_favorable(ln_shishen, favorable)
+    fav = is_favorable(ln_shishen, favorable, harmful)
 
     # ── ★★★: 三刑汇聚 ──
     # 流年+命局凑齐三刑(寅巳申/丑未戌/子卯)
     sanxing_sets = [
-        ({Dizhi.寅, Dizhi.巳, Dizhi.申}, "寅巳申三刑→官非/人际重大冲突"),
-        ({Dizhi.丑, Dizhi.未, Dizhi.戌}, "丑未戌三刑→口舌/纠纷"),
+        ({Dizhi.寅, Dizhi.巳, Dizhi.申}, "寅巳申三刑→人际压力候选"),
+        ({Dizhi.丑, Dizhi.未, Dizhi.戌}, "丑未戌三刑→沟通压力候选"),
     ]
     natal_labels = ("年柱", "月柱", "日柱", "时柱")
     natal_sources: dict[Dizhi, list[str]] = {}
@@ -70,7 +71,7 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             detail = "+".join(sorted(source_parts))
             strength = max(strength, 3)
             triggers.append(f"{label}（{detail}）")
-            notes.append("三刑由流年/大运引动→重大人际冲突候选，不把原局底盘当作年度事件")
+            notes.append("三刑由流年/大运引动→人际与沟通压力候选，不把原局底盘当作年度事件")
             evidence.append(EvidenceItem(
                 rule="sanxing_renji",
                 layers=tuple(sorted(layers)),
@@ -88,11 +89,11 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             if br == day_branch:
                 strength = max(strength, 2)
                 triggers.append(f"{hai_pair}穿夫妻宫→人际困扰")
-                notes.append("夫妻宫被穿→情绪/人际受影响 (textbook)")
+                notes.append("夫妻宫穿害只作关系与沟通压力提示，不推断具体人际结果")
             elif br == month_branch:
                 strength = max(strength, 2)
                 triggers.append(f"{hai_pair}穿月柱→职场人际摩擦")
-                notes.append("穿月柱→同事/朋友关系受损")
+                notes.append("穿月柱→可核对同事、同学或朋友间是否存在沟通摩擦")
             else:
                 strength = max(strength, 1)
                 if not any("穿" in t for t in triggers):
@@ -107,13 +108,13 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if has_xing:
         strength = max(strength, 2)
         triggers.append("流年与原局相刑")
-        notes.append("刑→人际摩擦/口舌是非 (textbook)")
+        notes.append("相刑只作沟通摩擦候选，不直接推断争执或纠纷")
 
     # ── ★★: 比劫夺财/争官 → 人际竞争 ──
     if is_jiecai and fav is not True:
         strength = max(strength, 2)
-        triggers.append("劫财透干→朋友竞争/被借钱")
-        notes.append("劫财→人际竞争加剧，慎防被友拖累 (段建业)")
+        triggers.append("劫财透干→同辈竞争候选")
+        notes.append("劫财结构只作合作、借贷与边界提醒，不推断朋友行为")
     elif is_bijian and fav is False:
         strength = max(strength, 1)
         triggers.append("比肩透干→同辈竞争")
@@ -122,8 +123,8 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # ── ★★: 伤官+人际 → 口舌惹事 ──
     if is_shang:
         strength = max(strength, 1)
-        triggers.append("伤官透干→言语直接易得罪人")
-        notes.append("伤官→直言不讳，注意言语冲突")
+        triggers.append("伤官透干→表达摩擦候选")
+        notes.append("伤官结构只提示表达与规则边界，需结合现实沟通核对")
 
     # ── ★: 流年合动 → 社交活跃 ──
     for br in all_branches:
@@ -131,7 +132,7 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
             if strength < 2:
                 strength = max(strength, 1)
                 triggers.append("流年合动→社交活跃")
-                notes.append("六合→人缘好/社交机会多")
+                notes.append("六合只作社交互动主题参考，不直接判断人缘或结果")
             break
 
     # ── ★: 天喜合动 → 社交活跃 ──
@@ -139,7 +140,7 @@ def detect_renji_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     if tianxi_rj and (ln_branch == tianxi_rj or _is_in_same_sanhe(ln_branch, tianxi_rj)):
         strength = max(strength, 1)
         triggers.append("流年合动天喜→社交活跃")
-        notes.append("天喜年→人缘提升/社交机会增多")
+        notes.append("天喜只作传统神煞文化参考，不直接判断人缘或社交结果")
 
     if triggers:
         is_negative = any(kw in str(triggers) for kw in ["刑", "穿", "劫财", "伤官"])

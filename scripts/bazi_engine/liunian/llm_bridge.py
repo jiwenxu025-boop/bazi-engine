@@ -42,7 +42,7 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    from ..llm_review import call_llm_review
+    from ..llm_review import call_llm_review, incomplete_review_results
 
     def _do_review(idx, year, ctx):
         def _on_token(tok: str):
@@ -68,14 +68,17 @@ def _execute_llm_reviews_streaming(results: list[AnnualScan],
             idx, year = futures[future]
             try:
                 llm_results = future.result(timeout=60)
-                # AI 审阅与规则信号分开，不影响筛选、强度统计或主摘要。
-                for llm_evt in llm_results:
-                    results[idx].ai_reviews.append(_review_to_signal(llm_evt))
-                if on_llm_result and not _cancelled(cancel_event):
-                    sig_dicts = _signals_to_dicts(llm_results)
-                    on_llm_result(year, sig_dicts)
             except Exception as error:
                 logger.warning("LLM review failed year=%s type=%s", year, type(error).__name__)
+                llm_results = []
+            if not llm_results:
+                llm_results = incomplete_review_results(year)
+            # AI 审阅与规则信号分开，不影响筛选、强度统计或主摘要。
+            for llm_evt in llm_results:
+                results[idx].ai_reviews.append(_review_to_signal(llm_evt))
+            if on_llm_result and not _cancelled(cancel_event):
+                sig_dicts = _signals_to_dicts(llm_results)
+                on_llm_result(year, sig_dicts)
 
 
 def _execute_llm_reviews_parallel(results: list[AnnualScan],
@@ -86,7 +89,7 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    from ..llm_review import call_llm_review
+    from ..llm_review import call_llm_review, incomplete_review_results
 
     with ThreadPoolExecutor(max_workers=min(5, len(llm_tasks))) as executor:
         futures = {}
@@ -95,32 +98,35 @@ def _execute_llm_reviews_parallel(results: list[AnnualScan],
 
         for future in as_completed(futures):
             idx = futures[future]
+            year = results[idx].year if idx < len(results) else 0
             try:
                 llm_results = future.result(timeout=60)
-                for llm_evt in llm_results:
-                    results[idx].ai_reviews.append(_review_to_signal(llm_evt))
             except Exception as error:
-                year = results[idx].year if idx < len(results) else "?"
                 logger.warning("LLM review failed year=%s type=%s", year, type(error).__name__)
+                llm_results = []
+            if not llm_results:
+                llm_results = incomplete_review_results(year)
+            for llm_evt in llm_results:
+                results[idx].ai_reviews.append(_review_to_signal(llm_evt))
 
 
 def _execute_batch_streaming(
     results, llm_tasks, on_llm_result, on_llm_token, cancel_event=None,
 ):
-    """批量合并模式（流式）：小批并发，整次执行最多补做一个缺失年份。"""
+    """批量合并模式（流式）：小批并发，每个缺失年份都走单年回退。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     chunks = list(_chunk_llm_tasks(llm_tasks))
     contexts_by_index = dict(llm_tasks)
     missing = []
     with ThreadPoolExecutor(max_workers=min(_BATCH_REVIEW_WORKERS, len(chunks))) as executor:
-        futures = [
+        futures = {
             executor.submit(
                 _review_task_chunk, results, chunk, on_llm_token, cancel_event,
-            )
+            ): chunk
             for chunk in chunks
             if not _cancelled(cancel_event)
-        ]
+        }
         for future in as_completed(futures):
             if _cancelled(cancel_event):
                 break
@@ -128,6 +134,9 @@ def _execute_batch_streaming(
                 resolved = future.result()
             except Exception as error:
                 logger.warning("LLM review chunk failed type=%s", type(error).__name__)
+                for idx, _ctx in futures[future]:
+                    year = results[idx].year if idx < len(results) else 0
+                    missing.append((idx, year, contexts_by_index[idx]))
                 continue
             for idx, year, yr_results in resolved:
                 if not yr_results:
@@ -139,18 +148,15 @@ def _execute_batch_streaming(
                     on_llm_result(year, _signals_to_dicts(yr_results))
 
     if missing and not _cancelled(cancel_event):
-        idx, year, ctx = missing[0]
         logger.warning(
-            "LLM batch review incomplete years=%s; retrying one year=%s",
+            "LLM batch review incomplete years=%s; retrying each year",
             [item[1] for item in missing],
-            year,
         )
-        from ..llm_review import call_llm_review
-
-        yr_results = _call_single_review(
-            call_llm_review, ctx, year, on_llm_token, cancel_event,
-        )
-        if yr_results and not _cancelled(cancel_event):
+        for idx, year, yr_results in _retry_missing_reviews(
+            missing, on_llm_token, cancel_event,
+        ):
+            if _cancelled(cancel_event):
+                break
             for llm_evt in yr_results:
                 results[idx].ai_reviews.append(_review_to_signal(llm_evt))
             if on_llm_result:
@@ -158,19 +164,25 @@ def _execute_batch_streaming(
 
 
 def _execute_batch_parallel(results, llm_tasks):
-    """批量合并模式（同步）：小批并发，整次执行最多补做一个缺失年份。"""
+    """批量合并模式（同步）：小批并发，每个缺失年份都走单年回退。"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     chunks = list(_chunk_llm_tasks(llm_tasks))
     contexts_by_index = dict(llm_tasks)
     missing = []
     with ThreadPoolExecutor(max_workers=min(_BATCH_REVIEW_WORKERS, len(chunks))) as executor:
-        futures = [executor.submit(_review_task_chunk, results, chunk) for chunk in chunks]
+        futures = {
+            executor.submit(_review_task_chunk, results, chunk): chunk
+            for chunk in chunks
+        }
         for future in as_completed(futures):
             try:
                 resolved = future.result()
             except Exception as error:
                 logger.warning("LLM review chunk failed type=%s", type(error).__name__)
+                for idx, _ctx in futures[future]:
+                    year = results[idx].year if idx < len(results) else 0
+                    missing.append((idx, year, contexts_by_index[idx]))
                 continue
             for idx, _year, yr_results in resolved:
                 if not yr_results:
@@ -180,16 +192,13 @@ def _execute_batch_parallel(results, llm_tasks):
                     results[idx].ai_reviews.append(_review_to_signal(llm_evt))
 
     if missing:
-        idx, year, ctx = missing[0]
         logger.warning(
-            "LLM batch review incomplete years=%s; retrying one year=%s",
+            "LLM batch review incomplete years=%s; retrying each year",
             [item[1] for item in missing],
-            year,
         )
-        from ..llm_review import call_llm_review
-
-        for llm_evt in _call_single_review(call_llm_review, ctx, year, None, None):
-            results[idx].ai_reviews.append(_review_to_signal(llm_evt))
+        for idx, _year, yr_results in _retry_missing_reviews(missing):
+            for llm_evt in yr_results:
+                results[idx].ai_reviews.append(_review_to_signal(llm_evt))
 
 
 def _chunk_llm_tasks(llm_tasks):
@@ -198,7 +207,7 @@ def _chunk_llm_tasks(llm_tasks):
 
 
 def _review_task_chunk(results, task_chunk, on_llm_token=None, cancel_event=None):
-    """审阅一个小批次；缺失结果由上层统一控制一次补做。"""
+    """审阅一个小批次；缺失结果由上层逐年补做。"""
     from ..llm_review import call_llm_batch_review, call_llm_review
 
     if _cancelled(cancel_event):
@@ -224,6 +233,47 @@ def _review_task_chunk(results, task_chunk, on_llm_token=None, cancel_event=None
         year = results[idx].year if idx < len(results) else 0
         yr_results = batch_results[position] if position < len(batch_results) else []
         resolved.append((idx, year, yr_results))
+    return resolved
+
+
+def _retry_missing_reviews(missing, on_llm_token=None, cancel_event=None):
+    """并发执行逐年回退；仍无返回时生成明确的未完成矩阵。"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from ..llm_review import call_llm_review, incomplete_review_results
+
+    if not missing or _cancelled(cancel_event):
+        return []
+
+    def retry(item):
+        idx, year, ctx = item
+        reviews = _call_single_review(
+            call_llm_review, ctx, year, on_llm_token, cancel_event,
+        )
+        if not reviews and not _cancelled(cancel_event):
+            reviews = incomplete_review_results(year)
+        return idx, year, reviews
+
+    resolved = []
+    with ThreadPoolExecutor(max_workers=min(_BATCH_REVIEW_WORKERS, len(missing))) as executor:
+        futures = {
+            executor.submit(retry, item): item
+            for item in missing
+            if not _cancelled(cancel_event)
+        }
+        for future in as_completed(futures):
+            if _cancelled(cancel_event):
+                break
+            idx, year, _ctx = futures[future]
+            try:
+                resolved.append(future.result())
+            except Exception as error:
+                logger.warning(
+                    "LLM single-year fallback failed year=%s type=%s",
+                    year,
+                    type(error).__name__,
+                )
+                resolved.append((idx, year, incomplete_review_results(year)))
     return resolved
 
 
@@ -265,11 +315,6 @@ def _cancelled(cancel_event) -> bool:
 
 
 def _signals_to_dicts(llm_results) -> list[dict]:
-    """LLMReviewResult → dict 列表（供流式回调使用）"""
+    """Use the same EventSignal contract for streaming and synchronous output."""
     signals = [_review_to_signal(llm_evt) for llm_evt in llm_results]
-    return [{
-        "category": s.category, "direction": s.direction,
-        "strength": s.strength, "prediction": s.prediction,
-        "triggers": s.triggers, "notes": s.notes, "source": s.source,
-        "review_status": s.review_status,
-    } for s in signals]
+    return [signal.to_dict() for signal in signals]

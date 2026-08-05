@@ -272,6 +272,7 @@ let AppState = {
   currentContext: null,
   streamStatus: 'idle',
   annualReviewStatus: 'idle',
+  annualReviewStatusByYear: {},
   lifeStageOverride: null,
   streamControllers: {},
 };
@@ -324,13 +325,47 @@ function setStreamStatus(status){
   return AppState.streamStatus;
 }
 
-function setAnnualReviewStatus(status){
-  AppState.annualReviewStatus = status || 'idle';
+function setAnnualReviewStatus(status, year){
+  if (year !== undefined && year !== null){
+    AppState.annualReviewStatusByYear[String(year)] = status || 'idle';
+    let statuses = Object.keys(AppState.annualReviewStatusByYear).map(function(key){
+      return AppState.annualReviewStatusByYear[key];
+    });
+    AppState.annualReviewStatus = statuses.indexOf('pending') !== -1
+      ? 'pending' : statuses.indexOf('error') !== -1 ? 'error' : statuses.length ? 'complete' : 'idle';
+  } else if (!status || status === 'idle'){
+    AppState.annualReviewStatusByYear = {};
+    AppState.annualReviewStatus = 'idle';
+  } else {
+    AppState.annualReviewStatus = status;
+  }
   return AppState.annualReviewStatus;
 }
 
-function getAnnualReviewStatus(){
+function getAnnualReviewStatus(year){
+  if (year !== undefined && year !== null){
+    return AppState.annualReviewStatusByYear[String(year)] || 'idle';
+  }
   return AppState.annualReviewStatus || 'idle';
+}
+
+function setAnnualReviewPendingYears(years){
+  AppState.annualReviewStatusByYear = {};
+  let pendingYears = Array.isArray(years) ? years : [];
+  for (let i = 0; i < pendingYears.length; i++){
+    AppState.annualReviewStatusByYear[String(pendingYears[i])] = 'pending';
+  }
+  AppState.annualReviewStatus = pendingYears.length ? 'pending' : 'idle';
+}
+
+function failPendingAnnualReviews(){
+  let years = Object.keys(AppState.annualReviewStatusByYear);
+  for (let i = 0; i < years.length; i++){
+    if (AppState.annualReviewStatusByYear[years[i]] === 'pending'){
+      AppState.annualReviewStatusByYear[years[i]] = 'error';
+    }
+  }
+  if (AppState.annualReviewStatus === 'pending') AppState.annualReviewStatus = 'error';
 }
 
 function mergeAnnualAiReviews(year, signals){
@@ -454,23 +489,103 @@ function _renderAnnualAiReviews(reviews, status){
 function _renderRelationshipWindow(scan){
   if (!scan || !scan.relationship_window) return '';
   let phaseLabels = {
-    opening: '起始年',
-    developing: '发展年',
-    peak: '峰值年',
-    continuation: '延续年',
-    adjustment: '磨合年',
+    opening: '窗口起点',
+    developing: '信号增强',
+    peak: '相对峰值',
+    continuation: '信号延续',
+    adjustment: '压力偏多',
   };
-  let phase = phaseLabels[scan.relationship_phase] || '关系进程';
+  let phase = phaseLabels[scan.relationship_phase] || '连续信号';
   let timing = phase;
   if (scan.relationship_peak_year){
     timing = scan.relationship_phase === 'peak'
-      ? scan.relationship_peak_year + '年为峰值'
-      : phase + '，峰值在' + scan.relationship_peak_year + '年';
+      ? scan.relationship_peak_year + '年为相对峰值'
+      : phase + '，相对峰值在' + scan.relationship_peak_year + '年';
   }
   let text = scan.relationship_window + ' · ' + timing +
-    '；连续年份是同一段关系进程，不代表重复婚嫁';
-  return '<div class="annual-layer-summary relationship-layer-summary"><span class=annual-layer-label>关系进程</span><span>' +
+    '；仅表示规则信号连续，不证明现实中存在同一段关系，也不代表重复婚嫁';
+  return '<div class="annual-layer-summary relationship-layer-summary"><span class=annual-layer-label>连续窗口</span><span>' +
     esc(text) + '</span></div>';
+}
+
+function _renderAnnualTrigger(value){
+  let safe = esc(value || '');
+  safe = safe.replace(/\[忌\]/g, '<span class=tag-ji>忌</span>');
+  return safe.replace(/\[喜\]/g, '<span class=tag-xi>喜</span>');
+}
+
+function _renderAnnualCards(d){
+  if (!d || !Array.isArray(d.annual_scans) || !d.annual_scans.length){
+    return '<div class=empty-state>该年份范围无流年数据</div>';
+  }
+  let h = '';
+  for (let s = 0; s < d.annual_scans.length; s++){
+    let scan = d.annual_scans[s] || {};
+    let events = Array.isArray(scan.events) ? scan.events : [];
+    let significant = events.filter(function(event){ return Number(event.strength) >= 2; });
+    let aiReviews = Array.isArray(scan.ai_reviews) ? scan.ai_reviews : [];
+    let aiMeta = _annualAiReviewMeta(aiReviews);
+    let annualReviewStatus = typeof getAnnualReviewStatus === 'function'
+      ? getAnnualReviewStatus(scan.year) : 'idle';
+    let summary = _summarizeAnnualScan(scan, d);
+    let tagBadges = [];
+    for (let e = 0; e < significant.length; e++){
+      let event = significant[e] || {};
+      let dirSymbol = event.direction === '正面' ? '↑' : event.direction === '负面' ? '↓' : '·';
+      tagBadges.push('<span class=header-tag>' + esc(event.category || '') + dirSymbol + '</span>');
+    }
+
+    h += '<div class=event-card>';
+    h += '<div class=event-header>';
+    h += '<span class=event-year>' + esc(scan.year || '') + '</span>';
+    h += '<span class=event-ganzhi>' + esc(scan.liunian || '') + '</span>';
+    h += '<span class=event-age>' + esc(scan.age === undefined ? '' : scan.age) + '岁</span>';
+    h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
+    h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
+    h += '</div>';
+
+    let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
+    h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
+    h += _renderRelationshipWindow(scan);
+    h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
+    h += '<div class=event-body>';
+    h += '<div class=annual-layer-title>规则判断</div>';
+    if (!significant.length){
+      h += '<div class=event-layer-empty>本年规则层没有两星以上显著信号</div>';
+    }
+
+    for (let e = 0; e < significant.length; e++){
+      let event = significant[e] || {};
+      let directionClass = event.direction === '负面' ? 'direction-bad' : event.direction === '正面' ? 'direction-good' : '';
+      let strength = Math.max(0, Math.min(3, Number(event.strength) || 0));
+      h += '<div class=event-item data-category="' + esc(event.category || '') + '">';
+      h += '<div class=event-main>';
+      h += '<span class=stars>' + '★'.repeat(strength) + '</span>';
+      h += '<span class=tag>' + esc(event.category || '') + '</span>';
+      h += '<span class="' + directionClass + '">' + esc(event.direction || '中性') + '</span>';
+      if (event.prediction) h += '<span class=prediction-text>' + esc(event.prediction) + '</span>';
+      h += '</div>';
+
+      let triggers = Array.isArray(event.triggers) ? event.triggers : [];
+      if (triggers.length && triggers[0]){
+        h += '<div class=event-trigger>' + _renderAnnualTrigger(triggers[0]) + '</div>';
+      }
+      let hints = [];
+      if (event.personality_note) hints.push(event.personality_note);
+      if (Array.isArray(event.notes)) hints = hints.concat(event.notes);
+      if (hints.length){
+        h += '<div class=event-hints>';
+        for (let hi = 0; hi < hints.length; hi++){
+          h += '<div class=event-hint><span class=hint-dot></span>' + esc(hints[hi]) + '</div>';
+        }
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+    h += _renderAnnualAiReviews(aiReviews, annualReviewStatus);
+    h += '</div></div>';
+  }
+  return h;
 }
 
 function _annualSignalKey(signal){
@@ -527,7 +642,7 @@ function _buildChartParams(){
     hour: document.getElementById('hour').value || '12',
     minute: document.getElementById('minute').value || '0',
     hour_confirmed: document.getElementById('hourConfirmed').checked,
-    practical: true,  // 公网只显示白话解读，不暴露技术推导
+    practical: true,  // 公网显示白话结论与经清洗的简化依据
   });
   let location = getLocationPayload();
   if (location.city_id) params.set('city_id', location.city_id);
@@ -623,10 +738,11 @@ async function go(){
             r.innerHTML = '<div class=loading-state><div class=spinner></div><div>规则引擎计算中...</div></div>';
           } else if (msg.phase === 'llm_token'){
             // 年度审阅只显示状态，不把模型原始输出暴露给用户。
-            setAnnualReviewStatus('pending');
+            setAnnualReviewStatus('pending', msg.year);
             updateLlmTokenDisplay(msg.year);
           } else if (msg.phase === 'rules_done'){
             // 1. 规则引擎完成，立即渲染
+            setAnnualReviewPendingYears(msg.annual_review_years || []);
             d = setChartData(msg.chart);
             render(d);
             setTimeout(function(){
@@ -634,15 +750,22 @@ async function go(){
             }, 80);
           } else if (msg.phase === 'llm_result'){
             // 2. LLM审查某年完成，追加到独立的 AI 审阅区。
-            setAnnualReviewStatus('pending');
+            setAnnualReviewStatus('complete', msg.year);
             if (d && d.annual_scans){
               d = mergeAnnualAiReviews(msg.year, msg.signals) || d;
               // 局部刷新流年区域
               refreshFlowSection(d);
             }
           } else if (msg.phase === 'llm_error'){
-            setAnnualReviewStatus('error');
+            failPendingAnnualReviews();
             if (d) refreshFlowSection(d);
+          } else if (msg.phase === 'error'){
+            if (d){
+              failPendingAnnualReviews();
+              refreshFlowSection(d);
+            } else {
+              r.innerHTML = '<div class=error-state>' + esc(msg.message || '排盘暂时不可用，请稍后重试') + '</div>';
+            }
           } else if (msg.phase === 'personality_token'){
             // 3. 性格报告逐token → 渐进markdown渲染
             if (!personalityEl){
@@ -694,8 +817,8 @@ async function go(){
             let dyEls2 = document.querySelectorAll('.dayun-interpretations');
             for (let de = 0; de < dyEls2.length; de++) dyEls2[de].innerHTML = '<div class=dayun-error>⚠ 大运解读暂时不可用，请稍后重试。</div>';
           } else if (msg.phase === 'done'){
-            // 6. 全流程结束——清理年度状态区并移除实时状态
-            if (getAnnualReviewStatus() === 'pending') setAnnualReviewStatus('complete');
+            // 6. 全流程结束。仍未收到逐年结果的任务不能伪装成已完成。
+            failPendingAnnualReviews();
             if (d) refreshFlowSection(d);
             let liveEl = document.querySelector('.llm-live-section');
             if (liveEl) liveEl.remove();
@@ -1013,24 +1136,40 @@ function _getStageInfo(d){
   };
 }
 
+function _getAnnualStageInfo(scan, d){
+  let stage = scan && scan.life_stage ? scan.life_stage : '';
+  if (!stage && scan && Number.isFinite(Number(scan.age))){
+    let age = Number(scan.age);
+    stage = age < 18 ? '中学' : age < 22 ? '大学' : age < 26 ? '职场' : age >= 56 ? '晚年' : '职场';
+  }
+  if (!stage) return _getStageInfo(d || {});
+  return {
+    value: stage,
+    label: stage,
+    isStudent: stage === '中学' || stage === '大学' || stage === '深造'
+  };
+}
+
 function _summarizeAnnualScan(scan, d){
-  if (!scan || !scan.events) return ['运势平稳'];
+  if (!scan || !scan.events) return ['暂无显著信号'];
   let significant = scan.events.filter(function(e){return e.strength >= 2});
   let cats = significant.map(function(e){return e.category});
   let dirs = significant.map(function(e){return e.direction});
-  let stageInfo = _getStageInfo(d || {});
+  let stageInfo = _getAnnualStageInfo(scan, d || {});
   let summary = [];
   if (cats.indexOf('桃花') !== -1) summary.push(dirs[cats.indexOf('桃花')] === '负面' ? '感情波动' : '感情运升');
+  if (cats.indexOf('婚嫁') !== -1) summary.push(dirs[cats.indexOf('婚嫁')] === '负面' ? '关系有压力' : '关系进展');
   if (cats.indexOf('事业') !== -1) summary.push(dirs[cats.indexOf('事业')] === '负面' ? (stageInfo.isStudent ? '学业压力' : '事业有压') : (stageInfo.isStudent ? '校园活跃' : '事业有进'));
   if (cats.indexOf('学业') !== -1) summary.push(dirs[cats.indexOf('学业')] === '负面' ? '学业压力' : '校园活跃');
   if (cats.indexOf('财运') !== -1) summary.push(dirs[cats.indexOf('财运')] === '负面' ? (stageInfo.isStudent ? '手头偏紧' : '注意财务') : (stageInfo.isStudent ? '经济宽松' : '财运关注'));
   if (cats.indexOf('健康') !== -1) summary.push('留意健康');
   if (cats.indexOf('升学') !== -1) summary.push(stageInfo.isStudent ? '学业运佳' : '进修运佳');
   if (cats.indexOf('进修') !== -1) summary.push('进修运佳');
-  if (cats.indexOf('搬迁') !== -1) summary.push('可能搬迁');
+  if (cats.indexOf('搬迁') !== -1) summary.push('环境变动');
   if (cats.indexOf('状态') !== -1) summary.push(dirs[cats.indexOf('状态')] === '负面' ? '状态低迷' : '状态良好');
   if (cats.indexOf('人际') !== -1) summary.push(dirs[cats.indexOf('人际')] === '负面' ? '人际有摩擦' : '人际和谐');
-  if (!summary.length) summary.push('运势平稳');
+  if (cats.indexOf('官非') !== -1) summary.push('留意规则风险');
+  if (!summary.length) summary.push('暂无显著信号');
   return summary;
 }
 
@@ -1605,82 +1744,12 @@ function render(d){
       h += '<div class=filter-bar>';
       h += '<span class="filter-pill active" data-filter="all">全部</span>';
       for (let ci = 0; ci < cats.length; ci++){
-        h += '<span class="filter-pill" data-filter="' + cats[ci] + '">' + cats[ci] + '</span>';
+        h += '<span class="filter-pill" data-filter="' + esc(cats[ci]) + '">' + esc(cats[ci]) + '</span>';
       }
       h += '</div>';
     }
 
-    h += '<div class=events-section>';
-    let annualReviewStatus = typeof getAnnualReviewStatus === 'function' ? getAnnualReviewStatus() : 'idle';
-    let hasAny = false;
-    for (let s = 0; s < d.annual_scans.length; s++){
-      let scan = d.annual_scans[s];
-      let significant = scan.events.filter(function(e){return e.strength >= 2});
-      let aiReviews = scan.ai_reviews || [];
-      let aiMeta = _annualAiReviewMeta(aiReviews);
-      hasAny = true;
-
-      let summary = _summarizeAnnualScan(scan, d);
-
-      // 构建顶栏标签: 类别 + 方向
-      let tagBadges = [];
-      for (let e = 0; e < significant.length; e++){
-        let ev = significant[e];
-        let dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
-        tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
-      }
-      h += '<div class=event-card>';
-      h += '<div class=event-header>';
-      h += '<span class=event-year>' + scan.year + '</span>';
-      h += '<span class=event-ganzhi>' + scan.liunian + '</span>';
-      h += '<span class=event-age>' + scan.age + '岁</span>';
-      h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
-      h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
-      h += '</div>';
-      let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
-      h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
-      h += _renderRelationshipWindow(scan);
-      h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
-      // 可展开详情: 每个事件独立一行，小提示归类到各自事件下
-      h += '<div class=event-body>';
-      h += '<div class=annual-layer-title>规则判断</div>';
-      if (!significant.length) h += '<div class=event-layer-empty>本年规则层没有两星以上显著信号</div>';
-      for (let e = 0; e < significant.length; e++){
-        let ev2 = significant[e];
-        let cls2 = ev2.direction === '负面' ? 'direction-bad' : ev2.direction === '正面' ? 'direction-good' : '';
-        h += '<div class=event-item data-category="' + ev2.category + '">';
-        // 主行: 星级 + 类别 + 方向 + 预测
-        h += '<div class=event-main>';
-        h += '<span class=stars>' + '★'.repeat(ev2.strength) + '</span>';
-        h += '<span class=tag>' + ev2.category + '</span>';
-        h += '<span class="' + cls2 + '">' + ev2.direction + '</span>';
-        if (ev2.prediction) h += '<span class=prediction-text>' + ev2.prediction + '</span>';
-        h += '</div>';
-        // 触发词
-        if (ev2.triggers[0]) {
-          let trigFull = ev2.triggers[0];
-          trigFull = trigFull.replace(/\[忌\]/g, '<span class=tag-ji>忌</span>');
-          trigFull = trigFull.replace(/\[喜\]/g, '<span class=tag-xi>喜</span>');
-          h += '<div class=event-trigger>' + trigFull + '</div>';
-        }
-        // 小提示: 性格联动 + 引擎备注
-        let hints = [];
-        if (ev2.personality_note) hints.push(ev2.personality_note);
-        if (ev2.notes) hints = hints.concat(ev2.notes);
-        if (hints.length) {
-          h += '<div class=event-hints>';
-          for (let hi = 0; hi < hints.length; hi++) {
-            h += '<div class=event-hint><span class=hint-dot></span>' + hints[hi] + '</div>';
-          }
-          h += '</div>';
-        }
-        h += '</div>';
-      }
-      h += _renderAnnualAiReviews(aiReviews, annualReviewStatus);
-      h += '</div></div>'; // /event-body + /event-card
-    }
-    if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
-    h += '</div>'; // /events-section
+    h += '<div class=events-section>' + _renderAnnualCards(d) + '</div>';
     h += '</section>';
   }
 
@@ -1871,72 +1940,8 @@ function refreshFlowSection(d){
   if (!d || !d.annual_scans) return;
   let el = document.querySelector('.events-section');
   if (!el) return;
-  let h = '';
-  let annualReviewStatus = typeof getAnnualReviewStatus === 'function' ? getAnnualReviewStatus() : 'idle';
-  let hasAny = false;
-  for (let s = 0; s < d.annual_scans.length; s++){
-    let scan = d.annual_scans[s];
-    let significant = scan.events.filter(function(e){return e.strength >= 2});
-    let aiReviews = scan.ai_reviews || [];
-    let aiMeta = _annualAiReviewMeta(aiReviews);
-    hasAny = true;
-    let summary = _summarizeAnnualScan(scan, d);
-    let tagBadges = [];
-    for (let e = 0; e < significant.length; e++){
-      let ev = significant[e];
-      let dirSymbol = ev.direction === '正面' ? '↑' : ev.direction === '负面' ? '↓' : '·';
-      tagBadges.push('<span class=header-tag>' + ev.category + dirSymbol + '</span>');
-    }
-    h += '<div class=event-card>';
-    h += '<div class=event-header>';
-    h += '<span class=event-year>' + scan.year + '</span>';
-    h += '<span class=event-ganzhi>' + scan.liunian + '</span>';
-    h += '<span class=event-age>' + scan.age + '岁</span>';
-    h += '<span class=event-tags>' + tagBadges.join('') + '</span>';
-    h += '<span class=chevron>' + _uiIcon('chevron-right') + '</span>';
-    h += '</div>';
-    let ruleSummary = significant.length ? summary.slice(0, 3).join('、') : '无两星以上显著信号';
-    h += '<div class="annual-layer-summary rule-layer-summary"><span class=annual-layer-label>规则判断</span><span>' + esc(ruleSummary) + '</span></div>';
-    h += _renderRelationshipWindow(scan);
-    h += _renderAnnualAiSummary(aiMeta, annualReviewStatus);
-    h += '<div class=event-body>';
-    h += '<div class=annual-layer-title>规则判断</div>';
-    if (!significant.length) h += '<div class=event-layer-empty>本年规则层没有两星以上显著信号</div>';
-    for (let e = 0; e < significant.length; e++){
-      let ev2 = significant[e];
-      let cls2 = ev2.direction === '负面' ? 'direction-bad' : ev2.direction === '正面' ? 'direction-good' : '';
-      h += '<div class=event-item data-category="' + ev2.category + '">';
-      h += '<div class=event-main>';
-      h += '<span class=stars>' + '★'.repeat(ev2.strength) + '</span>';
-      h += '<span class=tag>' + ev2.category + '</span>';
-      h += '<span class="' + cls2 + '">' + ev2.direction + '</span>';
-      if (ev2.source === 'llm') h += '<span class=llm-badge>AI</span>';
-      if (ev2.prediction) h += '<span class=prediction-text>' + ev2.prediction + '</span>';
-      h += '</div>';
-      if (ev2.triggers[0]){
-        let trigFull = ev2.triggers[0];
-        trigFull = trigFull.replace(/\[忌\]/g, '<span class=tag-ji>忌</span>');
-        trigFull = trigFull.replace(/\[喜\]/g, '<span class=tag-xi>喜</span>');
-        h += '<div class=event-trigger>' + trigFull + '</div>';
-      }
-      let hints = [];
-      if (ev2.personality_note) hints.push(ev2.personality_note);
-      if (ev2.notes) hints = hints.concat(ev2.notes);
-      if (hints.length){
-        h += '<div class=event-hints>';
-        for (let hi = 0; hi < hints.length; hi++){
-          h += '<div class=event-hint><span class=hint-dot></span>' + hints[hi] + '</div>';
-        }
-        h += '</div>';
-      }
-      h += '</div>';
-    }
-    h += _renderAnnualAiReviews(aiReviews, annualReviewStatus);
-    h += '</div></div>';
-  }
-  if (!hasAny) h += '<div class=empty-state>该年份范围无显著信号</div>';
   // 只替换事件卡片列表（筛选栏是.events-section的兄弟节点，不受影响）
-  el.innerHTML = h;
+  el.innerHTML = _renderAnnualCards(d);
   // 恢复筛选状态
   let activeFilter = document.querySelector('.filter-pill.active');
   if (activeFilter){

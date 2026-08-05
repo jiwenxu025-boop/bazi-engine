@@ -36,25 +36,25 @@ def detect_guanfei_signals(
     dn_shishen = None
     if dn_tg:
         dn_shishen = get_ten_god(day_master, dn_tg)
-    dn_is_guan = dn_shishen and dn_shishen.value in ("正官", "偏官")
+    dn_is_guan = dn_shishen and dn_shishen.value == "正官"
     dn_is_shang = dn_shishen and dn_shishen.value == "伤官"
 
     # 流年天干
     ln_shishen = get_ten_god(day_master, ln_tg)
-    ln_is_guan = ln_shishen and ln_shishen.value in ("正官", "偏官")
+    ln_is_guan = ln_shishen and ln_shishen.value == "正官"
     ln_is_shang = ln_shishen and ln_shishen.value == "伤官"
 
     # 流年透伤官 → +1
     if ln_is_shang:
         strength += 1
         triggers.append("流年伤官透干")
-        notes.append("流年伤官→才华锋芒外露，注意言行不要触碰规则红线")
+        notes.append("伤官结构仅作表达与规则边界提示，需结合现实合同、手续和沟通核对")
 
     # 流年透正官 → +1（伤官见官直接触发）
     if ln_is_guan:
         strength += 1
         triggers.append("流年正官出现→伤官见官触发")
-        notes.append("正官到位+伤官冲撞→官非口舌风险升高")
+        notes.append("正官与伤官结构同现→留意规则、手续和沟通要求，不直接推断争议事件")
 
     # 大运透伤官/正官 → +1
     if dn_is_shang or dn_is_guan:
@@ -65,8 +65,8 @@ def detect_guanfei_signals(
     # 流年冲大运 → +1（环境冲击）
     if dn_dz and ln_dz == chong_pair(dn_dz):
         strength += 1
-        triggers.append("流年冲大运→环境激变")
-        notes.append("流年冲大运→人生阶段被迫改变")
+        triggers.append("流年冲大运→环境调整信号")
+        notes.append("流年冲大运→可核对工作、居住或长期安排是否出现变化")
 
     # 流年合官星 → +1
     if ln_dz and day_branch:
@@ -80,9 +80,9 @@ def detect_guanfei_signals(
     if strength >= 2:
         direction = "负面"
         if strength == 2:
-            pred = "注意法律风险或与权威的冲突，遵守规则，避免冲动行事"
+            pred = "留意合同、手续与规则边界，发生现实争议时及时咨询专业人士"
         else:
-            pred = "高风险年份——注意法律纠纷、官非诉讼或与权威机构的冲突，切忌触犯规则底线"
+            pred = "规则与合规压力信号较强，重要合同、手续和争议应以专业法律意见为准"
 
         events.append(EventSignal(
             category="官非",

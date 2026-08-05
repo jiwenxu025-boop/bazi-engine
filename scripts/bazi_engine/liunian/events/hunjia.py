@@ -18,7 +18,8 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                           favorable: set[str] | None = None,
                           dayun_branch: Dizhi | None = None,
                           age: int = 0,
-                          all_branches: tuple[Dizhi, ...] = ()) -> list[EventSignal]:
+                          all_branches: tuple[Dizhi, ...] = (),
+                          harmful: set[str] | None = None) -> list[EventSignal]:
     """检测婚嫁/婚姻信号 — v0.6.0: 打分制 + 大运联动"""
     signals: list[EventSignal] = []
     spouse_star = Shishen.正财 if gender == "男" else Shishen.正官
@@ -27,7 +28,7 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     second_name = "偏财" if gender == "男" else "七杀"
     ln_shishen = get_ten_god(day_master, ln_stem)
     s = ScoreAccumulator(favorable)
-    s.set_shishen(ln_shishen.value, is_favorable(ln_shishen, favorable))
+    s.set_shishen(ln_shishen.value, is_favorable(ln_shishen, favorable, harmful))
     s.set_modulate(False)  # 婚嫁只标记不调分
 
     hongluan = HONGLUAN.get(year_branch)
@@ -127,7 +128,7 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
         elif is_student:
             s.add(1, f"地支暗藏{spouse_in_branch_label}(配偶关系星·学生)", "藏干不透+学生→暗恋，待对应关系星透干时再观察")
         else:
-            s.add(3, f"地支暗藏{spouse_in_branch_label}(配偶关系星·不透干)", "藏干不透→暗处流动，但成人仍可成婚")
+            s.add(1, f"地支暗藏{spouse_in_branch_label}(配偶关系星·不透干)", "藏干不透只作弱关系背景，不能单独推出婚期")
 
     # 流年合夫妻宫（弱因子，需搭配配偶星或天喜）
     if gong_he:
@@ -158,16 +159,16 @@ def detect_hunjia_signals(ln_stem: Tiangan, ln_branch: Dizhi,
     # 比劫夺财(男) / 比劫争官(女) — 弱风险，不抵消婚期
     if ln_shishen == Shishen.劫财:
         if gender == "男":
-            s.add(-1, "劫财夺财→感情竞争", "比劫争妻/注意第三者 (段建业)")
+            s.add(-1, "劫财夺财→感情竞争", "关系中可能出现竞争感或资源分配压力，需结合现实沟通核对")
         else:
-            s.add(-1, "劫财争合→感情竞争", "比劫争夫/注意三角关系 (段建业)")
+            s.add(-1, "劫财争合→感情竞争", "关系中可能出现竞争感或边界压力，不能据此推断第三者")
 
     # 夫妻宫被穿害 — v0.12.0: 实现穿害检测
     if all_branches:
         for br in all_branches:
             if br == day_branch and _has_branch_interaction(ln_branch, br, "相害"):
                 hai_pair = f"{ln_branch.value}{br.value}穿"
-                s.add(-2, f"{hai_pair}夫妻宫→婚姻不和", "穿害入夫妻宫→感情伤害/离婚风险")
+                s.add(-2, f"{hai_pair}夫妻宫→关系压力候选", "穿害只作关系摩擦提示，不能据此推断离婚")
 
     # ════════════════════════════════════════════════
     # 输出判断

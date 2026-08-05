@@ -21,14 +21,15 @@ def detect_shiye_signals(ln_stem: Tiangan, ln_branch: Dizhi,
                          hour_branch: Dizhi | None = None,
                          dayun_stem: Tiangan | None = None,
                          dayun_branch: Dizhi | None = None,
-                         favorable: set[str] | None = None) -> list[EventSignal]:
+                         favorable: set[str] | None = None,
+                         harmful: set[str] | None = None) -> list[EventSignal]:
     """检测事业/工作变动信号 — v0.5.0: 打分制"""
     signals: list[EventSignal] = []
     ln_shishen = get_ten_god(day_master, ln_stem)
     yima = YIMA.get(year_branch)
     lu = TIANGAN_LU.get(day_master)
     s = ScoreAccumulator(favorable)
-    fav = is_favorable(ln_shishen, favorable)
+    fav = is_favorable(ln_shishen, favorable, harmful)
     s.set_shishen(ln_shishen.value, fav)
     s.set_modulate(False)  # 事业只标记不调分（跳槽/晋升不因忌神而消失）
 
@@ -98,7 +99,7 @@ def detect_shiye_signals(ln_stem: Tiangan, ln_branch: Dizhi,
 
     # ── 负面: 挫折/风险 (方向固定，不受喜忌翻转) ──
     if is_shang:
-        s.add(-1, "伤官透干→想改变/离职风险", "伤官=变革冲动 (textbook)", fixed=True)
+        s.add(-1, "伤官透干→调整意愿候选", "伤官结构只作表达与工作调整主题参考", fixed=True)
         s.guarantee(2)
 
     if dayun_branch and _has_branch_interaction(dayun_branch, ln_branch, "六冲"):

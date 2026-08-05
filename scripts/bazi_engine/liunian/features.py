@@ -129,10 +129,8 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
             features["岁运关系"] = " + ".join(suiyun_parts)
             if "天战" in features["岁运关系"] and "地战" in features["岁运关系"]:
                 features["岁运交战"] = (
-                    "天克地冲(岁运反吟)——大运与流年天干相克、地支相冲，"
-                    "是流年层面最剧烈的冲突形态。古诀'反吟伏吟泪淋淋'。"
-                    "天战影响事业人际(表层)，地战动摇环境健康(底层，严重1.5-2倍)。"
-                    "吉凶需看大运喜忌：冲克喜神→破财伤病官非，冲克忌神→换运转机去旧迎新。"
+                    "大运与流年同时存在天干相克、地支相冲。该字段只记录结构关系，"
+                    "不直接推断事业、财务、健康、法律或家庭事件，具体方向以规则层信号为准。"
                 )
 
     return features

@@ -242,7 +242,7 @@ def health():
 
 
 def _prepare_chart_response(data: dict, practical: bool) -> dict:
-    """Return a presentation copy without mutating the chart's fusion inputs."""
+    """Return a cleaned presentation copy without mutating fusion inputs."""
     if not (practical or _IS_PUBLIC):
         return data
     result = deepcopy(data)
@@ -271,7 +271,7 @@ def chart_api(
     life_stage: str = Query("auto", pattern="^(auto|中学|大学|深造|职场|晚年)$"),
     relationship_status: Literal["unknown", "single", "dating", "married"] = Query("unknown"),
     hour_confirmed: bool = Query(False, description="出生时辰是否经用户确认"),
-    practical: bool = Query(False, description="实用模式：仅返回白话解读，不包含技术推导"),
+    practical: bool = Query(False, description="实用模式：返回白话结论与经清洗的简化依据"),
 ):
     if not _ALLOW_LEGACY_CHART_GET:
         return JSONResponse({"error": "该入口已停用，请使用 POST /api/chart/stream"}, status_code=410)
@@ -400,7 +400,23 @@ async def stream_chart(
             if msg_type == "chart":
                 chart, chart_data = msg_data
 
-        yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data})}\n\n"
+        annual_review_years = []
+        serialized_scans = chart_data.get("annual_scans", []) if chart_data else []
+        for index, context in chart._pending_llm_tasks:
+            if not 0 <= index < len(chart.annual_scans):
+                continue
+            year_val = getattr(chart.annual_scans[index], "year", None)
+            if year_val is None and isinstance(context, dict):
+                year_val = context.get("liunian", {}).get("year")
+            if (
+                year_val is None
+                and index < len(serialized_scans)
+                and isinstance(serialized_scans[index], dict)
+            ):
+                year_val = serialized_scans[index].get("year")
+            if year_val is not None:
+                annual_review_years.append(year_val)
+        yield f"data: {json.dumps({'phase': 'rules_done', 'chart': chart_data, 'annual_review_years': annual_review_years})}\n\n"
 
         def on_llm(year_val: int, signals: list[dict]) -> None:
             publish(
@@ -673,7 +689,7 @@ async def chart_stream(
     前端可立即渲染规则引擎部分，LLM 结果逐 token 追加。
 
     SSE 事件类型:
-      data: {"phase":"rules_done","chart":{...}}   — 规则引擎完成，可立即渲染
+      data: {"phase":"rules_done","chart":{...},"annual_review_years":[2026]} — 规则完成
       data: {"phase":"llm_result","year":2026,"signals":[...]}  — 某年LLM审查完成
       data: {"phase":"personality_token","token":"..."}  — 性格报告逐token
       data: {"phase":"personality_done","full":"..."}    — 性格报告完成
@@ -785,9 +801,10 @@ def _strip_technical(data: dict):
         text = re.sub(r'《[^》]+》[^，。]*，', '', text)
         return text
 
-    # 流年事件中去掉经典引用备注（保留空亡等重要提示）
+    # 流年规则事件与 AI 审阅都只保留经清洗的展示文本。
     for scan in data.get("annual_scans", []):
-        for ev in scan.get("events", []):
+        annual_items = [*scan.get("events", []), *scan.get("ai_reviews", [])]
+        for ev in annual_items:
             notes = ev.get("notes", [])
             # 只去掉纯古籍引用（以[开头或全为古典句式），保留含有关键信息的备注
             ev["notes"] = [n for n in notes if not (

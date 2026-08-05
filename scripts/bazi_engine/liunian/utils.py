@@ -68,11 +68,24 @@ def classify_sb_relation(stem: Tiangan, branch: Dizhi) -> tuple[str, float, floa
 
     return ("干支平衡", 0.50, 0.50)
 
-def is_favorable(ten_god: Shishen, favorable_set: set[str] | None) -> bool | None:
-    """判断十神是否为喜用。favorable_set 为 None 时返回 None（不判断）。"""
+def is_favorable(
+    ten_god: Shishen,
+    favorable_set: set[str] | None,
+    harmful_set: set[str] | None = None,
+) -> bool | None:
+    """判断十神喜忌；提供忌神集合时保留非喜非忌的中性状态。"""
     if favorable_set is None:
-        return None
-    return ten_god.value in favorable_set
+        if harmful_set is None:
+            return None
+        return False if ten_god.value in harmful_set else None
+    if ten_god.value in favorable_set:
+        return True
+    if harmful_set is None:
+        # 兼容只提供喜神集合的旧调用：未列入喜神即按忌神处理。
+        return False
+    if ten_god.value in harmful_set:
+        return False
+    return None
 
 def is_harmful(ten_god: Shishen, harmful_set: set[str] | None) -> bool | None:
     """判断十神是否为忌神。harmful_set 为 None 时返回 None（不判断）。"""
@@ -217,39 +230,39 @@ def _make_prediction(category: str, direction: str, strength: int,
     if category == "桃花":
         if stage in ("中学",):
             if direction == "正面":
-                return "异性缘上升，注意平衡学业与感情"
+                return "关系互动主题增加，注意平衡学习与社交"
             elif direction == "负面":
                 return "同学关系有摩擦，注意情绪管理"
         if stage in ("大学", "深造"):
             if direction == "正面" and strength >= 2:
-                return "校园恋爱机会多，社团/课堂中可能邂逅"
+                return "校园社交与关系机会信号较集中，可结合现实互动观察"
             elif direction == "正面":
-                return "异性缘微增，可留意周围"
+                return "关系互动信号偏积极，可留意现实社交变化"
             elif direction == "负面":
                 return "校园恋情有波动，注意沟通方式"
         if direction == "正面" and strength >= 3:
-            return "感情机遇强——可能脱单、恋爱或关系重大升级"
+            return "关系机会信号较集中，可结合现实互动关注新关系或关系推进"
         elif direction == "正面" and strength >= 2:
-            return "桃花运上升，有恋爱或约会机会"
+            return "关系互动信号偏积极，可关注认识新朋友或推进沟通的机会"
         elif direction == "正面":
-            return "异性缘微增，可通过社交认识新朋友"
+            return "社交与关系主题略有增加，可结合现实互动核对"
         elif direction == "负面" and strength >= 3:
-            return "感情有较大波动——注意分手、冷战或信任危机"
+            return "关系互动压力信号较集中，宜关注沟通、边界与现实变化"
         elif direction == "负面":
             return "感情有摩擦或情绪内耗，宜坦诚沟通"
         else:
-            return "感情节点期——可能进入新关系或结束旧关系"
+            return "关系主题被引动，具体表现需结合现实关系状态"
 
     elif category == "升学":
         if stage in ("职场", "晚年"):
             if strength >= 2:
-                return "进修/考证运佳，适合在职深造、MBA或技能提升"
+                return "进修与考证主题信号较集中，适合结合计划评估深造或技能提升"
             else:
                 return "适合短期培训、考证或自学充电"
         if strength >= 3:
-            return "考试运佳，升学/考证/考公希望较大"
+            return "学习与考试主题信号较集中，实际结果取决于准备和报名条件"
         elif strength >= 2:
-            return "学业运好，适合备考冲刺或深造申请"
+            return "学习与申请主题偏积极，适合结合实际进度安排备考或深造申请"
         else:
             return "学习状态尚可，适合短期进修或兴趣学习"
 
@@ -257,9 +270,9 @@ def _make_prediction(category: str, direction: str, strength: int,
         if direction == "负面":
             return "感情关系有波动，注意沟通" if strength >= 2 else "感情关系需留意"
         if strength >= 3:
-            return "感情重大节点，大概率结婚/订婚或同居"
+            return "关系定型候选信号较强，可结合现实进展关注订婚、结婚或共同生活安排"
         elif strength >= 2:
-            return "感情有新进展，可能确立关系或同居"
+            return "关系定型候选信号出现，可结合现实进展关注长期关系或共同生活安排"
         else:
             return "感情方面有新动向"
 
@@ -267,7 +280,7 @@ def _make_prediction(category: str, direction: str, strength: int,
         if stage in ("中学", "大学", "深造"):
             # 学生阶段 → 学业表现 / 校园活动
             if direction == "正面" and strength >= 3:
-                return "校园表现突出，有竞赛获奖、担任学生干部或保研机会"
+                return "学业与校园活动信号较集中，可结合实际准备推进竞赛、项目或升学安排"
             elif direction == "正面":
                 return "学业/校园活动有进展，适合参与社团或学术项目"
             elif direction == "负面" and strength >= 3:
@@ -278,15 +291,15 @@ def _make_prediction(category: str, direction: str, strength: int,
                 return "学业方向可能有调整（转专业/换导师等）"
         else:
             if direction == "正面" and strength >= 3:
-                return "晋升/跳槽/创业机会较大，或岗位层级明显提升"
+                return "工作推进或调整信号较集中，可结合岗位、项目和资源评估下一步"
             elif direction == "正面":
-                return "工作有新机会或进展，可能加薪、转岗或项目突破"
+                return "工作主题偏积极，可关注项目推进、岗位调整或合作机会"
             elif direction == "负面" and strength >= 3:
-                return "事业有较大变动，注意裁员风险、离职冲动或与上级冲突"
+                return "事业变动信号较强，宜留意岗位、团队安排和与上级的沟通"
             elif direction == "负面":
                 return "工作有阻力或瓶颈，可能被动调整，宜稳扎稳打"
             else:
-                return "工作有变动——可能是岗位调整、换团队或创业尝试"
+                return "工作调整主题被引动，具体表现需结合岗位、团队和个人计划"
 
     elif category == "财运":
         if stage in ("中学", "大学", "深造"):
@@ -318,51 +331,51 @@ def _make_prediction(category: str, direction: str, strength: int,
     elif category == "搬迁":
         if stage in ("中学", "大学", "深造"):
             if strength >= 2:
-                return "可能换宿舍/换校区、留学或异地求学"
+                return "学习或居住环境变动信号较强，可留意换宿舍、换校区或异地求学安排"
             else:
-                return "可能有出行/旅行或短期游学"
+                return "出行或学习环境调整主题出现，需结合现实安排核对"
         if strength >= 3:
-            return "很可能搬家、换城市或出国等远行"
+            return "居住或工作环境变动信号较强，可留意搬家、换城市或远行安排"
         elif strength >= 2:
-            return "居住或工作地点可能有变动"
+            return "居住或工作环境存在调整候选，需结合现实安排核对"
         else:
-            return "可能有短途出行或出差"
+            return "出行或环境调整主题出现，需结合现实安排核对"
 
     elif category == "状态":
         if stage in ("中学", "大学", "深造"):
             if direction == "负面":
                 return "学业或情绪压力较大，宜与同学/老师/家长多沟通"
             elif direction == "正面":
-                return "精力充沛，自信足，适合备考冲刺或参加竞赛活动"
+                return "状态信号偏积极，可结合实际精力安排学习或活动"
         if direction == "正面" and strength >= 3:
-            return "精力充沛，自信心和执行力处于高峰"
+            return "状态信号偏积极，可结合实际精力推进重点事项"
         elif direction == "正面":
             return "状态良好，适合推进重要事项或尝试新突破"
         elif direction == "负面":
-            return "身心压力较大——注意焦虑、失眠或倦怠，适当放松调节"
+            return "压力与疲惫感可能增加，宜调整作息和节奏，必要时寻求专业支持"
         else:
             return "心态有波动，宜稳住节奏，避免冲动决策"
 
     elif category == "人际":
         if stage in ("中学", "大学", "深造"):
             if direction == "负面":
-                return "同学关系紧张，注意友谊维护"
+                return "同学互动存在摩擦候选，宜核对信息与沟通方式"
             elif strength >= 2:
-                return "校园社交活跃，师生/同学关系不错"
+                return "校园社交互动信号偏积极，实际关系仍需结合日常相处判断"
             else:
-                return "同学关系平稳"
+                return "同学互动主题较弱，暂无显著结论"
         if direction == "负面":
-            return "人际有摩擦——注意职场/朋友圈的口舌是非或竞争"
+            return "人际摩擦信号出现，宜核对职场或社交中的信息、边界与竞争情况"
         elif strength >= 2:
-            return "社交活跃，人缘或合作关系向好"
+            return "社交与合作信号偏积极，实际结果取决于互动和合作条件"
         else:
-            return "人际关系平稳，维持现有圈子"
+            return "人际主题较弱，暂无显著结论"
 
     elif category == "官非":
         if strength >= 3:
-            return "高风险年份——注意法律纠纷、官非诉讼或与权威机构的冲突，切忌触犯规则底线"
+            return "规则与合规压力信号较强，重要合同、手续和争议应以专业法律意见为准"
         elif strength >= 2:
-            return "注意法律风险或与权威的冲突，遵守规则，避免冲动行事"
+            return "留意合同、手续与规则边界，发生现实争议时及时咨询专业人士"
         else:
             return "留意潜在的规则风险或口舌是非"
 
