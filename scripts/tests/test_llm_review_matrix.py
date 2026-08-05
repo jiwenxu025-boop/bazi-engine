@@ -3,6 +3,8 @@
 import json
 
 from bazi_engine.chart import build_chart
+from bazi_engine.enums import Dizhi, Tiangan
+from bazi_engine.liunian.features import _extract_year_features
 from bazi_engine.liunian.signal import EventSignal, EvidenceItem
 from bazi_engine.llm_review import (
     _enforce_relationship_review_policy,
@@ -84,6 +86,42 @@ def test_review_context_carries_decision_policy_and_rule_evidence():
     assert ctx["rule_signals"][0]["evidence"][0]["pillars"] == ["日柱", "流年"]
     assert ctx["rule_signals"][0]["conflicts"]
     assert "不得自行重算三合、藏干、强弱或喜忌" in prompt
+    assert "字段缺失表示本年没有该项证据" in prompt
+    assert "不得把当前婚恋状态本身当作桃花或婚嫁证据" in prompt
+
+
+def test_inactive_relationship_spirits_are_not_exposed_as_ai_evidence():
+    features = _extract_year_features(
+        Tiangan.戊,
+        Dizhi.申,
+        Dizhi.亥,
+        Dizhi.辰,
+        Tiangan.壬,
+        "男",
+        Tiangan.丙,
+        Dizhi.午,
+    )
+
+    assert "红鸾" not in features
+    assert "天喜" not in features
+    assert "天喜合动" not in features
+    assert "桃花" not in features
+
+
+def test_triggered_relationship_spirit_remains_ai_evidence():
+    features = _extract_year_features(
+        Tiangan.丙,
+        Dizhi.午,
+        Dizhi.亥,
+        Dizhi.辰,
+        Tiangan.壬,
+        "男",
+        Tiangan.丙,
+        Dizhi.午,
+    )
+
+    assert "天喜" not in features
+    assert "天喜合动" in features
 
 
 def test_single_response_keeps_positive_and_explicit_no_signal_states():
@@ -145,6 +183,36 @@ def test_ai_cannot_upgrade_taohua_into_hunjia_without_rule_signal():
     marriage = next(result for result in constrained if result.category == "婚嫁")
     assert marriage.review_status == "无明显信号"
     assert marriage.strength == 0
+
+
+def test_ai_context_does_not_reuse_predicted_relationship_state(monkeypatch):
+    import bazi_engine.llm_review as llm_review
+
+    monkeypatch.setenv("BAZI_LLM_REVIEW", "1")
+    monkeypatch.setattr(llm_review, "LLM_REVIEW_ENABLED", True)
+    monkeypatch.setattr(llm_review, "DEEPSEEK_KEY", "test-key")
+    chart = build_chart(
+        name="状态回灌回归",
+        gender="男",
+        year=2007,
+        month=8,
+        day=26,
+        hour=20,
+        liunian_range=(2026, 2030),
+        relationship_status="single",
+        defer_llm=True,
+    )
+
+    contexts = {
+        chart.annual_scans[index].year: context
+        for index, context in chart._pending_llm_tasks
+    }
+    assert chart.annual_scans[1].relationship_state == "dating"
+    assert contexts[2026]["relationship_context"]["state"] == "single"
+    assert all(
+        contexts[year]["relationship_context"]["state"] == "unknown"
+        for year in (2027, 2028, 2029, 2030)
+    )
 
 
 def test_ai_marriage_wording_is_state_aware_for_married_users():

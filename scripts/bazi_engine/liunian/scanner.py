@@ -801,7 +801,12 @@ def scan_years(
                         false_generations=false_generations,
                         year_features=yr_features,
                         personality_text=personality_text,
-                        relationship_state=relationship_state_for_year,
+                        # AI 只能使用用户/校准数据提供的状态，不能把规则预测出的
+                        # single -> dating -> married 状态机再当成事实喂回模型。
+                        relationship_state=known_states.get(
+                            year,
+                            relationship_status if year == date.today().year else "unknown",
+                        ),
                     )
                     llm_tasks.append((len(results), review_ctx))
             except Exception as error:
@@ -908,8 +913,9 @@ def scan_years(
         if result_index >= len(results):
             continue
         scan = results[result_index]
+        review_relationship = review_ctx.get("relationship_context", {})
         review_ctx["relationship_context"] = {
-            "state": scan.relationship_state,
+            "state": review_relationship.get("state", "unknown"),
             "window": scan.relationship_window,
             "phase": scan.relationship_phase,
             "peak_year": scan.relationship_peak_year,

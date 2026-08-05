@@ -32,13 +32,10 @@ def _extract_year_features(ln_stem, ln_branch, year_branch, day_branch,
 
     if ln_branch == hongluan:
         features["红鸾"] = f"流年{ln_branch.value}=红鸾入命"
-    elif hongluan:
-        features["红鸾"] = f"红鸾在{hongluan.value}, 流年{ln_branch.value}"
 
     if ln_branch == tianxi:
         features["天喜"] = f"流年{ln_branch.value}=天喜入命"
     elif tianxi:
-        features["天喜"] = f"天喜在{tianxi.value}, 流年{ln_branch.value}"
         # 检查是否合动天喜
         if _has_branch_interaction(ln_branch, tianxi, "六合"):
             features["天喜合动"] = f"流年{ln_branch.value}合天喜{tianxi.value}→天喜被引动"

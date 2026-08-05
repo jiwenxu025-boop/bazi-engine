@@ -640,7 +640,8 @@ def test_annual_ai_review_matrix_summary_and_visibility():
         const header = sandbox._renderAnnualAiHeaderTag(meta);
         if (!header.includes('AI说明')) throw new Error('AI header marker is missing');
         const details = sandbox._renderAnnualAiReviews(reviews);
-        if (!details.includes('无明显信号') || !details.includes('未完成')) throw new Error('matrix states are not rendered');
+        if (!details.includes('未发现额外提示：婚嫁、事业、财运、搬迁') || !details.includes('未完成')) throw new Error('matrix states are not summarized');
+        if (details.includes('<span class=tag>婚嫁</span>') || details.includes('<span class=tag>事业</span>')) throw new Error('clear categories look like positive signals');
 
         const clearMeta = sandbox._annualAiReviewMeta([
           {{category: '婚嫁', review_status: '无明显信号', direction: '中性'}},

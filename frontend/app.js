@@ -435,9 +435,14 @@ function _renderAnnualAiReviews(reviews, status){
   let meta = _annualAiReviewMeta(reviews);
   let detailLabel = 'AI 辅助说明（仅作补充，不参与事件判断）';
   let h = '<details class=ai-review><summary>' + esc(detailLabel) + '</summary>';
+  let clearCategories = [];
   for (let i = 0; i < reviews.length; i++){
     let review = reviews[i] || {};
     let status = review.review_status || '有信号';
+    if (status === '无明显信号'){
+      if (review.category) clearCategories.push(review.category);
+      continue;
+    }
     let statusClass = status === '有信号' ? 'signal' : status === '未完成' ? 'incomplete' : 'clear';
     let displayStatus = status === '有信号' ? '辅助提示' : status;
     h += '<div class="ai-review-item ai-review-' + statusClass + '">';
@@ -448,6 +453,10 @@ function _renderAnnualAiReviews(reviews, status){
     let notes = Array.isArray(review.notes) ? review.notes : [];
     for (let n = 0; n < notes.length; n++) h += '<div class=ai-review-note>' + esc(notes[n]) + '</div>';
     h += '</div>';
+  }
+  if (clearCategories.length){
+    h += '<div class="ai-review-item ai-review-clear"><span class="ai-review-status clear">' +
+      '未发现额外提示：' + esc(clearCategories.join('、')) + '</span></div>';
   }
   return h + '</details>';
 }
